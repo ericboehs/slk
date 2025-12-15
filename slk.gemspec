@@ -3,7 +3,7 @@
 require_relative "lib/slack_cli/version"
 
 Gem::Specification.new do |spec|
-  spec.name = "slack-cli"
+  spec.name = "slk"
   spec.version = SlackCli::VERSION
   spec.authors = ["Eric Boehs"]
   spec.email = ["ericboehs@gmail.com"]
@@ -26,7 +26,7 @@ Gem::Specification.new do |spec|
   end
 
   spec.bindir = "bin"
-  spec.executables = ["slack"]
+  spec.executables = ["slk"]
   spec.require_paths = ["lib"]
 
   # No runtime dependencies - pure Ruby!

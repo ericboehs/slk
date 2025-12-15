@@ -31,7 +31,7 @@ module SlackCli
       end
 
       if command_name == "--version" || command_name == "-V" || command_name == "version"
-        @output.puts "slack v#{VERSION}"
+        @output.puts "slk v#{VERSION}"
         return 0
       end
 
@@ -44,7 +44,7 @@ module SlackCli
       else
         @output.error("Unknown command: #{command_name}")
         @output.puts
-        @output.puts "Run 'slack help' for available commands."
+        @output.puts "Run 'slk help' for available commands."
         1
       end
     rescue ConfigError => e

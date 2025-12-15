@@ -1,4 +1,4 @@
-# Slack CLI
+# slk - Slack CLI
 
 A command-line interface for Slack. Manage your status, presence, DND, read messages, and more from the terminal.
 
@@ -7,7 +7,7 @@ A command-line interface for Slack. Manage your status, presence, DND, read mess
 ## Installation
 
 ```bash
-gem install slack-cli
+gem install slk
 ```
 
 Requires Ruby 3.2+.
@@ -17,7 +17,7 @@ Requires Ruby 3.2+.
 Run the setup wizard:
 
 ```bash
-slack config setup
+slk config setup
 ```
 
 You'll need a Slack token. Get one from:
@@ -30,60 +30,60 @@ You'll need a Slack token. Get one from:
 ### Status
 
 ```bash
-slack status                              # Show current status
-slack status "Working from home" :house:  # Set status with emoji
-slack status "In a meeting" :calendar: 1h # Set status for 1 hour
-slack status clear                        # Clear status
+slk status                              # Show current status
+slk status "Working from home" :house:  # Set status with emoji
+slk status "In a meeting" :calendar: 1h # Set status for 1 hour
+slk status clear                        # Clear status
 ```
 
 ### Presence
 
 ```bash
-slack presence              # Show current presence
-slack presence away         # Set to away
-slack presence active       # Set to active
+slk presence              # Show current presence
+slk presence away         # Set to away
+slk presence active       # Set to active
 ```
 
 ### Do Not Disturb
 
 ```bash
-slack dnd                   # Show DND status
-slack dnd 1h                # Enable DND for 1 hour
-slack dnd on 30m            # Enable DND for 30 minutes
-slack dnd off               # Disable DND
+slk dnd                   # Show DND status
+slk dnd 1h                # Enable DND for 1 hour
+slk dnd on 30m            # Enable DND for 30 minutes
+slk dnd off               # Disable DND
 ```
 
 ### Messages
 
 ```bash
-slack messages #general           # Read channel messages
-slack messages @username          # Read DM with user
-slack messages #general -n 50     # Show 50 messages
-slack messages #general --json    # Output as JSON
+slk messages #general           # Read channel messages
+slk messages @username          # Read DM with user
+slk messages #general -n 50     # Show 50 messages
+slk messages #general --json    # Output as JSON
 ```
 
 ### Unread
 
 ```bash
-slack unread                # Show unread counts
-slack unread clear          # Mark all as read
-slack unread clear #general # Mark channel as read
+slk unread                # Show unread counts
+slk unread clear          # Mark all as read
+slk unread clear #general # Mark channel as read
 ```
 
 ### Catchup (Interactive Triage)
 
 ```bash
-slack catchup               # Interactively review unread channels
-slack catchup --batch       # Non-interactive, mark all as read
+slk catchup               # Interactively review unread channels
+slk catchup --batch       # Non-interactive, mark all as read
 ```
 
 ### Presets
 
 ```bash
-slack preset list           # List all presets
-slack preset meeting        # Apply preset
-slack preset add            # Add new preset (interactive)
-slack meeting               # Shortcut: use preset name as command
+slk preset list           # List all presets
+slk preset meeting        # Apply preset
+slk preset add            # Add new preset (interactive)
+slk meeting               # Shortcut: use preset name as command
 ```
 
 Built-in presets: `meeting`, `lunch`, `focus`, `brb`, `clear`
@@ -91,17 +91,17 @@ Built-in presets: `meeting`, `lunch`, `focus`, `brb`, `clear`
 ### Workspaces
 
 ```bash
-slack workspaces list       # List configured workspaces
-slack workspaces add        # Add a workspace
-slack workspaces primary    # Show/set primary workspace
+slk workspaces list       # List configured workspaces
+slk workspaces add        # Add a workspace
+slk workspaces primary    # Show/set primary workspace
 ```
 
 ### Cache Management
 
 ```bash
-slack cache status          # Show cache status
-slack cache populate        # Pre-populate user cache
-slack cache clear           # Clear all caches
+slk cache status          # Show cache status
+slk cache populate        # Pre-populate user cache
+slk cache clear           # Clear all caches
 ```
 
 ### Global Options
@@ -119,9 +119,9 @@ slack cache clear           # Clear all caches
 Configure multiple workspaces and switch between them:
 
 ```bash
-slack workspaces add                    # Add another workspace
-slack status -w work                    # Check status on 'work' workspace
-slack status "OOO" --all                # Set status on all workspaces
+slk workspaces add                    # Add another workspace
+slk status -w work                    # Check status on 'work' workspace
+slk status "OOO" --all                # Set status on all workspaces
 ```
 
 ## Token Encryption
@@ -129,7 +129,7 @@ slack status "OOO" --all                # Set status on all workspaces
 Optionally encrypt your tokens with [age](https://github.com/FiloSottile/age) using an SSH key:
 
 ```bash
-slack config set ssh_key ~/.ssh/id_ed25519
+slk config set ssh_key ~/.ssh/id_ed25519
 ```
 
 Tokens will be stored encrypted in `~/.config/slack-cli/tokens.age`.
@@ -154,16 +154,16 @@ git clone https://github.com/ericboehs/slack-cli.git
 cd slack-cli
 
 # Run from source
-ruby -Ilib bin/slack --version
+ruby -Ilib bin/slk --version
 
 # Run tests
 rake test
 
 # Build gem
-gem build slack-cli.gemspec
+gem build slk.gemspec
 
 # Install locally
-gem install ./slack-cli-3.0.0.gem
+gem install ./slk-0.1.0.gem
 ```
 
 ## License

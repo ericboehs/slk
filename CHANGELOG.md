@@ -2,11 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
-## [3.0.0] - 2025-12-14
+## [0.1.0] - 2025-12-14
 
 ### Changed
 - Complete rewrite from Bash to Ruby
-- Now distributed as a Ruby gem
+- Now distributed as a Ruby gem (`gem install slk`)
+- Command renamed from `slack` to `slk`
 
 ### Added
 - Pure Ruby implementation (no dependencies)
@@ -15,17 +16,17 @@ All notable changes to this project will be documented in this file.
 - Gemspec for gem distribution
 
 ### Features
-- `slack status` - Get/set/clear status with emoji and duration
-- `slack presence` - Get/set presence (away/active)
-- `slack dnd` - Manage Do Not Disturb
-- `slack messages` - Read channel and DM messages
-- `slack unread` - View and clear unread messages
-- `slack catchup` - Interactive triage mode
-- `slack preset` - Status presets (meeting, lunch, focus, brb, clear)
-- `slack workspaces` - Multi-workspace support
-- `slack cache` - User/channel cache management
-- `slack emoji` - Download workspace custom emoji
-- `slack config` - Setup wizard and configuration
+- `slk status` - Get/set/clear status with emoji and duration
+- `slk presence` - Get/set presence (away/active)
+- `slk dnd` - Manage Do Not Disturb
+- `slk messages` - Read channel and DM messages
+- `slk unread` - View and clear unread messages
+- `slk catchup` - Interactive triage mode
+- `slk preset` - Status presets (meeting, lunch, focus, brb, clear)
+- `slk workspaces` - Multi-workspace support
+- `slk cache` - User/channel cache management
+- `slk emoji` - Download workspace custom emoji
+- `slk config` - Setup wizard and configuration
 
 ### Architecture
 - Command pattern with base class

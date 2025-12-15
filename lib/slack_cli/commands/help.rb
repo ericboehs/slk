@@ -19,10 +19,10 @@ module SlackCli
 
       def show_general_help
         puts <<~HELP
-          #{output.bold("Slack CLI")} v#{VERSION}
+          #{output.bold("slk")} - Slack CLI v#{VERSION}
 
           #{output.bold("USAGE:")}
-            slack <command> [options]
+            slk <command> [options]
 
           #{output.bold("COMMANDS:")}
             #{output.cyan("status")}       Get or set your status
@@ -45,14 +45,14 @@ module SlackCli
             -h, --help             Show help
 
           #{output.bold("EXAMPLES:")}
-            slack status                       Show current status
-            slack status "Working" :laptop:    Set status
-            slack status clear                 Clear status
-            slack dnd 1h                       Enable DND for 1 hour
-            slack messages #general            Read channel messages
-            slack preset meeting               Apply preset
+            slk status                       Show current status
+            slk status "Working" :laptop:    Set status
+            slk status clear                 Clear status
+            slk dnd 1h                       Enable DND for 1 hour
+            slk messages #general            Read channel messages
+            slk preset meeting               Apply preset
 
-          Run #{output.cyan("slack <command> --help")} for command-specific help.
+          Run #{output.cyan("slk <command> --help")} for command-specific help.
         HELP
       end
 
