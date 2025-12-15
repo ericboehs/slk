@@ -172,12 +172,12 @@ module SlackCli
 
           root_msg = thread["root_msg"] || {}
           channel_id = root_msg["channel"]
-          channel_name = cache_store.get_channel_name(workspace.name, channel_id) || channel_id
+          conversation_label = resolve_conversation_label(workspace, channel_id)
 
           # Get root user name
           root_user = extract_user_from_message(root_msg, workspace)
 
-          puts output.blue("  ##{channel_name}") + " - thread by " + output.bold(root_user)
+          puts output.blue("  #{conversation_label}") + " - thread by " + output.bold(root_user)
 
           # Display unread replies (limit to @options[:limit])
           unread_replies.first(@options[:limit]).each do |reply|
@@ -343,6 +343,36 @@ module SlackCli
         end
 
         channel_id
+      end
+
+      def resolve_conversation_label(workspace, channel_id)
+        # DM channels start with D
+        if channel_id.start_with?("D")
+          conversations = runner.conversations_api(workspace.name)
+          user_name = get_dm_user_name(workspace, channel_id, conversations)
+          return "@#{user_name}"
+        end
+
+        # Try cache first
+        cached_name = cache_store.get_channel_name(workspace.name, channel_id)
+        return "##{cached_name}" if cached_name
+
+        # Try API lookup
+        begin
+          conversations = runner.conversations_api(workspace.name)
+          response = conversations.info(channel: channel_id)
+          if response["ok"] && response["channel"]
+            name = response["channel"]["name"]
+            if name
+              cache_store.set_channel(workspace.name, name, channel_id)
+              return "##{name}"
+            end
+          end
+        rescue ApiError
+          # Fall through to channel ID
+        end
+
+        "##{channel_id}"
       end
 
       def resolve_channel(workspace, name)
