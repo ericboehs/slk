@@ -15,6 +15,11 @@ module SlackCli
           download_emoji(rest.first)
         in ["clear", *rest]
           clear_emoji(rest.first)
+        in ["search", query, *_]
+          search_emoji(query)
+        in ["search"]
+          error("Usage: slk emoji search <query>")
+          1
         else
           error("Unknown action: #{positional_args.first}")
           1
@@ -47,6 +52,7 @@ module SlackCli
 
           ACTIONS:
             status            Show emoji cache status
+            search <query>    Search emoji by name
             sync-standard     Download standard emoji database (gemoji)
             download [ws]     Download workspace custom emoji
             clear [ws]        Clear emoji cache
@@ -91,6 +97,57 @@ module SlackCli
           end
         end
 
+        0
+      end
+
+      def search_emoji(query)
+        paths = Support::XdgPaths.new
+        emoji_dir = config.emoji_dir || paths.cache_dir
+        gemoji_path = File.join(paths.cache_dir, "gemoji.json")
+        pattern = Regexp.new(Regexp.escape(query), Regexp::IGNORECASE)
+
+        results = []
+
+        # Search standard emoji
+        if File.exist?(gemoji_path)
+          gemoji = JSON.parse(File.read(gemoji_path))
+          gemoji.each do |name, char|
+            results << { name: name, char: char, source: "standard" } if name.match?(pattern)
+          end
+        end
+
+        # Search workspace custom emoji
+        target_workspaces.each do |workspace|
+          workspace_dir = File.join(emoji_dir, workspace.name)
+          next unless Dir.exist?(workspace_dir)
+
+          Dir.glob(File.join(workspace_dir, "*")).each do |filepath|
+            name = File.basename(filepath, ".*")
+            results << { name: name, source: workspace.name } if name.match?(pattern)
+          end
+        end
+
+        if results.empty?
+          puts "No emoji matching '#{query}'"
+          return 0
+        end
+
+        # Group by source
+        by_source = results.group_by { |r| r[:source] }
+
+        by_source.each do |source, items|
+          puts output.bold(source == "standard" ? "Standard emoji:" : "#{source}:")
+          items.sort_by { |r| r[:name] }.each do |item|
+            if item[:char]
+              puts "  #{item[:char]}  :#{item[:name]}:"
+            else
+              puts "  :#{item[:name]}:"
+            end
+          end
+          puts
+        end
+
+        puts "Found #{results.size} emoji matching '#{query}'"
         0
       end
 
