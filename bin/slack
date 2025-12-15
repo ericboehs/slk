@@ -2270,16 +2270,15 @@ cmd_preset() {
                 die "Preset '$preset_name' not found. Use '$SCRIPT_NAME preset list' to see available presets."
             fi
 
-            local text emoji duration_str duration presence dnd
+            local text emoji duration_str presence dnd
             text=$(echo "$preset_data" | jq -r '.text')
             emoji=$(echo "$preset_data" | jq -r '.emoji')
             duration_str=$(echo "$preset_data" | jq -r '.duration // "0"')
-            duration=$(parse_duration "$duration_str")
             presence=$(echo "$preset_data" | jq -r '.presence // empty')
             dnd=$(echo "$preset_data" | jq -r '.dnd // empty')
 
             # Apply status first
-            cmd_set "$text" "$emoji" "$duration" "$@"
+            cmd_status "$text" "$emoji" "$duration_str" "$@"
 
             # Apply presence if set
             if [[ -n "$presence" ]]; then
