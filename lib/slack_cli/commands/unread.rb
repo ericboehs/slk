@@ -60,6 +60,8 @@ module SlackCli
       def show_unread
         target_workspaces.each do |workspace|
           client = runner.client_api(workspace.name)
+          conversations_api = runner.conversations_api(workspace.name)
+          formatter = runner.message_formatter
 
           if @options[:all] || target_workspaces.size > 1
             puts output.bold(workspace.name)
@@ -67,11 +69,22 @@ module SlackCli
 
           counts = client.counts
 
-          channels = counts["channels"] || []
-          unreads = channels.select { |c| c["has_unreads"] || (c["mention_count"] || 0) > 0 }
-
+          # DMs first
           ims = counts["ims"] || []
           unread_ims = ims.select { |i| (i["dm_count"] || 0) > 0 }
+
+          unread_ims.each do |im|
+            count = im["dm_count"] || 0
+            user_name = cache_store.get_user_name(workspace.name, im["user_id"]) || "DM"
+            puts
+            puts output.bold("@#{user_name} (#{count} unread)")
+            puts
+            show_channel_messages(workspace, im["id"], count, conversations_api, formatter)
+          end
+
+          # Channels
+          channels = counts["channels"] || []
+          unreads = channels.select { |c| c["has_unreads"] || (c["mention_count"] || 0) > 0 }
 
           if @options[:json]
             output_json({
@@ -80,24 +93,35 @@ module SlackCli
             })
           else
             if unreads.empty? && unread_ims.empty?
-              puts "  No unread messages"
+              puts "No unread messages"
             else
               unreads.each do |channel|
                 name = cache_store.get_channel_name(workspace.name, channel["id"]) || channel["id"]
-                mentions = channel["mention_count"] || 0
-                indicator = mentions > 0 ? output.red("@#{mentions}") : output.yellow("*")
-                puts "  #{indicator} ##{name}"
-              end
+                unread_count = [channel["mention_count"] || 0, 10].max
+                unread_count = 10 if unread_count < 1
 
-              unread_ims.each do |im|
-                count = im["dm_count"] || 0
-                puts "  #{output.red(count)} DM: #{im["id"]}"
+                puts
+                puts output.bold("##{name} (#{unread_count} unread)") + " (showing last #{[unread_count, 10].min})"
+                puts
+                show_channel_messages(workspace, channel["id"], [unread_count, 10].min, conversations_api, formatter)
               end
             end
           end
         end
 
         0
+      end
+
+      def show_channel_messages(workspace, channel_id, limit, api, formatter)
+        history = api.history(channel: channel_id, limit: [limit, 10].min)
+        messages = (history["messages"] || []).reverse
+
+        messages.each do |msg|
+          message = Models::Message.from_api(msg)
+          puts formatter.format_simple(message, workspace: workspace)
+        end
+      rescue ApiError => e
+        puts output.dim("  (Could not fetch messages: #{e.message})")
       end
 
       def clear_unread(channel_name)
