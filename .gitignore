@@ -1,6 +1,7 @@
 # Test artifacts
 /tmp/
 *.pid
+/coverage/
 
 # Ruby
 *.gem
