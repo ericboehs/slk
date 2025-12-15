@@ -84,6 +84,7 @@ module SlackCli
 
       def initialize(custom_emoji: {})
         @custom_emoji = custom_emoji
+        @gemoji_cache = load_gemoji_cache
       end
 
       def replace(text, workspace = nil)
@@ -105,12 +106,33 @@ module SlackCli
         # Check custom emoji first
         return nil if @custom_emoji[name] # Custom emoji are URLs, skip for now
 
-        # Check standard map
+        # Check gemoji cache first (from sync-standard)
+        if @gemoji_cache&.key?(name)
+          return @gemoji_cache[name]
+        end
+
+        # Fall back to built-in map
         EMOJI_MAP[name]
       end
 
       def with_custom_emoji(emoji_hash)
         self.class.new(custom_emoji: emoji_hash)
+      end
+
+      private
+
+      def load_gemoji_cache
+        cache_path = File.join(
+          ENV.fetch("XDG_CACHE_HOME", File.expand_path("~/.cache")),
+          "slack-cli",
+          "gemoji.json"
+        )
+
+        return nil unless File.exist?(cache_path)
+
+        JSON.parse(File.read(cache_path))
+      rescue JSON::ParserError, Errno::ENOENT
+        nil
       end
     end
   end

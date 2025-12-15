@@ -21,23 +21,41 @@ module SlackCli
 
       protected
 
+      def default_options
+        super.merge(presence: nil, dnd: nil)
+      end
+
+      def handle_option(arg, args, remaining)
+        case arg
+        when "-p", "--presence"
+          @options[:presence] = args.shift
+        when "-d", "--dnd"
+          @options[:dnd] = args.shift
+        else
+          remaining << arg
+        end
+      end
+
       def help_text
         <<~HELP
-          USAGE: slack status [text] [emoji] [duration] [options]
+          USAGE: slk status [text] [emoji] [duration] [options]
 
           Get or set your Slack status.
 
           EXAMPLES:
-            slack status                    Show current status
-            slack status clear              Clear status
-            slack status "Working" :laptop: Set status with emoji
-            slack status "Meeting" :calendar: 1h   Set status for 1 hour
+            slk status                         Show current status
+            slk status clear                   Clear status
+            slk status "Working" :laptop:      Set status with emoji
+            slk status "Meeting" :calendar: 1h Set status for 1 hour
+            slk status "Focus" :headphones: 2h -p away -d 2h
 
           OPTIONS:
-            -w, --workspace     Specify workspace
-            --all               Apply to all workspaces
-            -v, --verbose       Show debug information
-            -q, --quiet         Suppress output
+            -p, --presence VALUE  Also set presence (away/auto/active)
+            -d, --dnd DURATION    Also set DND (or 'off')
+            -w, --workspace       Specify workspace
+            --all                 Apply to all workspaces
+            -v, --verbose         Show debug information
+            -q, --quiet           Suppress output
         HELP
       end
 
@@ -75,9 +93,36 @@ module SlackCli
           debug("  Text: #{text}")
           debug("  Emoji: #{emoji}")
           debug("  Duration: #{duration}") unless duration.zero?
+
+          # Handle combo options
+          apply_presence(workspace) if @options[:presence]
+          apply_dnd(workspace) if @options[:dnd]
         end
 
         0
+      end
+
+      def apply_presence(workspace)
+        value = @options[:presence]
+        value = "auto" if value == "active"
+
+        api = runner.users_api(workspace.name)
+        api.set_presence(value)
+        success("Presence set to #{value} on #{workspace.name}")
+      end
+
+      def apply_dnd(workspace)
+        value = @options[:dnd]
+        dnd_api = runner.dnd_api(workspace.name)
+
+        if value == "off"
+          dnd_api.end_snooze
+          success("DND disabled on #{workspace.name}")
+        else
+          duration = Models::Duration.parse(value)
+          dnd_api.set_snooze(duration.to_minutes)
+          success("DND enabled for #{value} on #{workspace.name}")
+        end
       end
 
       def clear_status

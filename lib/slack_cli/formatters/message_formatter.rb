@@ -11,7 +11,7 @@ module SlackCli
       end
 
       def format(message, workspace:, options: {})
-        username = resolve_username(message, workspace)
+        username = resolve_username(message, workspace, options)
         timestamp = format_timestamp(message.timestamp)
         text = process_text(message.text, workspace, options)
 
@@ -31,11 +31,24 @@ module SlackCli
       end
 
       def format_simple(message, workspace:, options: {})
-        username = resolve_username(message, workspace)
+        username = resolve_username(message, workspace, options)
         timestamp = format_timestamp(message.timestamp)
         text = process_text(message.text, workspace, options)
 
-        "#{@output.gray("[#{timestamp}]")} #{@output.bold(username)}: #{text}"
+        reaction_text = ""
+        unless options[:no_reactions] || message.reactions.empty?
+          reaction_text = format_reaction_inline(message, options)
+        end
+
+        "#{@output.gray("[#{timestamp}]")} #{@output.bold(username)}: #{text}#{reaction_text}"
+      end
+
+      def format_reaction_inline(message, options)
+        parts = message.reactions.map do |r|
+          emoji = options[:no_emoji] ? r.emoji_code : (@emoji.lookup_emoji(r.name) || r.emoji_code)
+          "#{r.count} #{emoji}"
+        end
+        " [#{parts.join(", ")}]"
       end
 
       def format_json(message)
@@ -51,7 +64,10 @@ module SlackCli
 
       private
 
-      def resolve_username(message, workspace)
+      def resolve_username(message, workspace, options = {})
+        # Skip lookups if --no-names
+        return message.user_id if options[:no_names]
+
         # Try embedded profile first
         return message.embedded_username if message.embedded_username
 

@@ -23,13 +23,30 @@ module SlackCli
       protected
 
       def default_options
-        super.merge(muted: false)
+        super.merge(
+          muted: false,
+          limit: 10,
+          no_emoji: false,
+          no_reactions: false,
+          workspace_emoji: false,
+          reaction_names: false
+        )
       end
 
       def handle_option(arg, args, remaining)
         case arg
         when "--muted"
           @options[:muted] = true
+        when "-n", "--limit"
+          @options[:limit] = args.shift.to_i
+        when "--no-emoji"
+          @options[:no_emoji] = true
+        when "--no-reactions"
+          @options[:no_reactions] = true
+        when "--workspace-emoji"
+          @options[:workspace_emoji] = true
+        when "--reaction-names"
+          @options[:reaction_names] = true
         else
           remaining << arg
         end
@@ -37,17 +54,22 @@ module SlackCli
 
       def help_text
         <<~HELP
-          USAGE: slack unread [action] [options]
+          USAGE: slk unread [action] [options]
 
           View and manage unread messages.
 
           ACTIONS:
-            (none)            Show unread counts
+            (none)            Show unread messages
             clear             Mark all as read
             clear #channel    Mark specific channel as read
 
           OPTIONS:
+            -n, --limit N     Messages per channel (default: 10)
             --muted           Include/clear muted channels
+            --no-emoji        Show :emoji: codes instead of unicode
+            --no-reactions    Hide reactions
+            --workspace-emoji Show workspace custom emoji as images
+            --reaction-names  Show reactions with user names
             -w, --workspace   Specify workspace
             --all             Apply to all workspaces
             --json            Output as JSON
@@ -76,10 +98,11 @@ module SlackCli
           unread_ims.each do |im|
             count = im["dm_count"] || 0
             user_name = cache_store.get_user_name(workspace.name, im["user_id"]) || "DM"
+            limit = [@options[:limit], count].min
             puts
             puts output.bold("@#{user_name} (#{count} unread)")
             puts
-            show_channel_messages(workspace, im["id"], count, conversations_api, formatter)
+            show_channel_messages(workspace, im["id"], limit, conversations_api, formatter)
           end
 
           # Channels
@@ -97,13 +120,12 @@ module SlackCli
             else
               unreads.each do |channel|
                 name = cache_store.get_channel_name(workspace.name, channel["id"]) || channel["id"]
-                unread_count = [channel["mention_count"] || 0, 10].max
-                unread_count = 10 if unread_count < 1
+                limit = @options[:limit]
 
                 puts
-                puts output.bold("##{name} (#{unread_count} unread)") + " (showing last #{[unread_count, 10].min})"
+                puts output.bold("##{name}") + " (showing last #{limit})"
                 puts
-                show_channel_messages(workspace, channel["id"], [unread_count, 10].min, conversations_api, formatter)
+                show_channel_messages(workspace, channel["id"], limit, conversations_api, formatter)
               end
             end
           end
@@ -113,12 +135,19 @@ module SlackCli
       end
 
       def show_channel_messages(workspace, channel_id, limit, api, formatter)
-        history = api.history(channel: channel_id, limit: [limit, 10].min)
+        history = api.history(channel: channel_id, limit: limit)
         messages = (history["messages"] || []).reverse
+
+        format_options = {
+          no_emoji: @options[:no_emoji],
+          no_reactions: @options[:no_reactions],
+          workspace_emoji: @options[:workspace_emoji],
+          reaction_names: @options[:reaction_names]
+        }
 
         messages.each do |msg|
           message = Models::Message.from_api(msg)
-          puts formatter.format_simple(message, workspace: workspace)
+          puts formatter.format_simple(message, workspace: workspace, options: format_options)
         end
       rescue ApiError => e
         puts output.dim("  (Could not fetch messages: #{e.message})")

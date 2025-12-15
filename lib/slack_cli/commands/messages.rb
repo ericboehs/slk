@@ -31,7 +31,10 @@ module SlackCli
           limit: 20,
           threads: false,
           no_emoji: false,
-          no_reactions: false
+          no_reactions: false,
+          no_names: false,
+          workspace_emoji: false,
+          reaction_names: false
         )
       end
 
@@ -45,6 +48,12 @@ module SlackCli
           @options[:no_emoji] = true
         when "--no-reactions"
           @options[:no_reactions] = true
+        when "--no-names"
+          @options[:no_names] = true
+        when "--workspace-emoji"
+          @options[:workspace_emoji] = true
+        when "--reaction-names"
+          @options[:reaction_names] = true
         else
           remaining << arg
         end
@@ -52,7 +61,7 @@ module SlackCli
 
       def help_text
         <<~HELP
-          USAGE: slack messages <target> [options]
+          USAGE: slk messages <target> [options]
 
           Read messages from a channel, DM, or thread.
 
@@ -68,6 +77,9 @@ module SlackCli
             --threads           Show thread replies inline
             --no-emoji          Show :emoji: codes instead of unicode
             --no-reactions      Hide reactions
+            --no-names          Skip user name lookups (faster)
+            --workspace-emoji   Show workspace custom emoji as images
+            --reaction-names    Show reactions with user names
             --json              Output as JSON
             -w, --workspace     Specify workspace
             -v, --verbose       Show debug information
@@ -184,7 +196,10 @@ module SlackCli
         formatter = runner.message_formatter
         format_options = {
           no_emoji: @options[:no_emoji],
-          no_reactions: @options[:no_reactions]
+          no_reactions: @options[:no_reactions],
+          no_names: @options[:no_names],
+          workspace_emoji: @options[:workspace_emoji],
+          reaction_names: @options[:reaction_names]
         }
 
         messages.each_with_index do |message, index|

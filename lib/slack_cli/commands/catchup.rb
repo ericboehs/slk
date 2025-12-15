@@ -22,7 +22,11 @@ module SlackCli
         super.merge(
           batch: false,
           muted: false,
-          limit: 5
+          limit: 5,
+          no_emoji: false,
+          no_reactions: false,
+          workspace_emoji: false,
+          reaction_names: false
         )
       end
 
@@ -34,6 +38,14 @@ module SlackCli
           @options[:muted] = true
         when "-n", "--limit"
           @options[:limit] = args.shift.to_i
+        when "--no-emoji"
+          @options[:no_emoji] = true
+        when "--no-reactions"
+          @options[:no_reactions] = true
+        when "--workspace-emoji"
+          @options[:workspace_emoji] = true
+        when "--reaction-names"
+          @options[:reaction_names] = true
         else
           remaining << arg
         end
@@ -41,7 +53,7 @@ module SlackCli
 
       def help_text
         <<~HELP
-          USAGE: slack catchup [options]
+          USAGE: slk catchup [options]
 
           Interactively review and dismiss unread messages.
 
@@ -49,6 +61,10 @@ module SlackCli
             --batch           Non-interactive mode (mark all as read)
             --muted           Include muted channels
             -n, --limit N     Messages per channel (default: 5)
+            --no-emoji        Show :emoji: codes instead of unicode
+            --no-reactions    Hide reactions
+            --workspace-emoji Show workspace custom emoji as images
+            --reaction-names  Show reactions with user names
             -w, --workspace   Specify workspace
             --all             Process all workspaces
             -q, --quiet       Suppress output
@@ -142,9 +158,16 @@ module SlackCli
         messages = (history["messages"] || []).reverse
 
         # Display messages
+        format_options = {
+          no_emoji: @options[:no_emoji],
+          no_reactions: @options[:no_reactions],
+          workspace_emoji: @options[:workspace_emoji],
+          reaction_names: @options[:reaction_names]
+        }
+
         messages.each do |msg|
           message = Models::Message.from_api(msg)
-          formatted = runner.message_formatter.format_simple(message, workspace: workspace)
+          formatted = runner.message_formatter.format_simple(message, workspace: workspace, options: format_options)
           puts "  #{formatted}"
         end
 

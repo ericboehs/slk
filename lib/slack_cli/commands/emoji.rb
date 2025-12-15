@@ -9,6 +9,8 @@ module SlackCli
         case positional_args
         in ["status" | "list"] | []
           show_status
+        in ["sync-standard"]
+          sync_standard
         in ["download", *rest]
           download_emoji(rest.first)
         in ["clear", *rest]
@@ -26,12 +28,13 @@ module SlackCli
 
       def help_text
         <<~HELP
-          USAGE: slack emoji <action> [workspace]
+          USAGE: slk emoji <action> [workspace]
 
-          Manage workspace emoji cache.
+          Manage emoji cache.
 
           ACTIONS:
             status            Show emoji cache status
+            sync-standard     Download standard emoji database (gemoji)
             download [ws]     Download workspace custom emoji
             clear [ws]        Clear emoji cache
 
@@ -64,6 +67,60 @@ module SlackCli
         end
 
         0
+      end
+
+      def sync_standard
+        paths = Support::XdgPaths.new
+        cache_dir = paths.cache_dir
+        emoji_json_path = File.join(cache_dir, "gemoji.json")
+
+        puts "Downloading standard emoji database..."
+
+        # Download gemoji JSON from GitHub
+        gemoji_url = "https://raw.githubusercontent.com/github/gemoji/master/db/emoji.json"
+
+        begin
+          uri = URI.parse(gemoji_url)
+          http = Net::HTTP.new(uri.host, uri.port)
+          http.use_ssl = true
+          http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+          http.cert_store = OpenSSL::X509::Store.new
+          http.cert_store.set_default_paths
+
+          request = Net::HTTP::Get.new(uri)
+          response = http.request(request)
+
+          unless response.is_a?(Net::HTTPSuccess)
+            error("Failed to download: HTTP #{response.code}")
+            return 1
+          end
+
+          # Parse and transform to shortcode -> emoji mapping
+          emoji_data = JSON.parse(response.body)
+          emoji_map = {}
+
+          emoji_data.each do |emoji|
+            char = emoji["emoji"]
+            next unless char
+
+            # Add all aliases
+            (emoji["aliases"] || []).each do |name|
+              emoji_map[name] = char
+            end
+          end
+
+          # Save to cache
+          FileUtils.mkdir_p(cache_dir)
+          File.write(emoji_json_path, JSON.pretty_generate(emoji_map))
+
+          success("Downloaded #{emoji_map.size} standard emoji mappings")
+          puts "  Location: #{emoji_json_path}"
+
+          0
+        rescue StandardError => e
+          error("Failed to sync: #{e.message}")
+          1
+        end
       end
 
       def download_emoji(workspace_name)
