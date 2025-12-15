@@ -177,11 +177,9 @@ module SlackCli
         height = 1
 
         if in_tmux?
-          # tmux passthrough format (from ranger 1.9.4)
-          # Image at col 0, newline+space, cursor up+right to be beside image
-          printf "\ePtmux;\e\e]1337;File=inline=1;preserveAspectRatio=0;size=%d;height=%d:%s\a\e\\\n ",
+          # tmux passthrough: image renders at col 0, then cursor moves past it
+          printf "\ePtmux;\e\e]1337;File=inline=1;preserveAspectRatio=0;size=%d;height=%d:%s\a\e\\",
                  encoded.length, height, encoded
-          print "\e[1A\e[3C"  # Up 1 line, right 3 columns (past image)
         else
           # Standard iTerm2 format
           printf "\e]1337;File=inline=1;height=%d:%s\a", height, encoded
