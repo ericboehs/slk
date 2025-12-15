@@ -123,7 +123,7 @@ module SlackCli
 
           Dir.glob(File.join(workspace_dir, "*")).each do |filepath|
             name = File.basename(filepath, ".*")
-            results << { name: name, source: workspace.name } if name.match?(pattern)
+            results << { name: name, path: filepath, source: workspace.name } if name.match?(pattern)
           end
         end
 
@@ -140,6 +140,10 @@ module SlackCli
           items.sort_by { |r| r[:name] }.each do |item|
             if item[:char]
               puts "  #{item[:char]}  :#{item[:name]}:"
+            elsif item[:path] && inline_images_supported?
+              print "  "
+              print_inline_image(item[:path])
+              puts "  :#{item[:name]}:"
             else
               puts "  :#{item[:name]}:"
             end
@@ -149,6 +153,23 @@ module SlackCli
 
         puts "Found #{results.size} emoji matching '#{query}'"
         0
+      end
+
+      def inline_images_supported?
+        # iTerm2, WezTerm, Mintty support inline images
+        ENV["TERM_PROGRAM"] == "iTerm.app" ||
+          ENV["TERM_PROGRAM"] == "WezTerm" ||
+          ENV["LC_TERMINAL"] == "iTerm2" ||
+          ENV["TERM"] == "mintty"
+      end
+
+      def print_inline_image(path)
+        return unless File.exist?(path)
+
+        data = File.binread(path)
+        encoded = [data].pack("m0") # Base64 encode
+        # iTerm2 inline image protocol
+        print "\e]1337;File=inline=1;height=1;preserveAspectRatio=1:#{encoded}\a"
       end
 
       def print_progress(current, total, downloaded, skipped)
