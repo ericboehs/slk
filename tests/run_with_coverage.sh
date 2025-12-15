@@ -80,6 +80,20 @@ SLACK_CLI="$1"
 # Messages command
 "$SLACK_CLI" messages "#general" -n 5 2>/dev/null || true
 "$SLACK_CLI" messages "#general" --threads 2>/dev/null || true
+
+# Preset commands
+"$SLACK_CLI" preset meeting 2>/dev/null || true
+"$SLACK_CLI" status clear 2>/dev/null || true
+
+# Cache commands
+"$SLACK_CLI" cache 2>/dev/null || true
+"$SLACK_CLI" cache populate 2>/dev/null || true
+
+# Emoji commands
+"$SLACK_CLI" emoji 2>/dev/null || true
+
+# Unread with options
+"$SLACK_CLI" unread --json 2>/dev/null || true
 WRAPPER_EOF
 chmod +x "$WRAPPER"
 

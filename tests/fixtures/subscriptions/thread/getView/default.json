@@ -1,0 +1,64 @@
+{
+  "ok": true,
+  "total_unread_replies": 3,
+  "threads": [
+    {
+      "root_msg": {
+        "channel": "C001GENERAL",
+        "thread_ts": "1702500100.000001",
+        "text": "Anyone working on the new feature?",
+        "user": "U001ALICE",
+        "user_profile": {
+          "display_name": "alice",
+          "real_name": "Alice Anderson"
+        }
+      },
+      "unread_replies": [
+        {
+          "ts": "1702500200.000002",
+          "user": "U002BOB",
+          "text": "Yes, I started on it yesterday!",
+          "user_profile": {
+            "display_name": "bob",
+            "real_name": "Bob Builder"
+          }
+        },
+        {
+          "ts": "1702500300.000003",
+          "user": "U003CAROL",
+          "text": "I can help with the frontend part :raised_hands:",
+          "user_profile": {
+            "display_name": "carol",
+            "real_name": "Carol Chen"
+          },
+          "reactions": [
+            {"name": "thumbsup", "users": ["U001ALICE", "U002BOB"], "count": 2}
+          ]
+        }
+      ]
+    },
+    {
+      "root_msg": {
+        "channel": "C002RANDOM",
+        "thread_ts": "1702400000.000001",
+        "text": "Friday lunch ideas?",
+        "user": "U002BOB",
+        "user_profile": {
+          "display_name": "bob",
+          "real_name": "Bob Builder"
+        }
+      },
+      "unread_replies": [
+        {
+          "ts": "1702400100.000002",
+          "user": "U001ALICE",
+          "text": "How about tacos? :taco:",
+          "user_profile": {
+            "display_name": "alice",
+            "real_name": "Alice Anderson"
+          }
+        }
+      ]
+    }
+  ]
+}
