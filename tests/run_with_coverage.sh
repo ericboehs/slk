@@ -107,6 +107,32 @@ SLACK_CLI="$1"
 # Apply another preset
 "$SLACK_CLI" preset focus 2>/dev/null || true
 "$SLACK_CLI" preset lunch 2>/dev/null || true
+
+# More message options
+"$SLACK_CLI" messages "#general" --no-reactions 2>/dev/null || true
+"$SLACK_CLI" messages "general" 2>/dev/null || true
+
+# Cache clear
+"$SLACK_CLI" cache clear 2>/dev/null || true
+
+# Status with all options
+"$SLACK_CLI" status "Meeting" ":calendar:" "30m" 2>/dev/null || true
+"$SLACK_CLI" status 2>/dev/null || true
+
+# Error cases (will fail but increase coverage)
+"$SLACK_CLI" status -w nonexistent 2>/dev/null || true
+"$SLACK_CLI" preset nonexistent 2>/dev/null || true
+
+# DND variations
+"$SLACK_CLI" dnd 1h 2>/dev/null || true
+
+# Verbose mode
+"$SLACK_CLI" status -v 2>/dev/null || true
+
+# All presets
+"$SLACK_CLI" preset afk 2>/dev/null || true
+"$SLACK_CLI" preset brb 2>/dev/null || true
+"$SLACK_CLI" preset pto 2>/dev/null || true
 WRAPPER_EOF
 chmod +x "$WRAPPER"
 
