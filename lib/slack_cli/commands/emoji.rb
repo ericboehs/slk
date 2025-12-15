@@ -157,10 +157,16 @@ module SlackCli
 
       def inline_images_supported?
         # iTerm2, WezTerm, Mintty support inline images
+        # LC_TERMINAL persists through tmux/ssh
         ENV["TERM_PROGRAM"] == "iTerm.app" ||
           ENV["TERM_PROGRAM"] == "WezTerm" ||
           ENV["LC_TERMINAL"] == "iTerm2" ||
+          ENV["LC_TERMINAL"] == "WezTerm" ||
           ENV["TERM"] == "mintty"
+      end
+
+      def in_tmux?
+        ENV["TMUX"] && !ENV["TMUX"].empty?
       end
 
       def print_inline_image(path)
@@ -168,8 +174,16 @@ module SlackCli
 
         data = File.binread(path)
         encoded = [data].pack("m0") # Base64 encode
+
         # iTerm2 inline image protocol
-        print "\e]1337;File=inline=1;height=1;preserveAspectRatio=1:#{encoded}\a"
+        osc = "\e]1337;File=inline=1;height=1;preserveAspectRatio=1:#{encoded}\a"
+
+        if in_tmux?
+          # Wrap for tmux passthrough (double escapes, use \e\\ terminator)
+          print "\ePtmux;\e#{osc.gsub("\a", "\e\a")}\e\\"
+        else
+          print osc
+        end
       end
 
       def print_progress(current, total, downloaded, skipped)
