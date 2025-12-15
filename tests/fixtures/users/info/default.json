@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "user": {
+    "id": "U001TEST",
+    "name": "testuser",
+    "real_name": "Test User",
+    "profile": {
+      "real_name": "Test User",
+      "display_name": "testuser",
+      "email": "test@example.com",
+      "image_48": "https://example.com/avatar.png"
+    },
+    "is_bot": false,
+    "is_app_user": false
+  }
+}

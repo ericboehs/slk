@@ -60,7 +60,7 @@ SLACK_CLI="$1"
 "$SLACK_CLI" cache --help || true
 "$SLACK_CLI" emoji --help || true
 
-# API commands (will use mock server)
+# API commands - GET (read current state)
 "$SLACK_CLI" status 2>/dev/null || true
 "$SLACK_CLI" presence 2>/dev/null || true
 "$SLACK_CLI" dnd 2>/dev/null || true
@@ -68,6 +68,18 @@ SLACK_CLI="$1"
 "$SLACK_CLI" preset list 2>/dev/null || true
 "$SLACK_CLI" workspaces list 2>/dev/null || true
 "$SLACK_CLI" cache list 2>/dev/null || true
+
+# API commands - SET (modify state)
+"$SLACK_CLI" status "Testing" ":test_tube:" "1h" 2>/dev/null || true
+"$SLACK_CLI" status clear 2>/dev/null || true
+"$SLACK_CLI" presence away 2>/dev/null || true
+"$SLACK_CLI" presence auto 2>/dev/null || true
+"$SLACK_CLI" dnd on 30m 2>/dev/null || true
+"$SLACK_CLI" dnd off 2>/dev/null || true
+
+# Messages command
+"$SLACK_CLI" messages "#general" -n 5 2>/dev/null || true
+"$SLACK_CLI" messages "#general" --threads 2>/dev/null || true
 WRAPPER_EOF
 chmod +x "$WRAPPER"
 

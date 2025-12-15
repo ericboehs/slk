@@ -1,0 +1,34 @@
+{
+  "ok": true,
+  "messages": [
+    {
+      "type": "message",
+      "user": "U002BOB",
+      "text": "Going well! Just finished the API refactor :tada:",
+      "ts": "1702500100.000002",
+      "thread_ts": "1702500100.000002",
+      "reply_count": 2,
+      "reply_users_count": 2
+    },
+    {
+      "type": "message",
+      "user": "U001ALICE",
+      "text": "Nice work! Any breaking changes?",
+      "ts": "1702500200.000003",
+      "thread_ts": "1702500100.000002",
+      "parent_user_id": "U002BOB"
+    },
+    {
+      "type": "message",
+      "user": "U002BOB",
+      "text": "Nope, fully backward compatible :white_check_mark:",
+      "ts": "1702500300.000004",
+      "thread_ts": "1702500100.000002",
+      "parent_user_id": "U002BOB",
+      "reactions": [
+        {"name": "tada", "users": ["U001ALICE"], "count": 1}
+      ]
+    }
+  ],
+  "has_more": false
+}

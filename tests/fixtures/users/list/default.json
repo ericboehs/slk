@@ -1,0 +1,38 @@
+{
+  "ok": true,
+  "members": [
+    {
+      "id": "U001ALICE",
+      "name": "alice",
+      "real_name": "Alice Anderson",
+      "profile": {
+        "real_name": "Alice Anderson",
+        "display_name": "alice"
+      },
+      "is_bot": false
+    },
+    {
+      "id": "U002BOB",
+      "name": "bob",
+      "real_name": "Bob Builder",
+      "profile": {
+        "real_name": "Bob Builder",
+        "display_name": "bob"
+      },
+      "is_bot": false
+    },
+    {
+      "id": "U003CAROL",
+      "name": "carol",
+      "real_name": "Carol Chen",
+      "profile": {
+        "real_name": "Carol Chen",
+        "display_name": "carol"
+      },
+      "is_bot": false
+    }
+  ],
+  "response_metadata": {
+    "next_cursor": ""
+  }
+}
