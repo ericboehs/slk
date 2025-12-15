@@ -49,24 +49,61 @@ module SlackCli
       def show_status
         paths = Support::XdgPaths.new
         emoji_dir = config.emoji_dir || paths.cache_dir
+        gemoji_path = File.join(paths.cache_dir, "gemoji.json")
+
+        # Show standard emoji status
+        if File.exist?(gemoji_path)
+          gemoji = JSON.parse(File.read(gemoji_path))
+          puts "Standard emoji database: #{gemoji.size} emojis"
+        else
+          puts "Standard emoji database: #{output.yellow("not downloaded")}"
+          puts "  Run 'slk emoji sync-standard' to download"
+        end
+
+        puts
+        puts "Workspace emojis: (#{emoji_dir})"
 
         target_workspaces.each do |workspace|
-          if target_workspaces.size > 1
-            puts output.bold(workspace.name)
-          end
-
-          workspace_dir = File.join(emoji_dir, "emoji", workspace.name)
+          workspace_dir = File.join(emoji_dir, workspace.name)
 
           if Dir.exist?(workspace_dir)
-            count = Dir.glob(File.join(workspace_dir, "*")).count
-            puts "  Custom emoji: #{count} files"
-            puts "  Location: #{workspace_dir}"
+            files = Dir.glob(File.join(workspace_dir, "*"))
+            count = files.count
+            size = files.sum { |f| File.size(f) rescue 0 }
+            size_str = format_size(size)
+            puts "  #{workspace.name}: #{count} emojis (#{size_str})"
           else
-            puts "  Custom emoji: #{output.yellow("not downloaded")}"
+            puts "  #{workspace.name}: #{output.yellow("not downloaded")}"
           end
         end
 
         0
+      end
+
+      def print_progress(current, total, downloaded, skipped)
+        # Only update every 1% or when downloading (to show new count)
+        pct = ((current.to_f / total) * 100).round
+        @last_pct ||= -1
+        return if pct == @last_pct && downloaded == (@last_downloaded || 0)
+
+        @last_pct = pct
+        @last_downloaded = downloaded
+
+        bar_width = 20
+        filled = (pct * bar_width / 100).round
+        bar = "=" * filled + "-" * (bar_width - filled)
+        print "\r  [#{bar}] #{pct}% (#{current}/#{total}) +#{downloaded} new"
+        $stdout.flush
+      end
+
+      def format_size(bytes)
+        if bytes >= 1024 * 1024
+          "#{(bytes / (1024.0 * 1024)).round}M"
+        elsif bytes >= 1024
+          "#{(bytes / 1024.0).round}K"
+        else
+          "#{bytes}B"
+        end
       end
 
       def sync_standard
@@ -134,19 +171,21 @@ module SlackCli
           api = runner.emoji_api(workspace.name)
           emoji_map = api.custom_emoji
 
-          workspace_dir = File.join(emoji_dir, "emoji", workspace.name)
+          workspace_dir = File.join(emoji_dir, workspace.name)
           FileUtils.mkdir_p(workspace_dir)
 
           downloaded = 0
           skipped = 0
+          failed = 0
+          total = emoji_map.size
+          processed = 0
 
-          emoji_map.each do |name, url|
-            # Skip aliases (they start with "alias:")
-            if url.start_with?("alias:")
-              skipped += 1
-              next
-            end
+          # Filter to only downloadable (non-alias) emoji
+          to_download = emoji_map.reject { |_, url| url.start_with?("alias:") }
+          aliases = total - to_download.size
 
+          to_download.each do |name, url|
+            processed += 1
             ext = File.extname(URI.parse(url).path)
             ext = ".png" if ext.empty?
             filepath = File.join(workspace_dir, "#{name}#{ext}")
@@ -154,25 +193,40 @@ module SlackCli
             # Skip if already exists
             if File.exist?(filepath)
               skipped += 1
+              print_progress(processed, to_download.size, downloaded, skipped)
               next
             end
 
             # Download
             begin
               uri = URI.parse(url)
-              response = Net::HTTP.get_response(uri)
+              http = Net::HTTP.new(uri.host, uri.port)
+              http.use_ssl = true
+              http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+              http.cert_store = OpenSSL::X509::Store.new
+              http.cert_store.set_default_paths
+              http.open_timeout = 10
+              http.read_timeout = 30
+
+              request = Net::HTTP::Get.new(uri)
+              response = http.request(request)
+
               if response.is_a?(Net::HTTPSuccess)
-                File.write(filepath, response.body)
+                File.binwrite(filepath, response.body)
                 downloaded += 1
-                print "."
+              else
+                failed += 1
               end
-            rescue StandardError
-              # Skip failed downloads
+            rescue StandardError => e
+              failed += 1
             end
+
+            print_progress(processed, to_download.size, downloaded, skipped)
           end
 
-          puts
-          success("Downloaded #{downloaded} emoji for #{workspace.name} (#{skipped} skipped)")
+          puts "\r#{" " * 60}\r" # Clear progress line
+          success("Downloaded #{downloaded} new emoji for #{workspace.name}")
+          puts "  Skipped: #{skipped} (already exist), #{aliases} aliases, #{failed} failed" if skipped > 0 || failed > 0
         end
 
         0
@@ -183,12 +237,12 @@ module SlackCli
         emoji_dir = config.emoji_dir || paths.cache_dir
 
         if workspace_name
-          workspace_dir = File.join(emoji_dir, "emoji", workspace_name)
+          workspace_dir = File.join(emoji_dir, workspace_name)
           FileUtils.rm_rf(workspace_dir)
           success("Cleared emoji cache for #{workspace_name}")
         else
           target_workspaces.each do |workspace|
-            workspace_dir = File.join(emoji_dir, "emoji", workspace.name)
+            workspace_dir = File.join(emoji_dir, workspace.name)
             FileUtils.rm_rf(workspace_dir)
           end
           success("Cleared all emoji caches")
