@@ -26,6 +26,19 @@ module SlackCli
 
       protected
 
+      def default_options
+        super.merge(force: false)
+      end
+
+      def handle_option(arg, args, remaining)
+        case arg
+        when "-f", "--force"
+          @options[:force] = true
+        else
+          remaining << arg
+        end
+      end
+
       def help_text
         <<~HELP
           USAGE: slk emoji <action> [workspace]
@@ -40,6 +53,7 @@ module SlackCli
 
           OPTIONS:
             -w, --workspace   Specify workspace
+            -f, --force       Skip confirmation for clear
             -q, --quiet       Suppress output
         HELP
       end
@@ -236,18 +250,58 @@ module SlackCli
         paths = Support::XdgPaths.new
         emoji_dir = config.emoji_dir || paths.cache_dir
 
+        # Gather info about what will be deleted
+        to_clear = []
         if workspace_name
           workspace_dir = File.join(emoji_dir, workspace_name)
-          FileUtils.rm_rf(workspace_dir)
-          success("Cleared emoji cache for #{workspace_name}")
+          if Dir.exist?(workspace_dir)
+            to_clear << { name: workspace_name, dir: workspace_dir }
+          else
+            puts "No emoji cache for #{workspace_name}"
+            return 0
+          end
         else
           target_workspaces.each do |workspace|
             workspace_dir = File.join(emoji_dir, workspace.name)
-            FileUtils.rm_rf(workspace_dir)
+            to_clear << { name: workspace.name, dir: workspace_dir } if Dir.exist?(workspace_dir)
           end
-          success("Cleared all emoji caches")
+
+          if to_clear.empty?
+            puts "No emoji caches to clear"
+            return 0
+          end
         end
 
+        # Show what will be deleted
+        puts "Will delete:"
+        total_count = 0
+        total_size = 0
+        to_clear.each do |entry|
+          files = Dir.glob(File.join(entry[:dir], "*"))
+          count = files.count
+          size = files.sum { |f| File.size(f) rescue 0 }
+          total_count += count
+          total_size += size
+          puts "  #{entry[:name]}: #{count} files (#{format_size(size)})"
+        end
+        puts "  Total: #{total_count} files (#{format_size(total_size)})"
+
+        # Confirm unless --force
+        unless @options[:force]
+          print "\nAre you sure? [y/N] "
+          response = $stdin.gets&.chomp&.downcase
+          unless response == "y" || response == "yes"
+            puts "Cancelled"
+            return 0
+          end
+        end
+
+        # Delete
+        to_clear.each do |entry|
+          FileUtils.rm_rf(entry[:dir])
+        end
+
+        success("Cleared #{total_count} emoji files")
         0
       end
     end
