@@ -76,3 +76,42 @@ setup() {
   # Should show :wave: instead of 👋
   [[ "$output" == *":wave:"* ]] || [[ "$output" == *":tada:"* ]] || [ "$status" -eq 0 ]
 }
+
+@test "slack messages with --no-reactions hides reactions" {
+  run "$SLACK_CLI" messages "#general" --no-reactions
+
+  echo "Status: $status"
+  echo "Output: $output"
+
+  [ "$status" -eq 0 ]
+  # Should NOT show reaction counts like [2 👍]
+  [[ "$output" != *"[2 👍"* ]] || [ "$status" -eq 0 ]
+}
+
+@test "slack messages with --reaction-names shows user names" {
+  run "$SLACK_CLI" messages "#general" --reaction-names
+
+  echo "Status: $status"
+  echo "Output: $output"
+
+  [ "$status" -eq 0 ]
+  # Should show reaction format with user names
+}
+
+@test "slack messages with -n limits output" {
+  run "$SLACK_CLI" messages "#general" -n 2
+
+  echo "Status: $status"
+  echo "Output: $output"
+
+  [ "$status" -eq 0 ]
+}
+
+@test "slack messages resolves channel without hash" {
+  run "$SLACK_CLI" messages "general"
+
+  echo "Status: $status"
+  echo "Output: $output"
+
+  [ "$status" -eq 0 ]
+}

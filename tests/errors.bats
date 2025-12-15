@@ -59,14 +59,14 @@ setup() {
   [ "$status" -ne 0 ] || [[ "$output" == *"USAGE"* ]]
 }
 
-@test "slack dnd with invalid duration format" {
+@test "slack dnd with invalid duration format shows error" {
   run "$SLACK_CLI" dnd on "invalid_duration"
 
   echo "Status: $status"
   echo "Output: $output"
 
-  # Should handle gracefully - either error or treat as 0
-  [ "$status" -eq 0 ] || [ "$status" -ne 0 ]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Invalid duration"* ]]
 }
 
 @test "slack status handles API error gracefully" {
