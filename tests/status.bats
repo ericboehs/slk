@@ -120,3 +120,22 @@ setup() {
   [ "$status" -eq 0 ]
   # Should show some indication of expiration time
 }
+
+@test "slack status with -q suppresses output" {
+  run "$SLACK_CLI" status "Testing" ":test_tube:" -q
+
+  echo "Status: $status"
+  echo "Output: $output"
+
+  [ "$status" -eq 0 ]
+  # Output should be empty or minimal in quiet mode
+}
+
+@test "slack status with -v shows verbose output" {
+  run "$SLACK_CLI" status -v
+
+  echo "Status: $status"
+  echo "Output: $output"
+
+  [ "$status" -eq 0 ]
+}

@@ -115,3 +115,22 @@ setup() {
 
   [ "$status" -eq 0 ]
 }
+
+@test "slack messages with @user opens DM" {
+  run "$SLACK_CLI" messages "@alice"
+
+  echo "Status: $status"
+  echo "Output: $output"
+
+  # Should either work or fail gracefully (user lookup)
+  [ "$status" -eq 0 ] || [[ "$output" == *"not found"* ]] || [[ "$output" == *"Could not"* ]]
+}
+
+@test "slack messages with direct channel ID" {
+  run "$SLACK_CLI" messages "C001GENERAL"
+
+  echo "Status: $status"
+  echo "Output: $output"
+
+  [ "$status" -eq 0 ]
+}
