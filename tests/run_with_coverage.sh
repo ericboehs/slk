@@ -94,6 +94,19 @@ SLACK_CLI="$1"
 
 # Unread with options
 "$SLACK_CLI" unread --json 2>/dev/null || true
+
+# Messages with various options
+"$SLACK_CLI" messages "#general" --no-names 2>/dev/null || true
+"$SLACK_CLI" messages "#general" --no-emoji 2>/dev/null || true
+"$SLACK_CLI" messages "#general" --json 2>/dev/null || true
+"$SLACK_CLI" messages "#general" --reaction-names 2>/dev/null || true
+
+# Workspaces
+"$SLACK_CLI" workspaces primary 2>/dev/null || true
+
+# Apply another preset
+"$SLACK_CLI" preset focus 2>/dev/null || true
+"$SLACK_CLI" preset lunch 2>/dev/null || true
 WRAPPER_EOF
 chmod +x "$WRAPPER"
 
