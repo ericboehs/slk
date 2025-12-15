@@ -6,13 +6,15 @@ module SlackCli
       BASE_URL = ENV.fetch("SLACK_API_BASE", "https://slack.com/api")
 
       attr_reader :call_count
+      attr_accessor :on_request
 
       def initialize
         @call_count = 0
+        @on_request = nil
       end
 
       def post(workspace, method, params = {})
-        @call_count += 1
+        log_request(method)
         uri = URI("#{BASE_URL}/#{method}")
 
         http = Net::HTTP.new(uri.host, uri.port)
@@ -27,7 +29,7 @@ module SlackCli
       end
 
       def get(workspace, method, params = {})
-        @call_count += 1
+        log_request(method)
         uri = URI("#{BASE_URL}/#{method}")
         uri.query = URI.encode_www_form(params) unless params.empty?
 
@@ -44,7 +46,7 @@ module SlackCli
 
       # Form-encoded POST (some Slack endpoints require this)
       def post_form(workspace, method, params = {})
-        @call_count += 1
+        log_request(method)
         uri = URI("#{BASE_URL}/#{method}")
 
         http = Net::HTTP.new(uri.host, uri.port)
@@ -60,6 +62,11 @@ module SlackCli
       end
 
       private
+
+      def log_request(method)
+        @call_count += 1
+        @on_request&.call(method, @call_count)
+      end
 
       def configure_ssl(http, uri)
         http.use_ssl = uri.scheme == "https"

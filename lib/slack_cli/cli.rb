@@ -72,9 +72,28 @@ module SlackCli
       command_class = COMMANDS[name]
       return 1 unless command_class
 
-      runner = Runner.new(output: @output)
+      verbose = args.include?("-v") || args.include?("--verbose")
+
+      # Create output with verbose flag
+      output = Formatters::Output.new(verbose: verbose)
+      runner = Runner.new(output: output)
+
+      # Set up API call logging if verbose
+      if verbose
+        runner.api_client.on_request = ->(method, count) {
+          output.debug("[API ##{count}] #{method}")
+        }
+      end
+
       command = command_class.new(args, runner: runner)
-      command.execute
+      result = command.execute
+
+      # Show API call count if verbose
+      if verbose && runner.api_client.call_count > 0
+        output.debug("Total API calls: #{runner.api_client.call_count}")
+      end
+
+      result
     end
 
     def preset_exists?(name)
