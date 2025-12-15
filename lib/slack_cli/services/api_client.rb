@@ -16,9 +16,7 @@ module SlackCli
         uri = URI("#{BASE_URL}/#{method}")
 
         http = Net::HTTP.new(uri.host, uri.port)
-        http.use_ssl = uri.scheme == "https"
-        http.open_timeout = 10
-        http.read_timeout = 30
+        configure_ssl(http, uri)
 
         request = Net::HTTP::Post.new(uri)
         workspace.headers.each { |k, v| request[k] = v }
@@ -34,9 +32,7 @@ module SlackCli
         uri.query = URI.encode_www_form(params) unless params.empty?
 
         http = Net::HTTP.new(uri.host, uri.port)
-        http.use_ssl = uri.scheme == "https"
-        http.open_timeout = 10
-        http.read_timeout = 30
+        configure_ssl(http, uri)
 
         request = Net::HTTP::Get.new(uri)
         request["Authorization"] = workspace.headers["Authorization"]
@@ -52,9 +48,7 @@ module SlackCli
         uri = URI("#{BASE_URL}/#{method}")
 
         http = Net::HTTP.new(uri.host, uri.port)
-        http.use_ssl = uri.scheme == "https"
-        http.open_timeout = 10
-        http.read_timeout = 30
+        configure_ssl(http, uri)
 
         request = Net::HTTP::Post.new(uri)
         request["Authorization"] = workspace.headers["Authorization"]
@@ -66,6 +60,19 @@ module SlackCli
       end
 
       private
+
+      def configure_ssl(http, uri)
+        http.use_ssl = uri.scheme == "https"
+        http.open_timeout = 10
+        http.read_timeout = 30
+
+        return unless http.use_ssl?
+
+        # Use system certificate store and disable CRL checking
+        http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+        http.cert_store = OpenSSL::X509::Store.new
+        http.cert_store.set_default_paths
+      end
 
       def handle_response(response, method)
         case response
