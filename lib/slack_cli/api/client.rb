@@ -12,6 +12,14 @@ module SlackCli
         @api.post(@workspace, "client.counts")
       end
 
+      def auth_test
+        @api.post(@workspace, "auth.test")
+      end
+
+      def team_id
+        @team_id ||= auth_test["team_id"]
+      end
+
       def unread_channels
         response = counts
         channels = response.dig("channels") || []
@@ -31,7 +39,7 @@ module SlackCli
         response = counts
 
         channel_count = (response.dig("channels") || []).sum { |c| c["mention_count"] || 0 }
-        dm_count = (response.dig("ims") || []).sum { |d| d["dm_count"] || 0 }
+        dm_count = (response.dig("ims") || []).sum { |d| d["mention_count"] || 0 }
         mpim_count = (response.dig("mpims") || []).sum { |m| m["mention_count"] || 0 }
 
         channel_count + dm_count + mpim_count

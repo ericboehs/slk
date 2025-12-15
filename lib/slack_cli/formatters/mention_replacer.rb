@@ -4,7 +4,7 @@ module SlackCli
   module Formatters
     class MentionReplacer
       USER_MENTION_REGEX = /<@([UW][A-Z0-9]+)(?:\|([^>]+))?>/
-      CHANNEL_MENTION_REGEX = /<#([CG][A-Z0-9]+)(?:\|([^>]+))?>/
+      CHANNEL_MENTION_REGEX = /<#([A-Z0-9]+)(?:\|([^>]*))?>/
       LINK_REGEX = /<(https?:\/\/[^|>]+)(?:\|([^>]+))?>/
       SPECIAL_MENTIONS = {
         "<!here>" => "@here",
@@ -25,7 +25,7 @@ module SlackCli
           user_id = ::Regexp.last_match(1)
           display_name = ::Regexp.last_match(2)
 
-          if display_name
+          if display_name && !display_name.empty?
             "@#{display_name}"
           else
             cached = @cache.get_user(workspace.name, user_id)
@@ -38,11 +38,11 @@ module SlackCli
           channel_id = ::Regexp.last_match(1)
           channel_name = ::Regexp.last_match(2)
 
-          if channel_name
+          if channel_name && !channel_name.empty?
             "##{channel_name}"
           else
-            cached = @cache.get_channel_name(workspace.name, channel_id)
-            cached ? "##{cached}" : "<##{channel_id}>"
+            name = lookup_channel_name(workspace, channel_id)
+            name ? "##{name}" : "##{channel_id}"
           end
         end
 
@@ -59,6 +59,32 @@ module SlackCli
         end
 
         result
+      end
+
+      private
+
+      def lookup_channel_name(workspace, channel_id)
+        # Try cache first
+        cached = @cache.get_channel_name(workspace.name, channel_id)
+        return cached if cached
+
+        # Try API lookup
+        return nil unless @api
+
+        begin
+          conversations_api = Api::Conversations.new(@api, workspace)
+          response = conversations_api.info(channel: channel_id)
+          if response["ok"] && response["channel"]
+            name = response["channel"]["name"]
+            # Cache for future lookups
+            @cache.set_channel(workspace.name, name, channel_id) if name
+            return name
+          end
+        rescue ApiError
+          # Channel might be external/inaccessible, just return nil
+        end
+
+        nil
       end
     end
   end

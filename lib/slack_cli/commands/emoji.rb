@@ -1,8 +1,12 @@
 # frozen_string_literal: true
 
+require_relative "../support/inline_images"
+require_relative "../support/help_formatter"
+
 module SlackCli
   module Commands
     class Emoji < Base
+      include Support::InlineImages
       def execute
         return show_help if show_help?
 
@@ -45,23 +49,24 @@ module SlackCli
       end
 
       def help_text
-        <<~HELP
-          USAGE: slk emoji <action> [workspace]
+        help = Support::HelpFormatter.new("slk emoji <action> [workspace]")
+        help.description("Manage emoji cache.")
 
-          Manage emoji cache.
+        help.section("ACTIONS") do |s|
+          s.action("status", "Show emoji cache status")
+          s.action("search <query>", "Search emoji by name (all workspaces by default)")
+          s.action("sync-standard", "Download standard emoji database (gemoji)")
+          s.action("download [ws]", "Download workspace custom emoji")
+          s.action("clear [ws]", "Clear emoji cache")
+        end
 
-          ACTIONS:
-            status            Show emoji cache status
-            search <query>    Search emoji by name
-            sync-standard     Download standard emoji database (gemoji)
-            download [ws]     Download workspace custom emoji
-            clear [ws]        Clear emoji cache
+        help.section("OPTIONS") do |s|
+          s.option("-w, --workspace", "Limit to specific workspace")
+          s.option("-f, --force", "Skip confirmation for clear")
+          s.option("-q, --quiet", "Suppress output")
+        end
 
-          OPTIONS:
-            -w, --workspace   Specify workspace
-            -f, --force       Skip confirmation for clear
-            -q, --quiet       Suppress output
-        HELP
+        help.render
       end
 
       private
@@ -116,8 +121,9 @@ module SlackCli
           end
         end
 
-        # Search workspace custom emoji
-        target_workspaces.each do |workspace|
+        # Search workspace custom emoji (all workspaces by default, or -w to limit)
+        workspaces = @options[:workspace] ? [runner.workspace(@options[:workspace])] : runner.all_workspaces
+        workspaces.each do |workspace|
           workspace_dir = File.join(emoji_dir, workspace.name)
           next unless Dir.exist?(workspace_dir)
 
@@ -140,10 +146,10 @@ module SlackCli
           items.sort_by { |r| r[:name] }.each do |item|
             if item[:char]
               puts "#{item[:char]}  :#{item[:name]}:"
-            elsif item[:path] && inline_images_supported?
-              print_inline_image(item[:path])
-              # tmux passthrough already includes trailing space, iTerm2 needs spacing
-              puts in_tmux? ? ":#{item[:name]}:" : " :#{item[:name]}:"
+            elsif item[:path]
+              unless print_inline_image_with_text(item[:path], ":#{item[:name]}:")
+                puts ":#{item[:name]}:"
+              end
             else
               puts ":#{item[:name]}:"
             end
@@ -153,38 +159,6 @@ module SlackCli
 
         puts "Found #{results.size} emoji matching '#{query}'"
         0
-      end
-
-      def inline_images_supported?
-        # iTerm2, WezTerm, Mintty support inline images
-        # LC_TERMINAL persists through tmux/ssh
-        ENV["TERM_PROGRAM"] == "iTerm.app" ||
-          ENV["TERM_PROGRAM"] == "WezTerm" ||
-          ENV["LC_TERMINAL"] == "iTerm2" ||
-          ENV["LC_TERMINAL"] == "WezTerm" ||
-          ENV["TERM"] == "mintty"
-      end
-
-      def in_tmux?
-        # tmux sets TERM to screen-* or tmux-*
-        ENV["TERM"]&.include?("screen") || ENV["TERM"]&.start_with?("tmux")
-      end
-
-      def print_inline_image(path)
-        return unless File.exist?(path)
-
-        data = File.binread(path)
-        encoded = [data].pack("m0") # Base64 encode
-        height = 1
-
-        if in_tmux?
-          # tmux passthrough: \n + space required for image to render
-          printf "\ePtmux;\e\e]1337;File=inline=1;preserveAspectRatio=0;size=%d;height=%d:%s\a\e\\\n ",
-                 encoded.length, height, encoded
-        else
-          # Standard iTerm2 format
-          printf "\e]1337;File=inline=1;height=%d:%s\a", height, encoded
-        end
       end
 
       def print_progress(current, total, downloaded, skipped)

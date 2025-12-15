@@ -15,9 +15,11 @@ module SlackCli
         @user_cache.dig(workspace_name, user_id)
       end
 
-      def set_user(workspace_name, user_id, display_name)
+      def set_user(workspace_name, user_id, display_name, persist: false)
+        load_user_cache(workspace_name)
         @user_cache[workspace_name] ||= {}
         @user_cache[workspace_name][user_id] = display_name
+        save_user_cache(workspace_name) if persist
       end
 
       def user_cached?(workspace_name, user_id)

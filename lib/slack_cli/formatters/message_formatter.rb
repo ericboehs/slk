@@ -3,11 +3,12 @@
 module SlackCli
   module Formatters
     class MessageFormatter
-      def initialize(output:, mention_replacer:, emoji_replacer:, cache_store:)
+      def initialize(output:, mention_replacer:, emoji_replacer:, cache_store:, api_client: nil)
         @output = output
         @mentions = mention_replacer
         @emoji = emoji_replacer
         @cache = cache_store
+        @api_client = api_client
       end
 
       def format(message, workspace:, options: {})
@@ -75,8 +76,24 @@ module SlackCli
         cached = @cache.get_user(workspace.name, message.user_id)
         return cached if cached
 
+        # For bot IDs (start with B), try bots.info API
+        if message.user_id.start_with?("B") && @api_client
+          bot_name = lookup_bot_name(workspace, message.user_id)
+          return bot_name if bot_name
+        end
+
         # Fall back to ID
         message.user_id
+      end
+
+      def lookup_bot_name(workspace, bot_id)
+        bots_api = Api::Bots.new(@api_client, workspace)
+        name = bots_api.get_name(bot_id)
+        if name
+          # Cache for future lookups (persist to disk)
+          @cache.set_user(workspace.name, bot_id, name, persist: true)
+        end
+        name
       end
 
       def format_timestamp(time)

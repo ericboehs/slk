@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../support/help_formatter"
+
 module SlackCli
   module Commands
     class Config < Base
@@ -23,25 +25,27 @@ module SlackCli
       protected
 
       def help_text
-        <<~HELP
-          USAGE: slack config [action]
+        help = Support::HelpFormatter.new("slk config [action]")
+        help.description("Manage configuration.")
 
-          Manage configuration.
+        help.section("ACTIONS") do |s|
+          s.action("show", "Show current configuration")
+          s.action("setup", "Run setup wizard")
+          s.action("get <key>", "Get a config value")
+          s.action("set <key> <val>", "Set a config value")
+        end
 
-          ACTIONS:
-            show              Show current configuration
-            setup             Run setup wizard
-            get <key>         Get a config value
-            set <key> <val>   Set a config value
+        help.section("CONFIG KEYS") do |s|
+          s.item("primary_workspace", "Default workspace name")
+          s.item("ssh_key", "Path to SSH key for encryption")
+          s.item("emoji_dir", "Custom emoji directory")
+        end
 
-          CONFIG KEYS:
-            primary_workspace   Default workspace name
-            ssh_key             Path to SSH key for encryption
-            emoji_dir           Custom emoji directory
+        help.section("OPTIONS") do |s|
+          s.option("-q, --quiet", "Suppress output")
+        end
 
-          OPTIONS:
-            -q, --quiet       Suppress output
-        HELP
+        help.render
       end
 
       private

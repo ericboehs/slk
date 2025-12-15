@@ -1,8 +1,12 @@
 # frozen_string_literal: true
 
+require_relative "../support/inline_images"
+require_relative "../support/help_formatter"
+
 module SlackCli
   module Commands
     class Preset < Base
+      include Support::InlineImages
       def execute
         return show_help if show_help?
 
@@ -23,28 +27,30 @@ module SlackCli
       protected
 
       def help_text
-        <<~HELP
-          USAGE: slack preset <action|name> [options]
+        help = Support::HelpFormatter.new("slk preset <action|name> [options]")
+        help.description("Manage and apply status presets.")
 
-          Manage and apply status presets.
+        help.section("ACTIONS") do |s|
+          s.action("list", "List all presets")
+          s.action("add", "Add a new preset (interactive)")
+          s.action("edit <name>", "Edit an existing preset")
+          s.action("delete <name>", "Delete a preset")
+          s.action("<name>", "Apply a preset")
+        end
 
-          ACTIONS:
-            list              List all presets
-            add               Add a new preset (interactive)
-            edit <name>       Edit an existing preset
-            delete <name>     Delete a preset
-            <name>            Apply a preset
+        help.section("EXAMPLES") do |s|
+          s.example("slk preset list")
+          s.example("slk preset meeting")
+          s.example("slk preset add")
+        end
 
-          EXAMPLES:
-            slack preset list
-            slack preset meeting
-            slack preset add
+        help.section("OPTIONS") do |s|
+          s.option("-w, --workspace", "Specify workspace")
+          s.option("--all", "Apply to all workspaces")
+          s.option("-q, --quiet", "Suppress output")
+        end
 
-          OPTIONS:
-            -w, --workspace     Specify workspace
-            --all               Apply to all workspaces
-            -q, --quiet         Suppress output
-        HELP
+        help.render
       end
 
       private
@@ -60,13 +66,43 @@ module SlackCli
         puts "Presets:"
         presets.each do |preset|
           puts "  #{output.bold(preset.name)}"
-          puts "    #{preset.emoji} #{preset.text}" unless preset.text.empty?
+          display_preset_status(preset) unless preset.text.empty? && preset.emoji.empty?
           puts "    Duration: #{preset.duration}" unless preset.duration == "0"
           puts "    Presence: #{preset.presence}" if preset.sets_presence?
           puts "    DND: #{preset.dnd}" if preset.sets_dnd?
         end
 
         0
+      end
+
+      def display_preset_status(preset)
+        emoji_name = preset.emoji.delete_prefix(":").delete_suffix(":")
+        emoji_path = find_workspace_emoji_any(emoji_name)
+
+        if emoji_path && inline_images_supported?
+          text = "    #{preset.text}"
+          print_inline_image_with_text(emoji_path, text)
+        else
+          puts "    #{preset.emoji} #{preset.text}"
+        end
+      end
+
+      def find_workspace_emoji_any(emoji_name)
+        return nil if emoji_name.empty?
+
+        paths = Support::XdgPaths.new
+        emoji_dir = config.emoji_dir || paths.cache_dir
+
+        # Search across all workspaces
+        runner.all_workspaces.each do |workspace|
+          workspace_dir = File.join(emoji_dir, workspace.name)
+          next unless Dir.exist?(workspace_dir)
+
+          path = Dir.glob(File.join(workspace_dir, "#{emoji_name}.*")).first
+          return path if path
+        end
+
+        nil
       end
 
       def add_preset

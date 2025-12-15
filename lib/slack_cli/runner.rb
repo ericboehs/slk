@@ -61,13 +61,22 @@ module SlackCli
       Api::Emoji.new(@api_client, workspace(ws))
     end
 
+    def bots_api(ws = nil)
+      Api::Bots.new(@api_client, workspace(ws))
+    end
+
+    def threads_api(ws = nil)
+      Api::Threads.new(@api_client, workspace(ws))
+    end
+
     # Formatter helpers
     def message_formatter
       @message_formatter ||= Formatters::MessageFormatter.new(
         output: @output,
         mention_replacer: mention_replacer,
         emoji_replacer: emoji_replacer,
-        cache_store: @cache_store
+        cache_store: @cache_store,
+        api_client: @api_client
       )
     end
 

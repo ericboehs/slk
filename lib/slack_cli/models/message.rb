@@ -12,6 +12,8 @@ module SlackCli
       :files,
       :attachments,
       :user_profile,
+      :bot_profile,
+      :username,
       :subtype
     ) do
       def self.from_api(data)
@@ -25,6 +27,8 @@ module SlackCli
           files: data["files"] || [],
           attachments: data["attachments"] || [],
           user_profile: data["user_profile"],
+          bot_profile: data["bot_profile"],
+          username: data["username"],
           subtype: data["subtype"]
         )
       end
@@ -39,6 +43,8 @@ module SlackCli
         files: [],
         attachments: [],
         user_profile: nil,
+        bot_profile: nil,
+        username: nil,
         subtype: nil
       )
         super(
@@ -51,6 +57,8 @@ module SlackCli
           files: files.freeze,
           attachments: attachments.freeze,
           user_profile: user_profile&.freeze,
+          bot_profile: bot_profile&.freeze,
+          username: username&.freeze,
           subtype: subtype&.freeze
         )
       end
@@ -76,13 +84,23 @@ module SlackCli
       end
 
       def embedded_username
-        return nil unless user_profile
+        # Try user_profile first (regular users)
+        if user_profile
+          display = user_profile["display_name"]
+          real = user_profile["real_name"]
 
-        display = user_profile["display_name"]
-        real = user_profile["real_name"]
+          return display unless display.to_s.empty?
+          return real unless real.to_s.empty?
+        end
 
-        return display unless display.to_s.empty?
-        return real unless real.to_s.empty?
+        # Try bot_profile (bot messages)
+        if bot_profile
+          name = bot_profile["name"]
+          return name unless name.to_s.empty?
+        end
+
+        # Fall back to username field (some bots/integrations)
+        return username unless username.to_s.empty?
 
         nil
       end

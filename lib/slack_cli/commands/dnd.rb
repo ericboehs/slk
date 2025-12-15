@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../support/help_formatter"
+
 module SlackCli
   module Commands
     class Dnd < Base
@@ -35,39 +37,45 @@ module SlackCli
       protected
 
       def help_text
-        <<~HELP
-          USAGE: slack dnd [action] [duration]
+        help = Support::HelpFormatter.new("slk dnd [action] [duration]")
+        help.description("Manage Do Not Disturb (snooze) settings.")
+        help.note("GET shows all workspaces by default. SET applies to primary only.")
 
-          Manage Do Not Disturb (snooze) settings.
+        help.section("ACTIONS") do |s|
+          s.action("(none)", "Show current DND status (all workspaces)")
+          s.action("status", "Show current DND status")
+          s.action("on [duration]", "Enable snooze (default: 1h)")
+          s.action("off", "Disable snooze")
+          s.action("<duration>", "Enable snooze for specified duration")
+        end
 
-          ACTIONS:
-            (none)          Show current DND status
-            status          Show current DND status
-            on [duration]   Enable snooze (default: 1h)
-            off             Disable snooze
-            <duration>      Enable snooze for specified duration
+        help.section("DURATION FORMAT") do |s|
+          s.item("1h", "1 hour")
+          s.item("30m", "30 minutes")
+          s.item("1h30m", "1 hour 30 minutes")
+        end
 
-          DURATION FORMAT:
-            1h              1 hour
-            30m             30 minutes
-            1h30m           1 hour 30 minutes
+        help.section("OPTIONS") do |s|
+          s.option("-w, --workspace", "Limit to specific workspace")
+          s.option("--all", "Set across all workspaces")
+          s.option("-q, --quiet", "Suppress output")
+        end
 
-          OPTIONS:
-            -w, --workspace     Specify workspace
-            --all               Apply to all workspaces
-            -q, --quiet         Suppress output
-        HELP
+        help.render
       end
 
       private
 
       def get_status
-        target_workspaces.each do |workspace|
+        # GET defaults to all workspaces unless -w specified
+        workspaces = @options[:workspace] ? [runner.workspace(@options[:workspace])] : runner.all_workspaces
+
+        workspaces.each do |workspace|
           api = runner.dnd_api(workspace.name)
           data = api.info
 
-          if @options[:all] || target_workspaces.size > 1
-            puts "#{output.bold(workspace.name)}:"
+          if workspaces.size > 1
+            puts output.bold(workspace.name)
           end
 
           if data["snooze_enabled"]
@@ -104,6 +112,8 @@ module SlackCli
           success("DND enabled for #{duration} on #{workspace.name}")
         end
 
+        show_all_workspaces_hint
+
         0
       end
 
@@ -115,7 +125,17 @@ module SlackCli
           success("DND disabled on #{workspace.name}")
         end
 
+        show_all_workspaces_hint
+
         0
+      end
+
+      def show_all_workspaces_hint
+        # Show hint if user has multiple workspaces and didn't use --all or -w
+        return if @options[:all] || @options[:workspace]
+        return if runner.all_workspaces.size <= 1
+
+        info("Tip: Use --all to set across all workspaces")
       end
     end
   end

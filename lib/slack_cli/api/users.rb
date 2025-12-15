@@ -65,6 +65,12 @@ module SlackCli
         @api.post(@workspace, "users.prefs.get")
       end
 
+      def muted_channels
+        prefs = get_prefs
+        muted = prefs.dig("prefs", "muted_channels") || ""
+        muted.split(",").reject(&:empty?)
+      end
+
       def conversations(cursor: nil, limit: 1000)
         params = { limit: limit, types: "public_channel,private_channel,mpim,im" }
         params[:cursor] = cursor if cursor

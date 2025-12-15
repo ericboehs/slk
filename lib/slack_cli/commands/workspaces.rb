@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../support/help_formatter"
+
 module SlackCli
   module Commands
     class Workspaces < Base
@@ -26,21 +28,22 @@ module SlackCli
       protected
 
       def help_text
-        <<~HELP
-          USAGE: slack workspaces <action> [name]
+        help = Support::HelpFormatter.new("slk workspaces <action> [name]")
+        help.description("Manage Slack workspaces.")
 
-          Manage Slack workspaces.
+        help.section("ACTIONS") do |s|
+          s.action("list", "List configured workspaces")
+          s.action("add", "Add a new workspace (interactive)")
+          s.action("remove <name>", "Remove a workspace")
+          s.action("primary", "Show primary workspace")
+          s.action("primary <name>", "Set primary workspace")
+        end
 
-          ACTIONS:
-            list              List configured workspaces
-            add               Add a new workspace (interactive)
-            remove <name>     Remove a workspace
-            primary           Show primary workspace
-            primary <name>    Set primary workspace
+        help.section("OPTIONS") do |s|
+          s.option("-q, --quiet", "Suppress output")
+        end
 
-          OPTIONS:
-            -q, --quiet       Suppress output
-        HELP
+        help.render
       end
 
       private

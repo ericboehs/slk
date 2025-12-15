@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../support/help_formatter"
+
 module SlackCli
   module Commands
     class Presence < Base
@@ -26,32 +28,37 @@ module SlackCli
       protected
 
       def help_text
-        <<~HELP
-          USAGE: slack presence [away|auto|active]
+        help = Support::HelpFormatter.new("slk presence [away|auto|active]")
+        help.description("Get or set your presence status.")
+        help.note("GET shows all workspaces by default. SET applies to primary only.")
 
-          Get or set your presence status.
+        help.section("ACTIONS") do |s|
+          s.action("(none)", "Show current presence (all workspaces)")
+          s.action("away", "Set presence to away")
+          s.action("auto", "Set presence to auto (active)")
+          s.action("active", "Alias for auto")
+        end
 
-          ACTIONS:
-            (none)     Show current presence
-            away       Set presence to away
-            auto       Set presence to auto (active)
-            active     Alias for auto
+        help.section("OPTIONS") do |s|
+          s.option("-w, --workspace", "Limit to specific workspace")
+          s.option("--all", "Set across all workspaces")
+          s.option("-q, --quiet", "Suppress output")
+        end
 
-          OPTIONS:
-            -w, --workspace     Specify workspace
-            --all               Apply to all workspaces
-            -q, --quiet         Suppress output
-        HELP
+        help.render
       end
 
       private
 
       def get_presence
-        target_workspaces.each do |workspace|
+        # GET defaults to all workspaces unless -w specified
+        workspaces = @options[:workspace] ? [runner.workspace(@options[:workspace])] : runner.all_workspaces
+
+        workspaces.each do |workspace|
           data = runner.users_api(workspace.name).get_presence
 
-          if @options[:all] || target_workspaces.size > 1
-            puts "#{output.bold(workspace.name)}:"
+          if workspaces.size > 1
+            puts output.bold(workspace.name)
           end
 
           presence = data[:presence]
@@ -82,7 +89,17 @@ module SlackCli
           success("Presence set to #{status_text} on #{workspace.name}")
         end
 
+        show_all_workspaces_hint
+
         0
+      end
+
+      def show_all_workspaces_hint
+        # Show hint if user has multiple workspaces and didn't use --all or -w
+        return if @options[:all] || @options[:workspace]
+        return if runner.all_workspaces.size <= 1
+
+        info("Tip: Use --all to set across all workspaces")
       end
     end
   end

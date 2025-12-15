@@ -1,8 +1,12 @@
 # frozen_string_literal: true
 
+require_relative "../support/inline_images"
+require_relative "../support/help_formatter"
+
 module SlackCli
   module Commands
     class Status < Base
+      include Support::InlineImages
       def execute
         return show_help if show_help?
 
@@ -37,46 +41,83 @@ module SlackCli
       end
 
       def help_text
-        <<~HELP
-          USAGE: slk status [text] [emoji] [duration] [options]
+        help = Support::HelpFormatter.new("slk status [text] [emoji] [duration] [options]")
+        help.description("Get or set your Slack status.")
+        help.note("GET shows all workspaces by default. SET applies to primary only.")
 
-          Get or set your Slack status.
+        help.section("EXAMPLES") do |s|
+          s.example("slk status", "Show status (all workspaces)")
+          s.example("slk status clear", "Clear status")
+          s.example("slk status \"Working\" :laptop:", "Set status with emoji")
+          s.example("slk status \"Meeting\" :calendar: 1h", "Set status for 1 hour")
+          s.example("slk status \"Focus\" :headphones: 2h -p away -d 2h")
+        end
 
-          EXAMPLES:
-            slk status                         Show current status
-            slk status clear                   Clear status
-            slk status "Working" :laptop:      Set status with emoji
-            slk status "Meeting" :calendar: 1h Set status for 1 hour
-            slk status "Focus" :headphones: 2h -p away -d 2h
+        help.section("OPTIONS") do |s|
+          s.option("-p, --presence VALUE", "Also set presence (away/auto/active)")
+          s.option("-d, --dnd DURATION", "Also set DND (or 'off')")
+          s.option("-w, --workspace", "Limit to specific workspace")
+          s.option("--all", "Set across all workspaces")
+          s.option("-v, --verbose", "Show debug information")
+          s.option("-q, --quiet", "Suppress output")
+        end
 
-          OPTIONS:
-            -p, --presence VALUE  Also set presence (away/auto/active)
-            -d, --dnd DURATION    Also set DND (or 'off')
-            -w, --workspace       Specify workspace
-            --all                 Apply to all workspaces
-            -v, --verbose         Show debug information
-            -q, --quiet           Suppress output
-        HELP
+        help.render
       end
 
       private
 
       def get_status
-        target_workspaces.each do |workspace|
+        # GET defaults to all workspaces unless -w specified
+        workspaces = @options[:workspace] ? [runner.workspace(@options[:workspace])] : runner.all_workspaces
+
+        workspaces.each do |workspace|
           status = runner.users_api(workspace.name).get_status
 
-          if @options[:all] || target_workspaces.size > 1
-            puts "#{output.bold(workspace.name)}:"
+          if workspaces.size > 1
+            puts output.bold(workspace.name)
           end
 
           if status.empty?
             puts "  (no status set)"
           else
-            puts "  #{status}"
+            display_status(workspace, status)
           end
         end
 
         0
+      end
+
+      def display_status(workspace, status)
+        # Check if emoji is a custom workspace emoji with an image
+        emoji_name = status.emoji.delete_prefix(":").delete_suffix(":")
+        emoji_path = find_workspace_emoji(workspace.name, emoji_name)
+
+        if emoji_path && inline_images_supported?
+          # Build status text without emoji (we'll display it as image)
+          parts = []
+          parts << status.text unless status.text.empty?
+          if (remaining = status.time_remaining)
+            parts << "(#{remaining})"
+          end
+          text = "  #{parts.join(" ")}"
+
+          print_inline_image_with_text(emoji_path, text)
+        else
+          puts "  #{status}"
+        end
+      end
+
+      def find_workspace_emoji(workspace_name, emoji_name)
+        return nil if emoji_name.empty?
+
+        paths = Support::XdgPaths.new
+        emoji_dir = config.emoji_dir || paths.cache_dir
+        workspace_dir = File.join(emoji_dir, workspace_name)
+        return nil unless Dir.exist?(workspace_dir)
+
+        # Look for emoji file with any extension
+        Dir.glob(File.join(workspace_dir, "#{emoji_name}.*")).first
       end
 
       def set_status(text, rest)
@@ -98,6 +139,8 @@ module SlackCli
           apply_presence(workspace) if @options[:presence]
           apply_dnd(workspace) if @options[:dnd]
         end
+
+        show_all_workspaces_hint
 
         0
       end
@@ -133,7 +176,17 @@ module SlackCli
           success("Status cleared on #{workspace.name}")
         end
 
+        show_all_workspaces_hint
+
         0
+      end
+
+      def show_all_workspaces_hint
+        # Show hint if user has multiple workspaces and didn't use --all or -w
+        return if @options[:all] || @options[:workspace]
+        return if runner.all_workspaces.size <= 1
+
+        info("Tip: Use --all to set across all workspaces")
       end
     end
   end

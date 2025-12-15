@@ -69,10 +69,14 @@ module SlackCli
     autoload :Dnd, "slack_cli/api/dnd"
     autoload :Emoji, "slack_cli/api/emoji"
     autoload :Client, "slack_cli/api/client"
+    autoload :Bots, "slack_cli/api/bots"
+    autoload :Threads, "slack_cli/api/threads"
   end
 
   module Support
     autoload :XdgPaths, "slack_cli/support/xdg_paths"
     autoload :SlackUrlParser, "slack_cli/support/slack_url_parser"
+    autoload :InlineImages, "slack_cli/support/inline_images"
+    autoload :HelpFormatter, "slack_cli/support/help_formatter"
   end
 end

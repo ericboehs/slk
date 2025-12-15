@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../support/help_formatter"
+
 module SlackCli
   module Commands
     class Messages < Base
@@ -33,7 +35,7 @@ module SlackCli
           no_emoji: false,
           no_reactions: false,
           no_names: false,
-          workspace_emoji: false,
+          workspace_emoji: true, # Default to showing workspace emoji as images
           reaction_names: false
         )
       end
@@ -50,8 +52,8 @@ module SlackCli
           @options[:no_reactions] = true
         when "--no-names"
           @options[:no_names] = true
-        when "--workspace-emoji"
-          @options[:workspace_emoji] = true
+        when "--no-workspace-emoji"
+          @options[:workspace_emoji] = false
         when "--reaction-names"
           @options[:reaction_names] = true
         else
@@ -60,31 +62,32 @@ module SlackCli
       end
 
       def help_text
-        <<~HELP
-          USAGE: slk messages <target> [options]
+        help = Support::HelpFormatter.new("slk messages <target> [options]")
+        help.description("Read messages from a channel, DM, or thread.")
 
-          Read messages from a channel, DM, or thread.
+        help.section("TARGET") do |s|
+          s.item("#channel", "Channel by name")
+          s.item("channel", "Channel by name (without #)")
+          s.item("@user", "Direct message with user")
+          s.item("C123ABC", "Channel by ID")
+          s.item("<slack_url>", "Slack message URL")
+        end
 
-          TARGET:
-            #channel      Channel by name
-            channel       Channel by name (without #)
-            @user         Direct message with user
-            C123ABC       Channel by ID
-            <slack_url>   Slack message URL
+        help.section("OPTIONS") do |s|
+          s.option("-n, --limit N", "Number of messages to show (default: 20)")
+          s.option("--threads", "Show thread replies inline")
+          s.option("--no-emoji", "Show :emoji: codes instead of unicode")
+          s.option("--no-reactions", "Hide reactions")
+          s.option("--no-names", "Skip user name lookups (faster)")
+          s.option("--no-workspace-emoji", "Disable workspace emoji images")
+          s.option("--reaction-names", "Show reactions with user names")
+          s.option("--json", "Output as JSON")
+          s.option("-w, --workspace", "Specify workspace")
+          s.option("-v, --verbose", "Show debug information")
+          s.option("-q, --quiet", "Suppress output")
+        end
 
-          OPTIONS:
-            -n, --limit N       Number of messages to show (default: 20)
-            --threads           Show thread replies inline
-            --no-emoji          Show :emoji: codes instead of unicode
-            --no-reactions      Hide reactions
-            --no-names          Skip user name lookups (faster)
-            --workspace-emoji   Show workspace custom emoji as images
-            --reaction-names    Show reactions with user names
-            --json              Output as JSON
-            -w, --workspace     Specify workspace
-            -v, --verbose       Show debug information
-            -q, --quiet         Suppress output
-        HELP
+        help.render
       end
 
       private

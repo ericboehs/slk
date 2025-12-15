@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../support/help_formatter"
+
 module SlackCli
   module Commands
     class Cache < Base
@@ -25,20 +27,21 @@ module SlackCli
       protected
 
       def help_text
-        <<~HELP
-          USAGE: slack cache <action> [workspace]
+        help = Support::HelpFormatter.new("slk cache <action> [workspace]")
+        help.description("Manage user and channel cache.")
 
-          Manage user and channel cache.
+        help.section("ACTIONS") do |s|
+          s.action("status", "Show cache status")
+          s.action("clear [ws]", "Clear cache (all or specific workspace)")
+          s.action("populate [ws]", "Populate user cache from API")
+        end
 
-          ACTIONS:
-            status            Show cache status
-            clear [ws]        Clear cache (all or specific workspace)
-            populate [ws]     Populate user cache from API
+        help.section("OPTIONS") do |s|
+          s.option("-w, --workspace", "Specify workspace")
+          s.option("-q, --quiet", "Suppress output")
+        end
 
-          OPTIONS:
-            -w, --workspace   Specify workspace
-            -q, --quiet       Suppress output
-        HELP
+        help.render
       end
 
       private
