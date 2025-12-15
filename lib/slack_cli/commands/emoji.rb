@@ -139,13 +139,12 @@ module SlackCli
           puts output.bold(source == "standard" ? "Standard emoji:" : "#{source}:")
           items.sort_by { |r| r[:name] }.each do |item|
             if item[:char]
-              puts "  #{item[:char]}  :#{item[:name]}:"
+              puts "#{item[:char]}  :#{item[:name]}:"
             elsif item[:path] && inline_images_supported?
-              print "  "
               print_inline_image(item[:path])
               puts "  :#{item[:name]}:"
             else
-              puts "  :#{item[:name]}:"
+              puts ":#{item[:name]}:"
             end
           end
           puts
@@ -166,7 +165,8 @@ module SlackCli
       end
 
       def in_tmux?
-        ENV["TMUX"] && !ENV["TMUX"].empty?
+        # tmux sets TERM to screen-* or tmux-*
+        ENV["TERM"]&.include?("screen") || ENV["TERM"]&.start_with?("tmux")
       end
 
       def print_inline_image(path)
@@ -174,15 +174,17 @@ module SlackCli
 
         data = File.binread(path)
         encoded = [data].pack("m0") # Base64 encode
-
-        # iTerm2 inline image protocol
-        osc = "\e]1337;File=inline=1;height=1;preserveAspectRatio=1:#{encoded}\a"
+        height = 1
 
         if in_tmux?
-          # Wrap for tmux passthrough (double escapes, use \e\\ terminator)
-          print "\ePtmux;\e#{osc.gsub("\a", "\e\a")}\e\\"
+          # tmux passthrough format (from ranger 1.9.4)
+          # Image at col 0, newline+space, cursor up+right to be beside image
+          printf "\ePtmux;\e\e]1337;File=inline=1;preserveAspectRatio=0;size=%d;height=%d:%s\a\e\\\n ",
+                 encoded.length, height, encoded
+          print "\e[1A\e[3C"  # Up 1 line, right 3 columns (past image)
         else
-          print osc
+          # Standard iTerm2 format
+          printf "\e]1337;File=inline=1;height=%d:%s\a", height, encoded
         end
       end
 
