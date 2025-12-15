@@ -1,0 +1,75 @@
+# frozen_string_literal: true
+
+module SlackCli
+  module Commands
+    class Help < Base
+      def execute
+        topic = positional_args.first
+
+        if topic
+          show_command_help(topic)
+        else
+          show_general_help
+        end
+
+        0
+      end
+
+      private
+
+      def show_general_help
+        puts <<~HELP
+          #{output.bold("Slack CLI")} v#{VERSION}
+
+          #{output.bold("USAGE:")}
+            slack <command> [options]
+
+          #{output.bold("COMMANDS:")}
+            #{output.cyan("status")}       Get or set your status
+            #{output.cyan("presence")}     Get or set your presence (away/active)
+            #{output.cyan("dnd")}          Manage Do Not Disturb
+            #{output.cyan("messages")}     Read channel or DM messages
+            #{output.cyan("unread")}       View and clear unread messages
+            #{output.cyan("preset")}       Manage and apply status presets
+            #{output.cyan("workspaces")}   Manage Slack workspaces
+            #{output.cyan("cache")}        Manage user/channel cache
+            #{output.cyan("emoji")}        Download workspace custom emoji
+            #{output.cyan("config")}       Configuration and setup
+
+          #{output.bold("GLOBAL OPTIONS:")}
+            -w, --workspace NAME   Use specific workspace
+            --all                  Apply to all workspaces
+            -v, --verbose          Show debug output
+            -q, --quiet            Suppress output
+            --json                 Output as JSON (where supported)
+            -h, --help             Show help
+
+          #{output.bold("EXAMPLES:")}
+            slack status                       Show current status
+            slack status "Working" :laptop:    Set status
+            slack status clear                 Clear status
+            slack dnd 1h                       Enable DND for 1 hour
+            slack messages #general            Read channel messages
+            slack preset meeting               Apply preset
+
+          Run #{output.cyan("slack <command> --help")} for command-specific help.
+        HELP
+      end
+
+      def show_command_help(topic)
+        command_class = CLI::COMMANDS[topic]
+
+        if command_class
+          # Create instance just to get help text
+          runner_stub = Runner.new(output: output)
+          cmd = command_class.new(["--help"], runner: runner_stub)
+          puts cmd.help_text
+        else
+          error("Unknown command: #{topic}")
+          puts
+          puts "Available commands: #{CLI::COMMANDS.keys.join(", ")}"
+        end
+      end
+    end
+  end
+end
