@@ -79,3 +79,44 @@ setup() {
   [[ "$output" == *"presence"* ]]
   [[ "$output" == *"dnd"* ]]
 }
+
+@test "slack status set updates status" {
+  run "$SLACK_CLI" status "Testing" ":test_tube:"
+
+  echo "Status: $status"
+  echo "Output: $output"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"✓"* ]] || [[ "$output" == *"Status set"* ]] || [[ "$output" == *"testworkspace"* ]]
+}
+
+@test "slack status set with duration" {
+  run "$SLACK_CLI" status "In a meeting" ":calendar:" "1h"
+
+  echo "Status: $status"
+  echo "Output: $output"
+
+  [ "$status" -eq 0 ]
+}
+
+@test "slack status clear removes status" {
+  run "$SLACK_CLI" status clear
+
+  echo "Status: $status"
+  echo "Output: $output"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"✓"* ]] || [[ "$output" == *"cleared"* ]] || [[ "$output" == *"Cleared"* ]]
+}
+
+@test "slack status with expiration shows time remaining" {
+  set_scenario "users.profile.get" "with_expiration"
+
+  run "$SLACK_CLI" status
+
+  echo "Status: $status"
+  echo "Output: $output"
+
+  [ "$status" -eq 0 ]
+  # Should show some indication of expiration time
+}
