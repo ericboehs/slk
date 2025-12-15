@@ -1,0 +1,112 @@
+# frozen_string_literal: true
+
+module SlackCli
+  module Services
+    class TokenStore
+      def initialize(config: nil, encryption: nil, paths: nil)
+        @config = config || Configuration.new
+        @encryption = encryption || Encryption.new
+        @paths = paths || Support::XdgPaths.new
+      end
+
+      def workspace(name)
+        tokens = load_tokens
+        data = tokens[name]
+        raise WorkspaceNotFoundError, "Workspace '#{name}' not found" unless data
+
+        Models::Workspace.new(
+          name: name,
+          token: data["token"],
+          cookie: data["cookie"]
+        )
+      end
+
+      def all_workspaces
+        load_tokens.map do |name, data|
+          Models::Workspace.new(
+            name: name,
+            token: data["token"],
+            cookie: data["cookie"]
+          )
+        end
+      end
+
+      def workspace_names
+        load_tokens.keys
+      end
+
+      def exists?(name)
+        load_tokens.key?(name)
+      end
+
+      def add(name, token, cookie = nil)
+        tokens = load_tokens
+        tokens[name] = { "token" => token, "cookie" => cookie }.compact
+        save_tokens(tokens)
+      end
+
+      def remove(name)
+        tokens = load_tokens
+        removed = tokens.delete(name)
+        save_tokens(tokens) if removed
+        !removed.nil?
+      end
+
+      def empty?
+        load_tokens.empty?
+      end
+
+      private
+
+      def load_tokens
+        if encrypted_file_exists?
+          decrypt_tokens
+        elsif plain_file_exists?
+          JSON.parse(File.read(plain_tokens_file))
+        else
+          {}
+        end
+      rescue JSON::ParserError
+        {}
+      end
+
+      def save_tokens(tokens)
+        @paths.ensure_config_dir
+
+        if @config.ssh_key && @encryption.available?
+          if @encryption.encrypt(JSON.generate(tokens), @config.ssh_key, encrypted_tokens_file)
+            File.delete(plain_tokens_file) if File.exist?(plain_tokens_file)
+            return
+          end
+        end
+
+        # Fallback to plain text
+        File.write(plain_tokens_file, JSON.pretty_generate(tokens))
+        File.chmod(0o600, plain_tokens_file)
+      end
+
+      def decrypt_tokens
+        content = @encryption.decrypt(encrypted_tokens_file, @config.ssh_key)
+        content ? JSON.parse(content) : {}
+      rescue JSON::ParserError
+        {}
+      end
+
+      def encrypted_file_exists?
+        File.exist?(encrypted_tokens_file)
+      end
+
+      def plain_file_exists?
+        File.exist?(plain_tokens_file)
+      end
+
+      def encrypted_tokens_file
+        @paths.config_file("tokens.age")
+      end
+
+      def plain_tokens_file
+        @paths.config_file("tokens.json")
+      end
+    end
+  end
+end
