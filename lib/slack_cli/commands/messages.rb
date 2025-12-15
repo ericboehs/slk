@@ -9,7 +9,10 @@ module SlackCli
         return show_help if show_help?
 
         target = positional_args.first
-        return error("Usage: slack messages <channel|@user|url>") unless target
+        unless target
+          error("Usage: slk messages <channel|@user|url>")
+          return 1
+        end
 
         workspace, channel_id, thread_ts = resolve_target(target)
         messages = fetch_messages(workspace, channel_id, thread_ts)
