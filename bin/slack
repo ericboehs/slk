@@ -1,0 +1,4661 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VERSION="2.11.0"
+SCRIPT_NAME="slack"
+
+# XDG Base Directory support
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/slack-cli"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/slack-cli"
+TOKENS_FILE="$CONFIG_DIR/tokens.json"
+TOKENS_FILE_ENCRYPTED="$CONFIG_DIR/tokens.age"
+CONFIG_FILE="$CONFIG_DIR/config.json"
+PRESETS_FILE="$CONFIG_DIR/presets.json"
+
+# API Base URL (override for testing)
+SLACK_API_BASE="${SLACK_API_BASE:-https://slack.com/api}"
+
+# Colors (disabled if not a terminal)
+if [[ -t 1 ]]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[0;33m'
+    BLUE='\033[0;34m'
+    CYAN='\033[0;36m'
+    BOLD='\033[1m'
+    NC='\033[0m'
+else
+    RED='' GREEN='' YELLOW='' BLUE='' CYAN='' BOLD='' NC=''
+fi
+
+# Verbosity
+VERBOSE=false
+QUIET=false
+
+# API call counter (using temp file to work across subshells)
+API_COUNTER_FILE=""
+init_api_counter() {
+    API_COUNTER_FILE=$(mktemp)
+    echo "0" > "$API_COUNTER_FILE"
+}
+increment_api_counter() {
+    if [[ -n "$API_COUNTER_FILE" && -f "$API_COUNTER_FILE" ]]; then
+        local count
+        count=$(cat "$API_COUNTER_FILE")
+        echo "$((count + 1))" > "$API_COUNTER_FILE"
+    fi
+}
+get_api_count() {
+    if [[ -n "$API_COUNTER_FILE" && -f "$API_COUNTER_FILE" ]]; then
+        cat "$API_COUNTER_FILE"
+    else
+        echo "0"
+    fi
+}
+cleanup_api_counter() {
+    [[ -n "$API_COUNTER_FILE" && -f "$API_COUNTER_FILE" ]] && rm -f "$API_COUNTER_FILE"
+}
+
+#######################################
+# Utility Functions
+#######################################
+
+log_info() {
+    $QUIET || echo -e "${GREEN}✓${NC} $*"
+}
+
+log_warn() {
+    $QUIET || echo -e "${YELLOW}⚠${NC} $*" >&2
+}
+
+log_error() {
+    echo -e "${RED}✗${NC} $*" >&2
+}
+
+log_verbose() {
+    $VERBOSE && echo -e "${BLUE}→${NC} $*" >&2 || true
+}
+
+die() {
+    log_error "$@"
+    exit 1
+}
+
+check_dependency() {
+    command -v "$1" &>/dev/null
+}
+
+ensure_jq() {
+    check_dependency jq || die "jq is required but not installed. Install it with: brew install jq (macOS) or apt install jq (Linux)"
+}
+
+ensure_curl() {
+    check_dependency curl || die "curl is required but not installed."
+}
+
+has_age() {
+    check_dependency age
+}
+
+#######################################
+# Duration Parsing
+#######################################
+
+parse_duration() {
+    local input="$1"
+    local total_seconds=0
+
+    # If it's just a number, treat as seconds
+    if [[ "$input" =~ ^[0-9]+$ ]]; then
+        echo "$input"
+        return
+    fi
+
+    # Parse human-readable format like 1h30m, 2h, 45m
+    local remaining="$input"
+    while [[ -n "$remaining" ]]; do
+        if [[ "$remaining" =~ ^([0-9]+)h(.*)$ ]]; then
+            total_seconds=$((total_seconds + ${BASH_REMATCH[1]} * 3600))
+            remaining="${BASH_REMATCH[2]}"
+        elif [[ "$remaining" =~ ^([0-9]+)m(.*)$ ]]; then
+            total_seconds=$((total_seconds + ${BASH_REMATCH[1]} * 60))
+            remaining="${BASH_REMATCH[2]}"
+        elif [[ "$remaining" =~ ^([0-9]+)s(.*)$ ]]; then
+            total_seconds=$((total_seconds + ${BASH_REMATCH[1]}))
+            remaining="${BASH_REMATCH[2]}"
+        else
+            die "Invalid duration format: $input (use format like 1h30m, 2h, 45m, or seconds)"
+        fi
+    done
+
+    echo "$total_seconds"
+}
+
+format_duration() {
+    local seconds="$1"
+    if [[ "$seconds" -eq 0 ]]; then
+        echo "no expiration"
+        return
+    fi
+    local hours=$((seconds / 3600))
+    local minutes=$(((seconds % 3600) / 60))
+    local result=""
+    [[ $hours -gt 0 ]] && result="${hours}h"
+    [[ $minutes -gt 0 ]] && result="${result}${minutes}m"
+    [[ -z "$result" ]] && result="${seconds}s"
+    echo "$result"
+}
+
+#######################################
+# SSH Key Detection
+#######################################
+
+detect_ssh_key() {
+    local ed25519_key="$HOME/.ssh/id_ed25519"
+    local rsa_key="$HOME/.ssh/id_rsa"
+    local has_ed25519=false
+    local has_rsa=false
+
+    [[ -f "$ed25519_key" ]] && has_ed25519=true
+    [[ -f "$rsa_key" ]] && has_rsa=true
+
+    if $has_ed25519 && $has_rsa; then
+        # Both exist, prompt with ed25519 as default
+        echo "both:$ed25519_key:$rsa_key"
+    elif $has_ed25519; then
+        echo "ed25519:$ed25519_key"
+    elif $has_rsa; then
+        echo "rsa:$rsa_key"
+    else
+        echo "none"
+    fi
+}
+
+#######################################
+# Token Encryption/Decryption
+#######################################
+
+encrypt_tokens() {
+    local ssh_key="$1"
+    local tokens_json="$2"
+
+    if has_age; then
+        echo "$tokens_json" | age -R "$ssh_key.pub" -o "$TOKENS_FILE_ENCRYPTED"
+        rm -f "$TOKENS_FILE"
+        log_verbose "Tokens encrypted with age"
+    else
+        echo "$tokens_json" > "$TOKENS_FILE"
+        chmod 600 "$TOKENS_FILE"
+        log_warn "age not found. Tokens stored unencrypted in $TOKENS_FILE"
+    fi
+}
+
+decrypt_tokens() {
+    if [[ -f "$TOKENS_FILE_ENCRYPTED" ]]; then
+        local ssh_key
+        ssh_key=$(get_config_value ".ssh_key" "")
+        if [[ -z "$ssh_key" ]]; then
+            die "No SSH key configured. Run '$SCRIPT_NAME config' to set up."
+        fi
+        if ! has_age; then
+            die "Tokens are encrypted but age is not installed. Install it with: brew install age (macOS) or apt install age (Linux)"
+        fi
+        age -d -i "$ssh_key" "$TOKENS_FILE_ENCRYPTED" 2>/dev/null || die "Failed to decrypt tokens. Check your SSH key."
+    elif [[ -f "$TOKENS_FILE" ]]; then
+        cat "$TOKENS_FILE"
+    else
+        echo "{}"
+    fi
+}
+
+#######################################
+# Config Management
+#######################################
+
+ensure_config_dir() {
+    mkdir -p "$CONFIG_DIR"
+}
+
+get_config_value() {
+    local key="$1"
+    local default="${2:-}"
+    if [[ -f "$CONFIG_FILE" ]]; then
+        local value
+        value=$(jq -r "$key // empty" "$CONFIG_FILE" 2>/dev/null)
+        if [[ -n "$value" && "$value" != "null" ]]; then
+            echo "$value"
+            return
+        fi
+    fi
+    echo "$default"
+}
+
+set_config_value() {
+    local key="$1"
+    local value="$2"
+    ensure_config_dir
+    if [[ -f "$CONFIG_FILE" ]]; then
+        local tmp
+        tmp=$(mktemp)
+        jq "$key = $value" "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+    else
+        echo "{}" | jq "$key = $value" > "$CONFIG_FILE"
+    fi
+}
+
+get_primary_workspace() {
+    get_config_value ".primary_workspace" ""
+}
+
+set_primary_workspace() {
+    set_config_value ".primary_workspace" "\"$1\""
+}
+
+#######################################
+# Workspace Management
+#######################################
+
+get_workspaces() {
+    decrypt_tokens | jq -r 'keys[]' 2>/dev/null
+}
+
+get_workspace_token() {
+    local workspace="$1"
+    decrypt_tokens | jq -r ".\"$workspace\".token // empty"
+}
+
+get_workspace_cookie() {
+    local workspace="$1"
+    decrypt_tokens | jq -r ".\"$workspace\".cookie // empty"
+}
+
+workspace_exists() {
+    local workspace="$1"
+    local token
+    token=$(get_workspace_token "$workspace")
+    [[ -n "$token" ]]
+}
+
+add_workspace() {
+    local name="$1"
+    local token="$2"
+    local cookie="${3:-}"
+
+    local current_tokens
+    current_tokens=$(decrypt_tokens)
+
+    local new_tokens
+    if [[ -n "$cookie" ]]; then
+        new_tokens=$(echo "$current_tokens" | jq ".\"$name\" = {\"token\": \"$token\", \"cookie\": \"$cookie\"}")
+    else
+        new_tokens=$(echo "$current_tokens" | jq ".\"$name\" = {\"token\": \"$token\"}")
+    fi
+
+    local ssh_key
+    ssh_key=$(get_config_value ".ssh_key" "")
+    if [[ -n "$ssh_key" ]] && has_age; then
+        encrypt_tokens "$ssh_key" "$new_tokens"
+    else
+        echo "$new_tokens" > "$TOKENS_FILE"
+        chmod 600 "$TOKENS_FILE"
+    fi
+}
+
+remove_workspace() {
+    local name="$1"
+    local current_tokens
+    current_tokens=$(decrypt_tokens)
+    local new_tokens
+    new_tokens=$(echo "$current_tokens" | jq "del(.\"$name\")")
+
+    local ssh_key
+    ssh_key=$(get_config_value ".ssh_key" "")
+    if [[ -n "$ssh_key" ]] && has_age; then
+        encrypt_tokens "$ssh_key" "$new_tokens"
+    else
+        echo "$new_tokens" > "$TOKENS_FILE"
+        chmod 600 "$TOKENS_FILE"
+    fi
+}
+
+#######################################
+# Preset Management
+#######################################
+
+ensure_default_presets() {
+    if [[ ! -f "$PRESETS_FILE" ]]; then
+        ensure_config_dir
+        cat > "$PRESETS_FILE" << 'EOF'
+{
+  "meeting": {
+    "text": "In a meeting",
+    "emoji": ":spiral_calendar_pad:",
+    "duration": "1h",
+    "dnd": "1h"
+  },
+  "lunch": {
+    "text": "Out to lunch",
+    "emoji": ":sandwich:",
+    "duration": "1h"
+  },
+  "focus": {
+    "text": "Deep work",
+    "emoji": ":headphones:",
+    "duration": "2h",
+    "presence": "away",
+    "dnd": "2h"
+  },
+  "afk": {
+    "text": "Away from keyboard",
+    "emoji": ":walking:",
+    "duration": "30m"
+  },
+  "brb": {
+    "text": "Be right back",
+    "emoji": ":brb:",
+    "duration": "15m"
+  },
+  "pto": {
+    "text": "Out of office",
+    "emoji": ":palm_tree:",
+    "duration": "0"
+  }
+}
+EOF
+    fi
+}
+
+get_preset() {
+    local name="$1"
+    ensure_default_presets
+    jq -r ".\"$name\" // empty" "$PRESETS_FILE"
+}
+
+list_presets() {
+    ensure_default_presets
+    jq -r 'to_entries[] | "\(.key): \(.value.emoji) \(.value.text) (\(.value.duration // "no expiration"))\(if .value.presence then " [presence: \(.value.presence)]" else "" end)\(if .value.dnd then " [dnd: \(.value.dnd)]" else "" end)"' "$PRESETS_FILE"
+}
+
+add_preset() {
+    local name="$1"
+    local text="$2"
+    local emoji="$3"
+    local duration="${4:-0}"
+    local presence="${5:-}"
+    local dnd="${6:-}"
+
+    ensure_default_presets
+    local tmp
+    tmp=$(mktemp)
+
+    local preset_obj="{\"text\": \"$text\", \"emoji\": \"$emoji\", \"duration\": \"$duration\""
+    [[ -n "$presence" ]] && preset_obj="$preset_obj, \"presence\": \"$presence\""
+    [[ -n "$dnd" ]] && preset_obj="$preset_obj, \"dnd\": \"$dnd\""
+    preset_obj="$preset_obj}"
+
+    jq ".\"$name\" = $preset_obj" "$PRESETS_FILE" > "$tmp" && mv "$tmp" "$PRESETS_FILE"
+}
+
+delete_preset() {
+    local name="$1"
+    ensure_default_presets
+    local tmp
+    tmp=$(mktemp)
+    jq "del(.\"$name\")" "$PRESETS_FILE" > "$tmp" && mv "$tmp" "$PRESETS_FILE"
+}
+
+#######################################
+# Slack API
+#######################################
+
+slack_api_call() {
+    local workspace="$1"
+    local method="$2"
+    local data="${3:-}"
+
+    local token cookie
+    token=$(get_workspace_token "$workspace")
+    cookie=$(get_workspace_cookie "$workspace")
+
+    if [[ -z "$token" ]]; then
+        die "No token found for workspace: $workspace"
+    fi
+
+    local curl_args=(
+        -sS
+        -X POST
+        "$SLACK_API_BASE/$method"
+        -H "Authorization: Bearer $token"
+        -H "Content-Type: application/json; charset=utf-8"
+    )
+
+    # Add cookie header if present (for xoxc tokens)
+    if [[ -n "$cookie" ]]; then
+        curl_args+=(-H "Cookie: d=$cookie")
+    fi
+
+    if [[ -n "$data" ]]; then
+        curl_args+=(--data "$data")
+    fi
+
+    increment_api_counter
+    log_verbose "API: $method"
+
+    curl "${curl_args[@]}"
+}
+
+set_status() {
+    local workspace="$1"
+    local text="$2"
+    local emoji="$3"
+    local duration="$4"
+
+    local expiration=0
+    if [[ "$duration" -gt 0 ]]; then
+        expiration=$(($(date +%s) + duration))
+    fi
+
+    local payload
+    payload=$(jq -n \
+        --arg text "$text" \
+        --arg emoji "$emoji" \
+        --argjson exp "$expiration" \
+        '{profile: {status_text: $text, status_emoji: $emoji, status_expiration: $exp}}')
+
+    log_verbose "Setting status on $workspace: $text $emoji ($(format_duration "$duration"))"
+    log_verbose "Payload: $payload"
+
+    local response
+    response=$(slack_api_call "$workspace" "users.profile.set" "$payload")
+
+    log_verbose "Response: $response"
+
+    local ok
+    ok=$(echo "$response" | jq -r '.ok')
+
+    if [[ "$ok" == "true" ]]; then
+        return 0
+    else
+        local error
+        error=$(echo "$response" | jq -r '.error // "unknown error"')
+        log_error "Failed to set status on $workspace: $error"
+        return 1
+    fi
+}
+
+get_status() {
+    local workspace="$1"
+
+    local response
+    response=$(slack_api_call "$workspace" "users.profile.get")
+
+    log_verbose "Response: $response"
+
+    local ok
+    ok=$(echo "$response" | jq -r '.ok')
+
+    if [[ "$ok" == "true" ]]; then
+        local text emoji expiration
+        text=$(echo "$response" | jq -r '.profile.status_text // ""')
+        emoji=$(echo "$response" | jq -r '.profile.status_emoji // ""')
+        expiration=$(echo "$response" | jq -r '.profile.status_expiration // 0')
+
+        if [[ -z "$text" && -z "$emoji" ]]; then
+            echo "No status set"
+        else
+            local exp_str=""
+            if [[ "$expiration" -gt 0 ]]; then
+                local now remaining
+                now=$(date +%s)
+                remaining=$((expiration - now))
+                if [[ $remaining -gt 0 ]]; then
+                    exp_str=" (expires in $(format_duration "$remaining"))"
+                else
+                    exp_str=" (expired)"
+                fi
+            fi
+            echo "$emoji $text$exp_str"
+        fi
+        return 0
+    else
+        local error
+        error=$(echo "$response" | jq -r '.error // "unknown error"')
+        log_error "Failed to get status from $workspace: $error"
+        return 1
+    fi
+}
+
+clear_status() {
+    local workspace="$1"
+    set_status "$workspace" "" "" 0
+}
+
+#######################################
+# Presence API
+#######################################
+
+set_presence() {
+    local workspace="$1"
+    local presence="$2"  # "away" or "auto"
+
+    local payload
+    payload=$(jq -n --arg presence "$presence" '{presence: $presence}')
+
+    log_verbose "Setting presence on $workspace: $presence"
+
+    local response
+    response=$(slack_api_call "$workspace" "users.setPresence" "$payload")
+
+    log_verbose "Response: $response"
+
+    local ok
+    ok=$(echo "$response" | jq -r '.ok')
+
+    if [[ "$ok" == "true" ]]; then
+        return 0
+    else
+        local error
+        error=$(echo "$response" | jq -r '.error // "unknown error"')
+        log_error "Failed to set presence on $workspace: $error"
+        return 1
+    fi
+}
+
+get_presence() {
+    local workspace="$1"
+
+    local response
+    response=$(slack_api_call "$workspace" "users.getPresence")
+
+    log_verbose "Response: $response"
+
+    local ok
+    ok=$(echo "$response" | jq -r '.ok')
+
+    if [[ "$ok" == "true" ]]; then
+        local presence manual_away online
+        presence=$(echo "$response" | jq -r '.presence // "unknown"')
+        manual_away=$(echo "$response" | jq -r '.manual_away // false')
+        online=$(echo "$response" | jq -r '.online // false')
+
+        local display_status
+        if [[ "$manual_away" == "true" ]]; then
+            display_status="Away (manual)"
+        elif [[ "$online" == "true" ]]; then
+            display_status="Auto (online)"
+        elif [[ "$presence" == "away" ]]; then
+            display_status="Away"
+        else
+            display_status="Active"
+        fi
+
+        echo "$display_status"
+        return 0
+    else
+        local error
+        error=$(echo "$response" | jq -r '.error // "unknown error"')
+        log_error "Failed to get presence from $workspace: $error"
+        return 1
+    fi
+}
+
+#######################################
+# DND (Do Not Disturb) API
+#######################################
+
+set_dnd_snooze() {
+    local workspace="$1"
+    local minutes="$2"
+
+    log_verbose "Setting DND snooze on $workspace for $minutes minutes"
+
+    local response
+    response=$(slack_api_call "$workspace" "dnd.setSnooze" "{\"num_minutes\": $minutes}")
+
+    log_verbose "Response: $response"
+
+    local ok
+    ok=$(echo "$response" | jq -r '.ok')
+
+    if [[ "$ok" == "true" ]]; then
+        return 0
+    else
+        local error
+        error=$(echo "$response" | jq -r '.error // "unknown error"')
+        log_error "Failed to set DND on $workspace: $error"
+        return 1
+    fi
+}
+
+end_dnd_snooze() {
+    local workspace="$1"
+
+    log_verbose "Ending DND snooze on $workspace"
+
+    local response
+    response=$(slack_api_call "$workspace" "dnd.endSnooze")
+
+    log_verbose "Response: $response"
+
+    local ok
+    ok=$(echo "$response" | jq -r '.ok')
+
+    if [[ "$ok" == "true" ]]; then
+        return 0
+    else
+        local error
+        error=$(echo "$response" | jq -r '.error // "unknown error"')
+        # "snooze_not_active" is not really an error
+        if [[ "$error" == "snooze_not_active" ]]; then
+            return 0
+        fi
+        log_error "Failed to end DND on $workspace: $error"
+        return 1
+    fi
+}
+
+get_dnd_info() {
+    local workspace="$1"
+
+    local response
+    response=$(slack_api_call "$workspace" "dnd.info")
+
+    log_verbose "Response: $response"
+
+    local ok
+    ok=$(echo "$response" | jq -r '.ok')
+
+    if [[ "$ok" == "true" ]]; then
+        local snooze_enabled snooze_endtime dnd_enabled next_dnd_start next_dnd_end
+        snooze_enabled=$(echo "$response" | jq -r '.snooze_enabled // false')
+        snooze_endtime=$(echo "$response" | jq -r '.snooze_endtime // 0')
+        dnd_enabled=$(echo "$response" | jq -r '.dnd_enabled // false')
+        next_dnd_start=$(echo "$response" | jq -r '.next_dnd_start_ts // 0')
+        next_dnd_end=$(echo "$response" | jq -r '.next_dnd_end_ts // 0')
+
+        if [[ "$snooze_enabled" == "true" ]]; then
+            local now remaining
+            now=$(date +%s)
+            remaining=$((snooze_endtime - now))
+            if [[ $remaining -gt 0 ]]; then
+                echo "Snoozed ($(format_duration "$remaining") remaining)"
+            else
+                echo "Snooze expired"
+            fi
+        elif [[ "$dnd_enabled" == "true" ]]; then
+            echo "DND scheduled"
+        else
+            echo "Not snoozed"
+        fi
+        return 0
+    else
+        local error
+        error=$(echo "$response" | jq -r '.error // "unknown error"')
+        log_error "Failed to get DND info from $workspace: $error"
+        return 1
+    fi
+}
+
+#######################################
+# Messages API
+#######################################
+
+# Parse a Slack URL or identifier to extract channel/thread info and workspace
+parse_slack_target() {
+    local target="$1"
+    local workspace="$2"
+
+    # Slack URL format: https://workspace.slack.com/archives/C1234567890/p1234567890123456
+    # or: https://workspace.slack.com/archives/C1234567890
+    if [[ "$target" =~ ([a-z0-9-]+)\.slack\.com/archives/([A-Z0-9]+)(/p([0-9]+))?(\?.*thread_ts=([0-9.]+))? ]]; then
+        local url_workspace="${BASH_REMATCH[1]}"
+        local channel_id="${BASH_REMATCH[2]}"
+        local msg_ts="${BASH_REMATCH[4]}"
+        local thread_ts="${BASH_REMATCH[6]}"
+
+        # Convert message timestamp from URL format (p1234567890123456) to API format (1234567890.123456)
+        if [[ -n "$msg_ts" ]]; then
+            msg_ts="${msg_ts:0:10}.${msg_ts:10}"
+        fi
+
+        # Use workspace from URL if available
+        [[ -n "$url_workspace" ]] && echo "workspace:$url_workspace"
+        echo "channel:$channel_id"
+        [[ -n "$thread_ts" ]] && echo "thread:$thread_ts"
+        [[ -n "$msg_ts" && -z "$thread_ts" ]] && echo "thread:$msg_ts"
+        return 0
+    fi
+
+    # Channel name (with or without #)
+    if [[ "$target" =~ ^#?([a-z0-9_-]+)$ ]]; then
+        local channel_name="${BASH_REMATCH[1]}"
+        # Look up channel ID by name
+        local channel_id
+        channel_id=$(get_channel_id "$workspace" "$channel_name")
+        if [[ -n "$channel_id" ]]; then
+            echo "channel:$channel_id"
+            return 0
+        else
+            return 1
+        fi
+    fi
+
+    # DM with user (with or without @)
+    if [[ "$target" =~ ^@?([a-z0-9._-]+)$ ]]; then
+        local username="${BASH_REMATCH[1]}"
+        # Look up DM channel ID by username
+        local dm_id
+        dm_id=$(get_dm_channel_id "$workspace" "$username")
+        if [[ -n "$dm_id" ]]; then
+            echo "channel:$dm_id"
+            return 0
+        else
+            return 1
+        fi
+    fi
+
+    # Direct channel ID
+    if [[ "$target" =~ ^[CDGU][A-Z0-9]+$ ]]; then
+        echo "channel:$target"
+        return 0
+    fi
+
+    return 1
+}
+
+get_channel_id() {
+    local workspace="$1"
+    local channel_name="$2"
+
+    # Strip leading # or % from channel name
+    channel_name="${channel_name#\#}"
+    channel_name="${channel_name#%}"
+
+    # Check cache first
+    local cached_id
+    cached_id=$(get_cached_channel_id "$workspace" "$channel_name")
+    if [[ -n "$cached_id" ]]; then
+        log_verbose "Channel cache hit: $channel_name → $cached_id"
+        echo "$cached_id"
+        return
+    fi
+
+    local response
+    response=$(slack_api_call "$workspace" "conversations.list" '{"types":"public_channel,private_channel","limit":1000}')
+
+    local ok
+    ok=$(echo "$response" | jq -r '.ok')
+
+    if [[ "$ok" == "true" ]]; then
+        local channel_id
+        channel_id=$(echo "$response" | jq -r ".channels[] | select(.name == \"$channel_name\") | .id" | head -1)
+        if [[ -n "$channel_id" ]]; then
+            cache_channel "$workspace" "$channel_name" "$channel_id"
+            echo "$channel_id"
+        fi
+    fi
+}
+
+get_dm_channel_id() {
+    local workspace="$1"
+    local username="$2"
+
+    # First get user ID from username
+    local user_response
+    user_response=$(slack_api_call "$workspace" "users.list" '{"limit":1000}')
+
+    local user_id
+    user_id=$(echo "$user_response" | jq -r ".members[] | select(.name == \"$username\" or .profile.display_name == \"$username\") | .id" | head -1)
+
+    if [[ -z "$user_id" ]]; then
+        return 1
+    fi
+
+    # Open or get existing DM channel
+    local dm_response
+    dm_response=$(slack_api_call "$workspace" "conversations.open" "{\"users\":\"$user_id\"}")
+
+    local ok
+    ok=$(echo "$dm_response" | jq -r '.ok')
+
+    if [[ "$ok" == "true" ]]; then
+        echo "$dm_response" | jq -r '.channel.id'
+    fi
+}
+
+fetch_messages() {
+    local workspace="$1"
+    local channel_id="$2"
+    local thread_ts="${3:-}"
+    local limit="${4:-20}"
+
+    local token cookie
+    token=$(get_workspace_token "$workspace")
+    cookie=$(get_workspace_cookie "$workspace")
+
+    if [[ -z "$token" ]]; then
+        log_error "No token found for workspace: $workspace"
+        return 1
+    fi
+
+    local url="$SLACK_API_BASE/conversations.history?channel=$channel_id&limit=$limit"
+
+    if [[ -n "$thread_ts" ]]; then
+        url="$SLACK_API_BASE/conversations.replies?channel=$channel_id&ts=$thread_ts&limit=$limit"
+    fi
+
+    local curl_args=(
+        -sS
+        -H "Authorization: Bearer $token"
+    )
+
+    if [[ -n "$cookie" ]]; then
+        curl_args+=(-H "Cookie: d=$cookie")
+    fi
+
+    local method="conversations.history"
+    [[ -n "$thread_ts" ]] && method="conversations.replies"
+    increment_api_counter
+    log_verbose "API: $method"
+
+    local response
+    response=$(curl "${curl_args[@]}" "$url")
+
+    local ok
+    ok=$(echo "$response" | jq -r '.ok')
+
+    if [[ "$ok" == "true" ]]; then
+        echo "$response"
+        return 0
+    else
+        local error
+        error=$(echo "$response" | jq -r '.error // "unknown error"')
+        log_error "Failed to fetch messages: $error"
+        return 1
+    fi
+}
+
+# Populate user cache by fetching all users (paginated)
+populate_user_cache() {
+    local workspace="$1"
+    mkdir -p "$CACHE_DIR"
+    local cache_file="$CACHE_DIR/users-$workspace.json"
+
+    log_verbose "Populating user cache for $workspace..."
+
+    local cursor=""
+    local all_users="{}"
+
+    while true; do
+        local payload="{\"limit\":1000"
+        [[ -n "$cursor" ]] && payload="$payload,\"cursor\":\"$cursor\""
+        payload="$payload}"
+
+        local response
+        response=$(slack_api_call "$workspace" "users.list" "$payload")
+
+        local ok
+        ok=$(echo "$response" | jq -r '.ok')
+
+        if [[ "$ok" != "true" ]]; then
+            log_warn "Failed to fetch users list"
+            return 1
+        fi
+
+        # Extract users and add to cache
+        # Priority: display_name > real_name > name (username) > id
+        local new_users
+        new_users=$(echo "$response" | jq '[.members[] | {key: .id, value: ((.profile.display_name | select(. != "" and . != null)) // (.profile.real_name | select(. != "" and . != null)) // .name // .id)}] | from_entries')
+        all_users=$(echo "$all_users" "$new_users" | jq -s '.[0] * .[1]')
+
+        # Check for next page
+        cursor=$(echo "$response" | jq -r '.response_metadata.next_cursor // empty')
+        if [[ -z "$cursor" ]]; then
+            break
+        fi
+        log_verbose "Fetching next page of users..."
+    done
+
+    # Save to cache
+    echo "$all_users" > "$cache_file"
+    local count
+    count=$(echo "$all_users" | jq 'keys | length')
+    log_verbose "Cached $count users for $workspace"
+}
+
+get_cached_channel_id() {
+    local workspace="$1"
+    local channel_name="$2"
+
+    local cache_file="$CACHE_DIR/channels-$workspace.json"
+    if [[ -f "$cache_file" ]]; then
+        jq -r ".\"$channel_name\" // empty" "$cache_file" 2>/dev/null
+    fi
+}
+
+cache_channel() {
+    local workspace="$1"
+    local channel_name="$2"
+    local channel_id="$3"
+
+    [[ -z "$channel_name" || -z "$channel_id" ]] && return
+
+    mkdir -p "$CACHE_DIR"
+    local cache_file="$CACHE_DIR/channels-$workspace.json"
+
+    local current="{}"
+    [[ -f "$cache_file" ]] && current=$(cat "$cache_file")
+
+    echo "$current" | jq ".\"$channel_name\" = \"$channel_id\"" > "$cache_file"
+    log_verbose "Cached channel: $channel_name → $channel_id"
+}
+
+# Reverse lookup: get channel name from ID using cache
+get_cached_channel_name() {
+    local workspace="$1"
+    local channel_id="$2"
+
+    local cache_file="$CACHE_DIR/channels-$workspace.json"
+    if [[ -f "$cache_file" ]]; then
+        # Reverse the key/value pairs and look up by ID
+        jq -r "to_entries | map(select(.value == \"$channel_id\")) | .[0].key // empty" "$cache_file" 2>/dev/null
+    fi
+}
+
+get_user_name() {
+    local workspace="$1"
+    local user_id="$2"
+
+    # Cache user lookups in XDG cache directory
+    mkdir -p "$CACHE_DIR"
+    local cache_file="$CACHE_DIR/users-$workspace.json"
+
+    # Check cache first
+    if [[ -f "$cache_file" ]]; then
+        local cached
+        cached=$(jq -r ".\"$user_id\" // empty" "$cache_file" 2>/dev/null)
+        if [[ -n "$cached" ]]; then
+            echo "$cached"
+            return
+        fi
+    fi
+
+    # If it's a bot ID, try to look it up
+    if [[ "$user_id" == B* ]]; then
+        local bot_name
+        bot_name=$(get_bot_name "$workspace" "$user_id")
+        if [[ -n "$bot_name" ]]; then
+            # Cache the bot name
+            local current="{}"
+            [[ -f "$cache_file" ]] && current=$(cat "$cache_file")
+            echo "$current" | jq ".\"$user_id\" = \"$bot_name\"" > "$cache_file"
+            echo "$bot_name"
+            return
+        fi
+    fi
+
+    # Cache exists but user not found - try users.info API for Slack Connect users
+    if [[ -f "$cache_file" ]]; then
+        # Try to look up via API (useful for Slack Connect / external users)
+        # Note: users.info requires form data, not JSON
+        local token cookie
+        token=$(get_workspace_token "$workspace")
+        cookie=$(get_workspace_cookie "$workspace")
+        local curl_args=(-sS -X POST "$SLACK_API_BASE/users.info" -H "Authorization: Bearer $token" -d "user=$user_id")
+        [[ -n "$cookie" ]] && curl_args+=(-H "Cookie: d=$cookie")
+        increment_api_counter
+        log_verbose "API: users.info ($user_id)"
+        local user_response
+        user_response=$(curl "${curl_args[@]}" 2>/dev/null) || true
+        if [[ -n "$user_response" ]]; then
+            local user_ok
+            user_ok=$(echo "$user_response" | jq -r '.ok // false')
+            if [[ "$user_ok" == "true" ]]; then
+                local display_name real_name name
+                display_name=$(echo "$user_response" | jq -r '.user.profile.display_name // empty | select(. != "")')
+                real_name=$(echo "$user_response" | jq -r '.user.profile.real_name // empty | select(. != "")')
+                name="${display_name:-$real_name}"
+                if [[ -n "$name" && "$name" != "null" ]]; then
+                    # Cache for future use
+                    local current="{}"
+                    [[ -f "$cache_file" ]] && current=$(cat "$cache_file")
+                    echo "$current" | jq ".\"$user_id\" = \"$name\"" > "$cache_file"
+                    echo "$name"
+                    return
+                fi
+            fi
+        fi
+        echo "$user_id"
+        return
+    fi
+
+    # No cache exists - populate it
+    if populate_user_cache "$workspace"; then
+        # Try again from cache
+        local cached
+        cached=$(jq -r ".\"$user_id\" // empty" "$cache_file" 2>/dev/null)
+        if [[ -n "$cached" ]]; then
+            echo "$cached"
+            return
+        fi
+    fi
+
+    # Still not found - return the user ID
+    echo "$user_id"
+}
+
+get_bot_name() {
+    local workspace="$1"
+    local bot_id="$2"
+
+    local token cookie
+    token=$(get_workspace_token "$workspace")
+    cookie=$(get_workspace_cookie "$workspace")
+
+    local curl_args=(
+        -sS -X POST "$SLACK_API_BASE/bots.info"
+        -H "Authorization: Bearer $token"
+        -d "bot=$bot_id"
+    )
+    [[ -n "$cookie" ]] && curl_args+=(-H "Cookie: d=$cookie")
+
+    increment_api_counter
+    log_verbose "API: bots.info"
+
+    local response
+    response=$(curl "${curl_args[@]}" | tr -d '\000-\037')
+
+    local ok
+    ok=$(echo "$response" | jq -r '.ok')
+    if [[ "$ok" == "true" ]]; then
+        echo "$response" | jq -r '.bot.name // empty'
+    fi
+}
+
+# Display inline image in iTerm2 (base64 encoded)
+# Based on ranger 1.9.4's implementation for tmux compatibility
+iterm2_image() {
+    local file="$1"
+    local height="${2:-1}"
+    if [[ -f "$file" ]]; then
+        local b64
+        b64=$(base64 < "$file")
+
+        # Check if in tmux/screen (ranger checks: "screen" in TERM)
+        if [[ "${TERM:-}" == *screen* ]]; then
+            # tmux passthrough format from ranger 1.9.4:
+            # size = length of base64 content (not original file size)
+            # \n + space is required for tmux passthrough to render the image
+            # Caller handles cursor positioning after
+            printf '\033Ptmux;\033\033]1337;File=inline=1;preserveAspectRatio=0;size=%s;height=%s:%s\a\033\\\n ' \
+                "${#b64}" "$height" "$b64"
+        else
+            # Standard iTerm2 format
+            printf '\033]1337;File=inline=1;height=%s:%s\a' \
+                "$height" "$b64"
+        fi
+    fi
+}
+
+# Standard emoji name to Unicode mapping
+# Will be populated from gemoji data if available, otherwise uses fallback
+declare -A STANDARD_EMOJI=()
+EMOJI_DATA_LOADED=false
+
+# Load emoji data from cached gemoji database
+load_emoji_data() {
+    [[ "$EMOJI_DATA_LOADED" == "true" ]] && return
+    EMOJI_DATA_LOADED=true
+
+    local emoji_json="$CACHE_DIR/gemoji.json"
+    if [[ -f "$emoji_json" ]]; then
+        # Load from gemoji database (aliases only, not tags - tags can conflict)
+        # e.g., mrs_claus has tag "santa" which would overwrite the santa alias
+        while IFS=$'\t' read -r name emoji; do
+            [[ -n "$name" && -n "$emoji" ]] && STANDARD_EMOJI["$name"]="$emoji"
+        done < <(jq -r '.[] | . as $e | .aliases[] | . + "\t" + $e.emoji' "$emoji_json" 2>/dev/null)
+        return
+    fi
+
+    # Fallback: minimal set of common emojis
+    STANDARD_EMOJI=(
+        [smile]="😄" [grinning]="😀" [joy]="😂" [rofl]="🤣" [smiley]="😃"
+        [laughing]="😆" [wink]="😉" [blush]="😊" [heart_eyes]="😍" [kissing_heart]="😘"
+        [thinking]="🤔" [thinking_face]="🤔" [raised_eyebrow]="🤨" [neutral_face]="😐"
+        [expressionless]="😑" [rolling_eyes]="🙄" [hushed]="😯" [flushed]="😳"
+        [disappointed]="😞" [worried]="😟" [angry]="😠" [rage]="😡" [cry]="😢"
+        [sob]="😭" [scream]="😱" [fearful]="😨" [cold_sweat]="😰" [sweat]="😓"
+        [thumbsup]="👍" [+1]="👍" [thumbsdown]="👎" [-1]="👎"
+        [ok_hand]="👌" [punch]="👊" [fist]="✊" [wave]="👋" [hand]="✋"
+        [clap]="👏" [pray]="🙏" [muscle]="💪" [point_up]="☝️" [point_down]="👇"
+        [point_left]="👈" [point_right]="👉" [v]="✌️" [metal]="🤘"
+        [heart]="❤️" [orange_heart]="🧡" [yellow_heart]="💛" [green_heart]="💚"
+        [blue_heart]="💙" [purple_heart]="💜" [black_heart]="🖤" [broken_heart]="💔"
+        [fire]="🔥" [sparkles]="✨" [star]="⭐" [star2]="🌟" [zap]="⚡"
+        [sunny]="☀️" [cloud]="☁️" [umbrella]="☂️" [rainbow]="🌈" [snowflake]="❄️"
+        [100]="💯" [boom]="💥" [collision]="💥" [tada]="🎉" [confetti_ball]="🎊"
+        [balloon]="🎈" [gift]="🎁" [trophy]="🏆" [medal]="🏅" [crown]="👑"
+        [rocket]="🚀" [airplane]="✈️" [car]="🚗" [bike]="🚲" [bus]="🚌"
+        [coffee]="☕" [tea]="🍵" [beer]="🍺" [beers]="🍻" [wine_glass]="🍷"
+        [pizza]="🍕" [hamburger]="🍔" [taco]="🌮" [burrito]="🌯" [hotdog]="🌭"
+        [dog]="🐕" [cat]="🐈" [rabbit]="🐇" [bear]="🐻" [panda_face]="🐼"
+        [eyes]="👀" [eye]="👁️" [ear]="👂" [nose]="👃" [brain]="🧠"
+        [check]="✅" [white_check_mark]="✅" [heavy_check_mark]="✔️"
+        [x]="❌" [cross_mark]="❌" [warning]="⚠️" [question]="❓" [exclamation]="❗"
+        [bulb]="💡" [memo]="📝" [book]="📖" [books]="📚" [bookmark]="🔖"
+        [link]="🔗" [paperclip]="📎" [scissors]="✂️" [lock]="🔒" [unlock]="🔓"
+        [key]="🔑" [hammer]="🔨" [wrench]="🔧" [gear]="⚙️" [mag]="🔍"
+        [phone]="📱" [computer]="💻" [desktop_computer]="🖥️" [keyboard]="⌨️"
+        [email]="📧" [envelope]="✉️" [inbox_tray]="📥" [outbox_tray]="📤"
+        [calendar]="📅" [clock]="🕐" [hourglass]="⏳" [stopwatch]="⏱️" [alarm_clock]="⏰"
+        [thread]="🧵" [yarn]="🧶" [ribbon]="🎀" [bell]="🔔" [no_bell]="🔕"
+        [speech_balloon]="💬" [thought_balloon]="💭" [speaking_head]="🗣️"
+        [raised_hands]="🙌" [folded_hands]="🙏" [handshake]="🤝"
+        [writing_hand]="✍️" [nail_care]="💅" [selfie]="🤳"
+        [rightwards_hand]="🫱" [leftwards_hand]="🫲" [palm_down_hand]="🫳" [palm_up_hand]="🫴"
+        [pinched_fingers]="🤌" [pinching_hand]="🤏" [crossed_fingers]="🤞" [love_you_gesture]="🤟"
+        [call_me_hand]="🤙" [backhand_index_pointing_left]="👈" [backhand_index_pointing_right]="👉"
+        [sunglasses]="😎" [nerd_face]="🤓" [partying_face]="🥳" [face_with_monocle]="🧐"
+        [slightly_smiling_face]="🙂" [upside_down_face]="🙃" [zipper_mouth_face]="🤐"
+        [sleepy]="😪" [sleeping]="😴" [yawning_face]="🥱" [dizzy_face]="😵"
+        [mask]="😷" [face_with_thermometer]="🤒" [sneezing_face]="🤧"
+        [money_mouth_face]="🤑" [hugs]="🤗" [shushing_face]="🤫"
+        [skull]="💀" [alien]="👽" [robot]="🤖" [ghost]="👻" [poop]="💩"
+        [see_no_evil]="🙈" [hear_no_evil]="🙉" [speak_no_evil]="🙊"
+        [man]="👨" [woman]="👩" [boy]="👦" [girl]="👧" [baby]="👶"
+        [house]="🏠" [office]="🏢" [hospital]="🏥" [school]="🏫" [bank]="🏦"
+        [us]="🇺🇸" [flag-us]="🇺🇸" [uk]="🇬🇧" [flag-uk]="🇬🇧" [jp]="🇯🇵" [flag-jp]="🇯🇵"
+        [red_circle]="🔴" [orange_circle]="🟠" [yellow_circle]="🟡" [green_circle]="🟢"
+        [blue_circle]="🔵" [purple_circle]="🟣" [white_circle]="⚪" [black_circle]="⚫"
+        [a]="🅰️" [b]="🅱️" [o2]="🅾️" [parking]="🅿️" [sos]="🆘" [new]="🆕" [free]="🆓"
+        [cool]="🆒" [ok]="🆗" [up]="🆙" [ng]="🆖" [vs]="🆚"
+        [tada]="🎉" [eyes]="👀" [wave]="👋"
+    )
+}
+
+# Download gemoji database for comprehensive emoji support
+download_emoji_data() {
+    mkdir -p "$CACHE_DIR"
+    local emoji_json="$CACHE_DIR/gemoji.json"
+    log_info "Downloading emoji database..."
+    if curl -sS -o "$emoji_json" "https://raw.githubusercontent.com/github/gemoji/master/db/emoji.json"; then
+        local count
+        count=$(jq 'length' "$emoji_json")
+        log_info "Downloaded $count emojis to $emoji_json"
+    else
+        log_error "Failed to download emoji database"
+        return 1
+    fi
+}
+
+# Replace Slack mentions and links with readable text
+# Handles: <@UXXXX>, <@UXXXX|name>, <#CXXXX|channel>, <!here>, <URL|text>, etc.
+# Args: text, workspace
+replace_mentions() {
+    local text="$1"
+    local workspace="$2"
+
+    # Handle user mentions: <@UXXXXXX> or <@UXXXXXX|display_name>
+    # User IDs can start with U (regular), W (enterprise/Slack Connect), or B (bot)
+    local user_mentions
+    user_mentions=$(echo "$text" | grep -oE '<@[UWB][A-Z0-9]+(\|[^>]*)?>') || true
+
+    if [[ -n "$user_mentions" ]]; then
+        while IFS= read -r mention; do
+            [[ -z "$mention" ]] && continue
+            local user_id display_name replacement
+
+            if [[ "$mention" =~ \<@([UWB][A-Z0-9]+)\|([^>]+)\> ]]; then
+                # Has display name already: <@U123|john>
+                display_name="${BASH_REMATCH[2]}"
+                replacement="@$display_name"
+            elif [[ "$mention" =~ \<@([UWB][A-Z0-9]+)\> ]]; then
+                # Just ID: <@U123> - need to look up
+                user_id="${BASH_REMATCH[1]}"
+                display_name=$(get_user_name "$workspace" "$user_id")
+                [[ -z "$display_name" ]] && display_name="$user_id"
+                replacement="@$display_name"
+            fi
+
+            if [[ -n "$replacement" ]]; then
+                text="${text//$mention/$replacement}"
+            fi
+        done <<< "$user_mentions"
+    fi
+
+    # Handle channel mentions: <#CXXXXXX|channel-name> -> #channel-name
+    text=$(echo "$text" | sed -E 's/<#[A-Z0-9]+\|([^>]+)>/#\1/g')
+    # Handle channel mentions without name: <#CXXXXXX> -> #CXXXXXX
+    text=$(echo "$text" | sed -E 's/<#([A-Z0-9]+)>/#\1/g')
+
+    # Handle special mentions
+    text="${text//<!here>/@here}"
+    text="${text//<!channel>/@channel}"
+    text="${text//<!everyone>/@everyone}"
+    # Handle subteam mentions: <!subteam^SXXXX|@group-name>
+    text=$(echo "$text" | sed -E 's/<!subteam\^[A-Z0-9]+\|@?([^>]+)>/@\1/g')
+
+    # Handle links: <URL|display> -> display
+    text=$(echo "$text" | sed -E 's/<([^|>]+)\|([^>]+)>/\2/g')
+    # Handle bare links: <URL> -> URL
+    text=$(echo "$text" | sed -E 's/<([^>]+)>/\1/g')
+
+    printf '%s' "$text"
+}
+
+# Replace :emoji: codes with Unicode or inline images
+# Args: text, workspace, show_workspace_emoji (true/false)
+replace_emoji() {
+    local text="$1"
+    local workspace="$2"
+    local show_workspace_emoji="${3:-false}"
+
+    # Load emoji data on first use
+    load_emoji_data
+
+    # Extract unique emoji names from text
+    local emoji_names
+    emoji_names=$(echo "$text" | grep -oE ':[a-zA-Z0-9_+-]+:' | sort -u)
+
+    if [[ -z "$emoji_names" ]]; then
+        echo "$text"
+        return
+    fi
+
+    # Check workspace-specific emoji directories (only if workspace emoji enabled)
+    local emoji_dirs=()
+    if [[ "$show_workspace_emoji" == "true" ]]; then
+        # Check configured emoji_dir first
+        local config_emoji_dir
+        config_emoji_dir=$(get_config_value ".emoji_dir" "")
+        if [[ -n "$config_emoji_dir" && -d "$config_emoji_dir/$workspace" ]]; then
+            emoji_dirs+=("$config_emoji_dir/$workspace")
+        fi
+        # Also check cache directory
+        if [[ -d "$CACHE_DIR/emoji/$workspace" ]]; then
+            emoji_dirs+=("$CACHE_DIR/emoji/$workspace")
+        fi
+    fi
+
+    local result="$text"
+    while IFS= read -r emoji_code; do
+        [[ -z "$emoji_code" ]] && continue
+        local emoji_name="${emoji_code//:/}"
+        local replacement=""
+
+        local found_workspace_emoji=false
+        # First, check for custom emoji image files in all emoji directories
+        if [[ ${#emoji_dirs[@]} -gt 0 ]]; then
+            for emoji_dir in "${emoji_dirs[@]}"; do
+                for ext in png gif jpg jpeg; do
+                    if [[ -f "$emoji_dir/$emoji_name.$ext" ]]; then
+                        # For tmux: use marker with path AND name for fallback
+                        if [[ "${TERM:-}" == *screen* ]]; then
+                            replacement="%%IMG:$emoji_dir/$emoji_name.$ext:$emoji_name%%"
+                        else
+                            replacement=$(iterm2_image "$emoji_dir/$emoji_name.$ext" "1")
+                        fi
+                        if [[ -n "$replacement" ]]; then
+                            found_workspace_emoji=true
+                            break 2
+                        fi
+                        # iterm2_image returned empty (e.g. GIF in tmux)
+                        found_workspace_emoji=true
+                        break 2
+                    fi
+                done
+            done
+        fi
+
+        # If not a workspace emoji, check standard emoji map
+        if [[ "$found_workspace_emoji" == "false" && -n "${STANDARD_EMOJI[$emoji_name]:-}" ]]; then
+            replacement="${STANDARD_EMOJI[$emoji_name]}"
+        fi
+
+        # Replace if we found something
+        if [[ -n "$replacement" ]]; then
+            result="${result//$emoji_code/$replacement}"
+        fi
+    done <<< "$emoji_names"
+
+    # Return text with placeholders - images handled at output time
+    printf '%s\n' "$result"
+}
+
+# Output text that may contain %%IMG:path:name%% placeholders
+# In tmux, outputs image + :name: fallback; otherwise just prints text
+# Args: text, show_fallback (default: true)
+print_with_images() {
+    local text="$1"
+    local show_fallback="${2:-true}"
+
+    if [[ "${TERM:-}" == *screen* && "$text" == *"%%IMG:"* ]]; then
+        # Track total columns printed on current line
+        local col=0
+        while [[ "$text" == *"%%IMG:"* ]]; do
+            local before="${text%%\%\%IMG:*}"
+            printf '%b' "$before"
+
+            # Calculate columns: count characters after last newline in $before
+            # Strip ANSI escape codes before counting (they don't take visual space)
+            local last_line="${before##*$'\n'}"
+            local stripped
+            stripped=$(printf '%s' "$last_line" | sed $'s/\033\\[[0-9;]*m//g')
+            if [[ "$before" == *$'\n'* ]]; then
+                # There was a newline, col resets to width of text after it
+                col=$(printf '%s' "$stripped" | wc -m | tr -d ' ')
+            else
+                # No newline, add to existing col
+                stripped=$(printf '%s' "$before" | sed $'s/\033\\[[0-9;]*m//g')
+                local width
+                width=$(printf '%s' "$stripped" | wc -m | tr -d ' ')
+                col=$((col + width))
+            fi
+
+            # Parse %%IMG:path:name%% format
+            local temp="${text#*%%IMG:}"
+            local img_info="${temp%%\%\%*}"
+            local img_path="${img_info%:*}"
+            local emoji_name="${img_info##*:}"
+
+            if [[ -f "$img_path" ]]; then
+                iterm2_image "$img_path" "1"
+                # Image outputs + \n + space; cursor at col 1 of next line
+                # Move up 1, then right to col+2 (past where image rendered)
+                printf '\033[1A\033[%dC\033[K' "$((col + 2))"
+                col=$((col + 3))  # image takes ~3 columns visually
+            fi
+            # Print :name: as fallback only if requested (shows if image fails due to scroll)
+            if [[ "$show_fallback" == "true" ]]; then
+                printf ':%s: ' "$emoji_name"
+                col=$((col + ${#emoji_name} + 3))  # :name: + space
+            fi
+
+            text="${temp#*%%}"
+        done
+        printf '%b' "$text"
+    else
+        printf '%b' "$text"
+    fi
+}
+
+format_messages() {
+    local workspace="$1"
+    local messages_json="$2"
+    local output_format="${3:-simple}"
+    local is_thread="${4:-false}"
+    local skip_user_lookup="${5:-false}"
+    local with_threads="${6:-false}"
+    local channel_id="${7:-}"
+    local show_emoji="${8:-false}"
+    local show_workspace_emoji="${9:-false}"
+    local reaction_mode="${10:-summary}"  # summary, names, images, none
+
+    if [[ "$output_format" == "json" ]]; then
+        echo "$messages_json" | jq '.messages'
+        return
+    fi
+
+    # Simple text format
+    # conversations.history returns newest-first, conversations.replies returns oldest-first
+    local messages
+    if [[ "$is_thread" == "true" ]]; then
+        messages=$(echo "$messages_json" | jq -r '.messages | .[] | @base64')
+    else
+        messages=$(echo "$messages_json" | jq -r '.messages | reverse | .[] | @base64')
+    fi
+
+    # Pre-build local user map from embedded user_profile data in messages
+    # This captures external/Slack Connect users who aren't in the org's user cache
+    declare -A local_user_map
+    while IFS=$'\t' read -r uid uname; do
+        [[ -n "$uid" && -n "$uname" ]] && local_user_map["$uid"]="$uname"
+    done < <(echo "$messages_json" | jq -r '.messages[] | select(.user_profile != null) | "\(.user // .bot_id)\t\((.user_profile.display_name | select(. != "" and . != null)) // .user_profile.real_name // .username)"')
+
+    local first_message=true
+    for msg in $messages; do
+        local decoded
+        decoded=$(echo "$msg" | base64 -d)
+
+        local user_id text ts embedded_name reply_count files_info attachments_info reactions_json
+        user_id=$(echo "$decoded" | jq -r '.user // .bot_id // "unknown"')
+        text=$(echo "$decoded" | jq -r '.text // ""')
+        ts=$(echo "$decoded" | jq -r '.ts')
+        reply_count=$(echo "$decoded" | jq -r '.reply_count // 0')
+        reactions_json=$(echo "$decoded" | jq -c '.reactions // []')
+        # Try to get name from embedded user_profile (works for external/Slack Connect users)
+        # Use display_name if non-empty, otherwise fall back to real_name, then username
+        embedded_name=$(echo "$decoded" | jq -r '(.user_profile.display_name | select(. != "")) // .user_profile.real_name // .username // empty')
+
+        # Check for files (images, documents, etc.) - include permalink
+        files_info=$(echo "$decoded" | jq -r 'if .files then [.files[] | "[\(.mimetype | split("/")[0]):\(.name // .title // "file")] \(.permalink // .url_private // "")"] | join(" ") else "" end')
+
+        # Check for attachments (link previews, bot attachments, etc.) - include URL
+        attachments_info=$(echo "$decoded" | jq -r 'if .attachments then [.attachments[] | "[attachment: \(.title // .fallback // .text // "link")] \(.image_url // .title_link // .from_url // ((.blocks // [])[] | select(.type == "image") | .image_url) // "")"] | join(" ") else "" end')
+
+        # Build display text - include files/attachments if present
+        if [[ -z "$text" && -n "$files_info" ]]; then
+            text="$files_info"
+        elif [[ -n "$files_info" ]]; then
+            text="$text $files_info"
+        fi
+
+        if [[ -z "$text" && -n "$attachments_info" ]]; then
+            text="$attachments_info"
+        elif [[ -n "$attachments_info" ]]; then
+            text="$text $attachments_info"
+        fi
+
+        # Skip truly empty messages (no text, files, or attachments)
+        [[ -z "$text" ]] && continue
+
+        # Get username (check embedded profile first, then local map, then cache)
+        local username
+        if [[ "$skip_user_lookup" == "true" ]]; then
+            username="$user_id"
+        elif [[ -n "$embedded_name" ]]; then
+            # Use embedded name from message (no API call needed)
+            username="$embedded_name"
+        elif [[ -n "${local_user_map[$user_id]:-}" ]]; then
+            username="${local_user_map[$user_id]}"
+        elif [[ "$user_id" == "unknown" ]]; then
+            username="bot"
+        else
+            username=$(get_user_name "$workspace" "$user_id")
+        fi
+
+        # Format timestamp
+        local timestamp
+        timestamp=$(date -r "${ts%.*}" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "$ts")
+
+        # Clean up text (replace user mentions, channel mentions, links, etc.)
+        text=$(replace_mentions "$text" "$workspace")
+
+        # Replace emoji codes with inline images if enabled
+        if [[ "$show_emoji" == "true" ]]; then
+            text=$(replace_emoji "$text" "$workspace" "$show_workspace_emoji")
+        fi
+
+        # Add blank line before each message (except the first)
+        if $first_message; then
+            first_message=false
+        else
+            echo ""
+        fi
+
+        # Build thread indicator
+        local thread_indicator=""
+        if [[ "$reply_count" != "0" && "$reply_count" != "null" ]]; then
+            thread_indicator=" ${YELLOW}[${reply_count} replies]${NC}"
+        fi
+
+        # Build reactions display based on reaction_mode
+        local reactions_display=""
+        if [[ "$reaction_mode" != "none" && "$reactions_json" != "[]" ]]; then
+            if [[ "$reaction_mode" == "summary" ]]; then
+                # Compact summary: [3 :oddheart:, 2 🤔, 1 :rofl:]
+                # Group skin tone variants together (e.g., mrs_claus::skin-tone-2 -> mrs_claus)
+                local summary_parts=()
+                while IFS= read -r reaction_line; do
+                    [[ -z "$reaction_line" ]] && continue
+                    local reaction_name reaction_count
+                    reaction_name=$(echo "$reaction_line" | cut -d$'\t' -f1)
+                    reaction_count=$(echo "$reaction_line" | cut -d$'\t' -f2)
+
+                    # Get emoji - use workspace images if enabled
+                    local reaction_emoji=":${reaction_name}:"
+                    if [[ "$show_emoji" == "true" ]]; then
+                        reaction_emoji=$(replace_emoji "$reaction_emoji" "$workspace" "$show_workspace_emoji")
+                    fi
+                    summary_parts+=("${reaction_count} ${reaction_emoji}")
+                done < <(echo "$reactions_json" | jq -r '
+                    # Group by base emoji name (strip skin tone suffixes)
+                    group_by(.name | gsub("::skin-tone-[0-9]+$"; "") | gsub(":skin-tone-[0-9]+$"; ""))
+                    | map({
+                        name: (.[0].name | gsub("::skin-tone-[0-9]+$"; "") | gsub(":skin-tone-[0-9]+$"; "")),
+                        count: (map(.users | length) | add)
+                    })
+                    | sort_by(-.count)
+                    | .[]
+                    | "\(.name)\t\(.count)"
+                ')
+
+                if [[ ${#summary_parts[@]} -gt 0 ]]; then
+                    local summary_str
+                    summary_str=$(printf '%s\n' "${summary_parts[@]}" | paste -sd ',' - | sed 's/,/, /g')
+                    reactions_display=" ${YELLOW}[${summary_str}]${NC}"
+                fi
+            else
+                # Expanded mode (names): show each reaction with user names
+                local reaction_parts=()
+                while IFS= read -r reaction_line; do
+                    [[ -z "$reaction_line" ]] && continue
+                    local reaction_name reaction_users_json
+                    reaction_name=$(echo "$reaction_line" | cut -d$'\t' -f1)
+                    reaction_users_json=$(echo "$reaction_line" | cut -d$'\t' -f2)
+
+                    # Get emoji - use workspace images if enabled
+                    local reaction_emoji=":${reaction_name}:"
+                    if [[ "$show_emoji" == "true" ]]; then
+                        reaction_emoji=$(replace_emoji "$reaction_emoji" "$workspace" "$show_workspace_emoji")
+                    fi
+
+                    # Get usernames for reactors (check local map first, then cache)
+                    local reactor_names=()
+                    while IFS= read -r reactor_id; do
+                        [[ -z "$reactor_id" ]] && continue
+                        if [[ "$skip_user_lookup" == "true" ]]; then
+                            reactor_names+=("$reactor_id")
+                        elif [[ -n "${local_user_map[$reactor_id]:-}" ]]; then
+                            reactor_names+=("${local_user_map[$reactor_id]}")
+                        else
+                            reactor_names+=("$(get_user_name "$workspace" "$reactor_id")")
+                        fi
+                    done < <(echo "$reaction_users_json" | jq -r '.[]')
+
+                    # Join reactor names with commas
+                    local reactors_str
+                    reactors_str=$(printf '%s\n' "${reactor_names[@]}" | paste -sd ',' - | sed 's/,/, /g')
+                    reaction_parts+=("${reaction_emoji} ${reactors_str}")
+                done < <(echo "$reactions_json" | jq -r '.[] | "\(.name)\t\(.users)"')
+
+                if [[ ${#reaction_parts[@]} -gt 0 ]]; then
+                    reactions_display=$(printf '\n  %b↳%b %s' "${YELLOW}" "${NC}" "${reaction_parts[0]}")
+                    for ((i=1; i<${#reaction_parts[@]}; i++)); do
+                        reactions_display+=$(printf '\n  %b↳%b %s' "${YELLOW}" "${NC}" "${reaction_parts[$i]}")
+                    done
+                fi
+            fi
+        fi
+
+        # Add newline after name for multi-line messages, thread indicator at end
+        # Check for real newlines (not %%IMG%% placeholders)
+        local text_without_placeholders="${text//\%\%IMG:*\%\%/X}"
+        # Check if reactions contain images - if so, they need their own line for cursor positioning
+        local reactions_have_images=false
+        [[ "$reactions_display" == *"%%IMG:"* ]] && reactions_have_images=true
+
+        # When using workspace emoji, don't show text fallback after images
+        local show_fallback="true"
+        [[ "$show_workspace_emoji" == "true" ]] && show_fallback="false"
+
+        if [[ "$text_without_placeholders" == *$'\n'* ]]; then
+            printf '%b[%s]%b %b%s%b:\n' "${BLUE}" "$timestamp" "${NC}" "${BOLD}" "$username" "${NC}"
+            print_with_images "$text" "$show_fallback"
+            printf '%b' "${thread_indicator}"
+            if [[ "$reactions_have_images" == "true" ]]; then
+                printf '\n'
+            fi
+            print_with_images "${reactions_display}" "$show_fallback"
+            printf '\n'
+        else
+            printf '%b[%s]%b %b%s%b: ' "${BLUE}" "$timestamp" "${NC}" "${BOLD}" "$username" "${NC}"
+            print_with_images "$text" "$show_fallback"
+            printf '%b' "${thread_indicator}"
+            if [[ "$reactions_have_images" == "true" ]]; then
+                printf '\n'
+            fi
+            print_with_images "${reactions_display}" "$show_fallback"
+            printf '\n'
+        fi
+
+        # Fetch and display thread replies if requested
+        if [[ "$with_threads" == "true" && "$reply_count" != "0" && "$reply_count" != "null" && -n "$channel_id" ]]; then
+            local thread_json
+            if thread_json=$(fetch_messages "$workspace" "$channel_id" "$ts" "100"); then
+                # Build local user map for thread messages (for external/Slack Connect users)
+                declare -A thread_user_map
+                while IFS=$'\t' read -r tuid tuname; do
+                    [[ -n "$tuid" && -n "$tuname" ]] && thread_user_map["$tuid"]="$tuname"
+                done < <(echo "$thread_json" | jq -r '.messages[] | select(.user_profile != null) | "\(.user // .bot_id)\t\((.user_profile.display_name | select(. != "" and . != null)) // .user_profile.real_name // .username)"')
+                # Also include users from parent message context
+                for uid in "${!local_user_map[@]}"; do
+                    [[ -z "${thread_user_map[$uid]:-}" ]] && thread_user_map["$uid"]="${local_user_map[$uid]}"
+                done
+
+                # Display thread replies indented, skipping the parent message (first one)
+                local thread_messages
+                thread_messages=$(echo "$thread_json" | jq -r '.messages[1:] | .[] | @base64')
+
+                for thread_msg in $thread_messages; do
+                    local t_decoded t_user_id t_text t_ts t_embedded_name t_username t_timestamp t_files_info t_attachments_info t_reactions_json
+                    t_decoded=$(echo "$thread_msg" | base64 -d)
+                    t_user_id=$(echo "$t_decoded" | jq -r '.user // .bot_id // "unknown"')
+                    t_text=$(echo "$t_decoded" | jq -r '.text // ""')
+                    t_ts=$(echo "$t_decoded" | jq -r '.ts')
+                    t_reactions_json=$(echo "$t_decoded" | jq -c '.reactions // []')
+                    t_embedded_name=$(echo "$t_decoded" | jq -r '(.user_profile.display_name | select(. != "")) // .user_profile.real_name // .username // empty')
+
+                    # Check for files and attachments in thread replies - include URLs
+                    t_files_info=$(echo "$t_decoded" | jq -r 'if .files then [.files[] | "[\(.mimetype | split("/")[0]):\(.name // .title // "file")] \(.permalink // .url_private // "")"] | join(" ") else "" end')
+                    t_attachments_info=$(echo "$t_decoded" | jq -r 'if .attachments then [.attachments[] | "[attachment: \(.title // .fallback // .text // "link")] \(.image_url // .title_link // .from_url // ((.blocks // [])[] | select(.type == "image") | .image_url) // "")"] | join(" ") else "" end')
+
+                    if [[ -z "$t_text" && -n "$t_files_info" ]]; then
+                        t_text="$t_files_info"
+                    elif [[ -n "$t_files_info" ]]; then
+                        t_text="$t_text $t_files_info"
+                    fi
+
+                    if [[ -z "$t_text" && -n "$t_attachments_info" ]]; then
+                        t_text="$t_attachments_info"
+                    elif [[ -n "$t_attachments_info" ]]; then
+                        t_text="$t_text $t_attachments_info"
+                    fi
+
+                    [[ -z "$t_text" ]] && continue
+
+                    if [[ "$skip_user_lookup" == "true" ]]; then
+                        t_username="$t_user_id"
+                    elif [[ -n "$t_embedded_name" ]]; then
+                        t_username="$t_embedded_name"
+                    elif [[ -n "${thread_user_map[$t_user_id]:-}" ]]; then
+                        t_username="${thread_user_map[$t_user_id]}"
+                    elif [[ "$t_user_id" == "unknown" ]]; then
+                        t_username="bot"
+                    else
+                        t_username=$(get_user_name "$workspace" "$t_user_id")
+                    fi
+
+                    t_timestamp=$(date -r "${t_ts%.*}" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "$t_ts")
+                    t_text=$(echo "$t_text" | sed 's/<@[A-Z0-9]*>//g' | sed 's/<#[A-Z0-9]*|\([^>]*\)>/#\1/g' | sed 's/<[^|>]*|\([^>]*\)>/\1/g')
+
+                    # Replace emoji codes with inline images if enabled
+                    if [[ "$show_emoji" == "true" ]]; then
+                        t_text=$(replace_emoji "$t_text" "$workspace" "$show_workspace_emoji")
+                    fi
+
+                    # Build reactions display for thread message based on reaction_mode
+                    local t_reactions_display=""
+                    if [[ "$reaction_mode" != "none" && "$t_reactions_json" != "[]" ]]; then
+                        if [[ "$reaction_mode" == "summary" ]]; then
+                            # Compact summary for thread replies
+                            # Group skin tone variants together
+                            local t_summary_parts=()
+                            while IFS= read -r t_reaction_line; do
+                                [[ -z "$t_reaction_line" ]] && continue
+                                local t_reaction_name t_reaction_count
+                                t_reaction_name=$(echo "$t_reaction_line" | cut -d$'\t' -f1)
+                                t_reaction_count=$(echo "$t_reaction_line" | cut -d$'\t' -f2)
+
+                                # Get emoji - use workspace images if enabled
+                                local t_reaction_emoji=":${t_reaction_name}:"
+                                if [[ "$show_emoji" == "true" ]]; then
+                                    t_reaction_emoji=$(replace_emoji "$t_reaction_emoji" "$workspace" "$show_workspace_emoji")
+                                fi
+                                t_summary_parts+=("${t_reaction_count} ${t_reaction_emoji}")
+                            done < <(echo "$t_reactions_json" | jq -r '
+                                # Group by base emoji name (strip skin tone suffixes)
+                                group_by(.name | gsub("::skin-tone-[0-9]+$"; "") | gsub(":skin-tone-[0-9]+$"; ""))
+                                | map({
+                                    name: (.[0].name | gsub("::skin-tone-[0-9]+$"; "") | gsub(":skin-tone-[0-9]+$"; "")),
+                                    count: (map(.users | length) | add)
+                                })
+                                | sort_by(-.count)
+                                | .[]
+                                | "\(.name)\t\(.count)"
+                            ')
+
+                            if [[ ${#t_summary_parts[@]} -gt 0 ]]; then
+                                local t_summary_str
+                                t_summary_str=$(printf '%s\n' "${t_summary_parts[@]}" | paste -sd ',' - | sed 's/,/, /g')
+                                t_reactions_display=" ${YELLOW}[${t_summary_str}]${NC}"
+                            fi
+                        else
+                            # Expanded mode (names): show each reaction with user names
+                            local t_reaction_parts=()
+                            while IFS= read -r t_reaction_line; do
+                                [[ -z "$t_reaction_line" ]] && continue
+                                local t_reaction_name t_reaction_users_json
+                                t_reaction_name=$(echo "$t_reaction_line" | cut -d$'\t' -f1)
+                                t_reaction_users_json=$(echo "$t_reaction_line" | cut -d$'\t' -f2)
+
+                                # Get emoji - use workspace images if enabled
+                                local t_reaction_emoji=":${t_reaction_name}:"
+                                if [[ "$show_emoji" == "true" ]]; then
+                                    t_reaction_emoji=$(replace_emoji "$t_reaction_emoji" "$workspace" "$show_workspace_emoji")
+                                fi
+
+                                # Get usernames for reactors (check thread map first, then cache)
+                                local t_reactor_names=()
+                                while IFS= read -r t_reactor_id; do
+                                    [[ -z "$t_reactor_id" ]] && continue
+                                    if [[ "$skip_user_lookup" == "true" ]]; then
+                                        t_reactor_names+=("$t_reactor_id")
+                                    elif [[ -n "${thread_user_map[$t_reactor_id]:-}" ]]; then
+                                        t_reactor_names+=("${thread_user_map[$t_reactor_id]}")
+                                    else
+                                        t_reactor_names+=("$(get_user_name "$workspace" "$t_reactor_id")")
+                                    fi
+                                done < <(echo "$t_reaction_users_json" | jq -r '.[]')
+
+                                local t_reactors_str
+                                t_reactors_str=$(printf '%s\n' "${t_reactor_names[@]}" | paste -sd ',' - | sed 's/,/, /g')
+                                t_reaction_parts+=("${t_reaction_emoji} ${t_reactors_str}")
+                            done < <(echo "$t_reactions_json" | jq -r '.[] | "\(.name)\t\(.users)"')
+
+                            if [[ ${#t_reaction_parts[@]} -gt 0 ]]; then
+                                t_reactions_display=$(printf '\n    %b↳%b %s' "${YELLOW}" "${NC}" "${t_reaction_parts[0]}")
+                                for ((i=1; i<${#t_reaction_parts[@]}; i++)); do
+                                    t_reactions_display+=$(printf '\n    %b↳%b %s' "${YELLOW}" "${NC}" "${t_reaction_parts[$i]}")
+                                done
+                            fi
+                        fi
+                    fi
+
+                    # Display indented thread reply
+                    # Check for real newlines (not %%IMG%% placeholders)
+                    local t_text_without_placeholders="${t_text//\%\%IMG:*\%\%/X}"
+                    # Check if reactions contain images
+                    local t_reactions_have_images=false
+                    [[ "$t_reactions_display" == *"%%IMG:"* ]] && t_reactions_have_images=true
+
+                    if [[ "$t_text_without_placeholders" == *$'\n'* ]]; then
+                        printf '  %b└ [%s]%b %b%s%b:\n' "${BLUE}" "$t_timestamp" "${NC}" "${BOLD}" "$t_username" "${NC}"
+                        print_with_images "$(echo "$t_text" | sed 's/^/    /')" "$show_fallback"
+                        if [[ "$t_reactions_have_images" == "true" ]]; then
+                            printf '\n'
+                        fi
+                        print_with_images "${t_reactions_display}" "$show_fallback"
+                        printf '\n'
+                    else
+                        printf '  %b└ [%s]%b %b%s%b: ' "${BLUE}" "$t_timestamp" "${NC}" "${BOLD}" "$t_username" "${NC}"
+                        print_with_images "$t_text" "$show_fallback"
+                        if [[ "$t_reactions_have_images" == "true" ]]; then
+                            printf '\n'
+                        fi
+                        print_with_images "${t_reactions_display}" "$show_fallback"
+                        printf '\n'
+                    fi
+                done
+            fi
+        fi
+    done
+}
+
+#######################################
+# Setup Wizard
+#######################################
+
+run_setup_wizard() {
+    echo -e "${BOLD}Welcome to slack CLI setup!${NC}"
+    echo ""
+
+    ensure_config_dir
+
+    # Check for age
+    if ! has_age; then
+        echo -e "${YELLOW}Warning:${NC} 'age' encryption tool not found."
+        echo "Your Slack tokens will be stored unencrypted."
+        echo "Install age for encrypted storage: brew install age (macOS) or apt install age (Linux)"
+        echo ""
+    fi
+
+    # SSH key selection
+    local ssh_key=""
+    if has_age; then
+        echo -e "${BOLD}SSH Key for Encryption${NC}"
+        local key_info
+        key_info=$(detect_ssh_key)
+
+        case "$key_info" in
+            both:*)
+                local ed25519_path rsa_path
+                ed25519_path=$(echo "$key_info" | cut -d: -f2)
+                rsa_path=$(echo "$key_info" | cut -d: -f3)
+                echo "Found multiple SSH keys:"
+                echo "  1) $ed25519_path (ed25519, recommended)"
+                echo "  2) $rsa_path (rsa)"
+                read -rp "Select key [1]: " key_choice
+                key_choice="${key_choice:-1}"
+                if [[ "$key_choice" == "2" ]]; then
+                    ssh_key="$rsa_path"
+                else
+                    ssh_key="$ed25519_path"
+                fi
+                ;;
+            ed25519:*|rsa:*)
+                ssh_key=$(echo "$key_info" | cut -d: -f2)
+                echo "Found SSH key: $ssh_key"
+                read -rp "Use this key? [Y/n]: " use_key
+                if [[ "${use_key,,}" == "n" ]]; then
+                    read -rp "Enter path to SSH key: " ssh_key
+                fi
+                ;;
+            none)
+                echo "No SSH key found at ~/.ssh/id_ed25519 or ~/.ssh/id_rsa"
+                read -rp "Enter path to SSH key (or leave empty to skip encryption): " ssh_key
+                ;;
+        esac
+
+        if [[ -n "$ssh_key" ]]; then
+            if [[ ! -f "$ssh_key" ]]; then
+                log_warn "SSH key not found: $ssh_key"
+                log_warn "Tokens will be stored unencrypted."
+                ssh_key=""
+            elif [[ ! -f "$ssh_key.pub" ]]; then
+                log_warn "Public key not found: $ssh_key.pub"
+                log_warn "Tokens will be stored unencrypted."
+                ssh_key=""
+            else
+                set_config_value ".ssh_key" "\"$ssh_key\""
+                echo -e "${GREEN}✓${NC} Will use $ssh_key for encryption"
+            fi
+        fi
+        echo ""
+    fi
+
+    # Add workspaces
+    local workspace_count=0
+    local add_more="y"
+
+    while [[ "${add_more,,}" == "y" ]]; do
+        echo -e "${BOLD}Add Slack Workspace${NC}"
+
+        read -rp "Workspace name (e.g., 'oddball', 'boehs'): " ws_name
+        if [[ -z "$ws_name" ]]; then
+            log_warn "Workspace name cannot be empty"
+            continue
+        fi
+
+        # Normalize to lowercase
+        ws_name="${ws_name,,}"
+
+        echo ""
+        echo "Enter your Slack token. This can be:"
+        echo "  - A user token (xoxp-...)"
+        echo "  - A client token with cookie (xoxc-...:xoxd-...)"
+        echo ""
+        read -rp "Token: " ws_token
+
+        if [[ -z "$ws_token" ]]; then
+            log_warn "Token cannot be empty"
+            continue
+        fi
+
+        # Parse token:cookie format
+        local token cookie=""
+        if [[ "$ws_token" == *":"* ]]; then
+            token="${ws_token%%:*}"
+            cookie="${ws_token#*:}"
+        else
+            token="$ws_token"
+        fi
+
+        add_workspace "$ws_name" "$token" "$cookie"
+        ((workspace_count++))
+
+        if [[ $workspace_count -eq 1 ]]; then
+            set_primary_workspace "$ws_name"
+            echo -e "${GREEN}✓${NC} Added workspace '$ws_name' as primary"
+        else
+            echo -e "${GREEN}✓${NC} Added workspace '$ws_name'"
+        fi
+
+        echo ""
+        read -rp "Add another workspace? [y/N]: " add_more
+        add_more="${add_more:-n}"
+        echo ""
+    done
+
+    if [[ $workspace_count -eq 0 ]]; then
+        log_warn "No workspaces configured. Run '$SCRIPT_NAME config' to add workspaces."
+    else
+        # Initialize default presets
+        ensure_default_presets
+
+        # Offer to download emoji data
+        echo -e "${BOLD}Emoji Support${NC}"
+        if [[ ! -f "$CACHE_DIR/gemoji.json" ]]; then
+            read -rp "Download standard emoji database (1870 emojis)? [Y/n]: " dl_gemoji
+            if [[ "${dl_gemoji,,}" != "n" ]]; then
+                download_emoji_data
+            fi
+        else
+            echo "Standard emoji database already downloaded"
+        fi
+        echo ""
+
+        read -rp "Download workspace emojis? [y/N]: " dl_ws_emoji
+        if [[ "${dl_ws_emoji,,}" == "y" ]]; then
+            get_workspaces | while read -r ws; do
+                echo "Downloading emojis for $ws..."
+                cmd_emoji download "$ws"
+            done
+        fi
+        echo ""
+
+        echo -e "${GREEN}Setup complete!${NC}"
+        echo ""
+        echo "Configured workspaces:"
+        get_workspaces | while read -r ws; do
+            local primary_indicator=""
+            [[ "$ws" == "$(get_primary_workspace)" ]] && primary_indicator=" (primary)"
+            echo "  - $ws$primary_indicator"
+        done
+        echo ""
+        echo "Try it out:"
+        echo "  $SCRIPT_NAME status \"Working\" :computer:"
+        echo "  $SCRIPT_NAME preset lunch"
+        echo "  $SCRIPT_NAME status"
+        echo "  $SCRIPT_NAME status clear"
+    fi
+}
+
+#######################################
+# Command Handlers
+#######################################
+
+cmd_status_help() {
+    echo -e "${BOLD}slack status${NC} - Get or set your Slack status
+
+${BOLD}USAGE${NC}
+    $SCRIPT_NAME status [options]
+    $SCRIPT_NAME status <text> [emoji] [duration] [options]
+    $SCRIPT_NAME status clear [options]
+
+${BOLD}OPTIONS${NC}
+    -w, --workspace <name>    Target a specific workspace
+    --all                     Target all workspaces
+    -p, --presence <value>    Also set presence (away/auto/active)
+    -d, --dnd <duration>      Also snooze notifications (or 'off')
+
+${BOLD}DURATION FORMAT${NC}
+    Seconds: 3600
+    Human-readable: 1h, 30m, 1h30m, 2h15m
+
+${BOLD}EXAMPLES${NC}
+    $SCRIPT_NAME status                              # Show current status
+    $SCRIPT_NAME status \"Deep work\" :headphones: 2h  # Set with emoji and duration
+    $SCRIPT_NAME status \"In a meeting\" :calendar:    # Set without duration
+    $SCRIPT_NAME status \"Focus\" :headphones: 2h -p away -d 2h
+    $SCRIPT_NAME status clear                        # Clear status
+    $SCRIPT_NAME status --all                        # Show all workspaces
+"
+}
+
+cmd_status() {
+    local workspace="" text="" emoji=":speech_balloon:" duration="0"
+    local all_workspaces=false
+    local presence="" dnd=""
+    local action="get"  # default action is to show status
+    local positional_args=()
+
+    # Check for help first
+    if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        cmd_status_help
+        return 0
+    fi
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -w|--workspace)
+                workspace="$2"
+                shift 2
+                ;;
+            --all)
+                all_workspaces=true
+                shift
+                ;;
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            -q|--quiet)
+                QUIET=true
+                shift
+                ;;
+            -p|--presence)
+                presence="$2"
+                shift 2
+                ;;
+            -d|--dnd)
+                dnd="$2"
+                shift 2
+                ;;
+            -*)
+                die "Unknown option: $1"
+                ;;
+            *)
+                positional_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    # Determine action based on positional args
+    if [[ ${#positional_args[@]} -eq 0 ]]; then
+        action="get"
+    elif [[ "${positional_args[0]}" == "clear" ]]; then
+        action="clear"
+    else
+        action="set"
+        # Parse positional args: text [emoji] [duration]
+        for arg in "${positional_args[@]}"; do
+            if [[ -z "$text" ]]; then
+                text="$arg"
+            elif [[ "$arg" == :* ]]; then
+                emoji="$arg"
+            else
+                duration=$(parse_duration "$arg")
+            fi
+        done
+    fi
+
+    # Resolve workspaces
+    local workspaces=()
+    if $all_workspaces; then
+        while IFS= read -r ws; do
+            workspaces+=("$ws")
+        done < <(get_workspaces)
+    elif [[ -n "$workspace" ]]; then
+        workspaces=("$workspace")
+    else
+        local primary
+        primary=$(get_primary_workspace)
+        if [[ -z "$primary" ]]; then
+            die "No primary workspace configured. Run '$SCRIPT_NAME config' or use -w/--workspace."
+        fi
+        workspaces=("$primary")
+    fi
+
+    local exit_code=0
+
+    case "$action" in
+        get)
+            for ws in "${workspaces[@]}"; do
+                if ! workspace_exists "$ws"; then
+                    log_error "Workspace not found: $ws"
+                    exit_code=1
+                    continue
+                fi
+
+                local status
+                if status=$(get_status "$ws"); then
+                    echo -e "${BOLD}$ws${NC}: $status"
+                else
+                    exit_code=1
+                fi
+            done
+            ;;
+        set)
+            local duration_display
+            duration_display=$(format_duration "$duration")
+
+            for ws in "${workspaces[@]}"; do
+                if ! workspace_exists "$ws"; then
+                    log_error "Workspace not found: $ws"
+                    exit_code=1
+                    continue
+                fi
+
+                if set_status "$ws" "$text" "$emoji" "$duration"; then
+                    if [[ "$duration" -eq 0 ]]; then
+                        log_info "Status set on ${BOLD}$ws${NC}: $emoji $text (${YELLOW}no expiration${NC})"
+                    else
+                        log_info "Status set on ${BOLD}$ws${NC}: $emoji $text (expires in $duration_display)"
+                    fi
+                else
+                    exit_code=1
+                fi
+
+                # Apply presence if specified
+                if [[ -n "$presence" ]]; then
+                    local p="$presence"
+                    [[ "$p" == "active" ]] && p="auto"
+                    if set_presence "$ws" "$p"; then
+                        local display_p="$p"
+                        [[ "$p" == "auto" ]] && display_p="active (auto)"
+                        log_info "Presence set on ${BOLD}$ws${NC}: $display_p"
+                    else
+                        exit_code=1
+                    fi
+                fi
+
+                # Apply DND if specified
+                if [[ -n "$dnd" ]]; then
+                    if [[ "$dnd" == "off" || "$dnd" == "end" ]]; then
+                        if end_dnd_snooze "$ws"; then
+                            log_info "Notifications resumed on ${BOLD}$ws${NC}"
+                        else
+                            exit_code=1
+                        fi
+                    else
+                        local dnd_seconds dnd_minutes
+                        dnd_seconds=$(parse_duration "$dnd")
+                        dnd_minutes=$((dnd_seconds / 60))
+                        [[ $dnd_minutes -lt 1 ]] && dnd_minutes=1
+                        if set_dnd_snooze "$ws" "$dnd_minutes"; then
+                            log_info "Notifications snoozed on ${BOLD}$ws${NC} for $(format_duration "$dnd_seconds")"
+                        else
+                            exit_code=1
+                        fi
+                    fi
+                fi
+            done
+            ;;
+        clear)
+            for ws in "${workspaces[@]}"; do
+                if ! workspace_exists "$ws"; then
+                    log_error "Workspace not found: $ws"
+                    exit_code=1
+                    continue
+                fi
+
+                if clear_status "$ws"; then
+                    log_info "Status cleared on ${BOLD}$ws${NC}"
+                else
+                    exit_code=1
+                fi
+            done
+            ;;
+    esac
+
+    return $exit_code
+}
+
+cmd_preset_help() {
+    echo -e "${BOLD}slack preset${NC} - Manage and apply status presets
+
+${BOLD}USAGE${NC}
+    $SCRIPT_NAME preset [action] [name]
+
+${BOLD}ACTIONS${NC}
+    list              List all presets (default)
+    add [name]        Add a new preset (interactive)
+    edit <name>       Edit an existing preset
+    delete <name>     Delete a preset
+    <name>            Apply a preset
+
+${BOLD}EXAMPLES${NC}
+    $SCRIPT_NAME preset                # List presets
+    $SCRIPT_NAME preset lunch          # Apply 'lunch' preset
+    $SCRIPT_NAME preset add            # Add new preset interactively
+    $SCRIPT_NAME preset edit lunch     # Edit 'lunch' preset
+    $SCRIPT_NAME preset delete lunch   # Delete 'lunch' preset
+"
+}
+
+cmd_preset() {
+    # Check for help first
+    if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        cmd_preset_help
+        return 0
+    fi
+
+    local action="${1:-list}"
+    shift || true
+
+    case "$action" in
+        list|ls)
+            ensure_default_presets
+            echo -e "${BOLD}Available presets:${NC}"
+            list_presets
+            ;;
+        add)
+            local name="${1:-}"
+            if [[ -z "$name" ]]; then
+                read -rp "Preset name: " name
+            fi
+            if [[ -z "$name" ]]; then
+                die "Preset name is required"
+            fi
+
+            local text emoji duration presence dnd
+            read -rp "Status text: " text
+            read -rp "Emoji (e.g., :coffee:): " emoji
+            read -rp "Duration (e.g., 1h, 30m, or 0 for no expiration): " duration
+            duration="${duration:-0}"
+            read -rp "Presence (away/auto, or blank to skip): " presence
+            read -rp "DND snooze (e.g., 1h, or 'off', or blank to skip): " dnd
+
+            add_preset "$name" "$text" "$emoji" "$duration" "$presence" "$dnd"
+            log_info "Preset '$name' added"
+            ;;
+        edit)
+            local name="${1:-}"
+            if [[ -z "$name" ]]; then
+                die "Usage: $SCRIPT_NAME preset edit <name>"
+            fi
+
+            local existing
+            existing=$(get_preset "$name")
+            if [[ -z "$existing" ]]; then
+                die "Preset '$name' not found"
+            fi
+
+            local current_text current_emoji current_duration current_presence current_dnd
+            current_text=$(echo "$existing" | jq -r '.text')
+            current_emoji=$(echo "$existing" | jq -r '.emoji')
+            current_duration=$(echo "$existing" | jq -r '.duration // "0"')
+            current_presence=$(echo "$existing" | jq -r '.presence // ""')
+            current_dnd=$(echo "$existing" | jq -r '.dnd // ""')
+
+            echo "Editing preset '$name' (press Enter to keep current value, '-' to clear)"
+            read -rp "Status text [$current_text]: " text
+            text="${text:-$current_text}"
+            read -rp "Emoji [$current_emoji]: " emoji
+            emoji="${emoji:-$current_emoji}"
+            read -rp "Duration [$current_duration]: " duration
+            duration="${duration:-$current_duration}"
+            read -rp "Presence [$current_presence]: " presence
+            [[ "$presence" == "-" ]] && presence="" || presence="${presence:-$current_presence}"
+            read -rp "DND snooze [$current_dnd]: " dnd
+            [[ "$dnd" == "-" ]] && dnd="" || dnd="${dnd:-$current_dnd}"
+
+            add_preset "$name" "$text" "$emoji" "$duration" "$presence" "$dnd"
+            log_info "Preset '$name' updated"
+            ;;
+        delete|rm)
+            local name="${1:-}"
+            if [[ -z "$name" ]]; then
+                die "Usage: $SCRIPT_NAME preset delete <name>"
+            fi
+
+            local existing
+            existing=$(get_preset "$name")
+            if [[ -z "$existing" ]]; then
+                die "Preset '$name' not found"
+            fi
+
+            delete_preset "$name"
+            log_info "Preset '$name' deleted"
+            ;;
+        *)
+            # Assume it's a preset name to apply
+            local preset_name="$action"
+            local preset_data
+            preset_data=$(get_preset "$preset_name")
+
+            if [[ -z "$preset_data" ]]; then
+                die "Preset '$preset_name' not found. Use '$SCRIPT_NAME preset list' to see available presets."
+            fi
+
+            local text emoji duration_str duration presence dnd
+            text=$(echo "$preset_data" | jq -r '.text')
+            emoji=$(echo "$preset_data" | jq -r '.emoji')
+            duration_str=$(echo "$preset_data" | jq -r '.duration // "0"')
+            duration=$(parse_duration "$duration_str")
+            presence=$(echo "$preset_data" | jq -r '.presence // empty')
+            dnd=$(echo "$preset_data" | jq -r '.dnd // empty')
+
+            # Apply status first
+            cmd_set "$text" "$emoji" "$duration" "$@"
+
+            # Apply presence if set
+            if [[ -n "$presence" ]]; then
+                cmd_presence "$presence" "$@"
+            fi
+
+            # Apply DND if set
+            if [[ -n "$dnd" ]]; then
+                if [[ "$dnd" == "off" || "$dnd" == "end" ]]; then
+                    cmd_dnd off "$@"
+                else
+                    cmd_dnd on "$dnd" "$@"
+                fi
+            fi
+            ;;
+    esac
+}
+
+cmd_workspaces_help() {
+    echo -e "${BOLD}slack workspaces${NC} - Manage configured workspaces
+
+${BOLD}USAGE${NC}
+    $SCRIPT_NAME workspaces [action] [name]
+
+${BOLD}ACTIONS${NC}
+    list              List configured workspaces (default)
+    add               Add a new workspace (interactive)
+    remove <name>     Remove a workspace
+    primary [name]    Get or set the primary workspace
+
+${BOLD}EXAMPLES${NC}
+    $SCRIPT_NAME workspaces             # List workspaces
+    $SCRIPT_NAME workspaces add         # Add new workspace
+    $SCRIPT_NAME workspaces remove foo  # Remove workspace 'foo'
+    $SCRIPT_NAME workspaces primary     # Show primary workspace
+    $SCRIPT_NAME workspaces primary foo # Set 'foo' as primary
+"
+}
+
+cmd_workspaces() {
+    # Check for help first
+    if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        cmd_workspaces_help
+        return 0
+    fi
+
+    local action="${1:-list}"
+    shift || true
+
+    case "$action" in
+        list|ls)
+            local primary
+            primary=$(get_primary_workspace)
+            echo -e "${BOLD}Configured workspaces:${NC}"
+            get_workspaces | while read -r ws; do
+                local primary_indicator=""
+                [[ "$ws" == "$primary" ]] && primary_indicator=" ${GREEN}(primary)${NC}"
+                echo -e "  - $ws$primary_indicator"
+            done
+            ;;
+        add)
+            echo -e "${BOLD}Add Slack Workspace${NC}"
+            read -rp "Workspace name: " ws_name
+            ws_name="${ws_name,,}"
+
+            if workspace_exists "$ws_name"; then
+                die "Workspace '$ws_name' already exists"
+            fi
+
+            read -rp "Token (xoxp-... or xoxc-...:xoxd-...): " ws_token
+
+            local token cookie=""
+            if [[ "$ws_token" == *":"* ]]; then
+                token="${ws_token%%:*}"
+                cookie="${ws_token#*:}"
+            else
+                token="$ws_token"
+            fi
+
+            add_workspace "$ws_name" "$token" "$cookie"
+            log_info "Workspace '$ws_name' added"
+            ;;
+        remove|rm)
+            local name="${1:-}"
+            if [[ -z "$name" ]]; then
+                die "Usage: $SCRIPT_NAME workspaces remove <name>"
+            fi
+
+            if ! workspace_exists "$name"; then
+                die "Workspace '$name' not found"
+            fi
+
+            remove_workspace "$name"
+            log_info "Workspace '$name' removed"
+
+            # If we removed the primary, clear it
+            if [[ "$name" == "$(get_primary_workspace)" ]]; then
+                set_config_value ".primary_workspace" '""'
+                log_warn "Removed primary workspace. Set a new one with: $SCRIPT_NAME workspaces primary <name>"
+            fi
+            ;;
+        primary)
+            local name="${1:-}"
+            if [[ -z "$name" ]]; then
+                local current
+                current=$(get_primary_workspace)
+                if [[ -n "$current" ]]; then
+                    echo "Current primary workspace: $current"
+                else
+                    echo "No primary workspace set"
+                fi
+                return
+            fi
+
+            if ! workspace_exists "$name"; then
+                die "Workspace '$name' not found"
+            fi
+
+            set_primary_workspace "$name"
+            log_info "Primary workspace set to '$name'"
+            ;;
+        *)
+            die "Unknown workspaces action: $action"
+            ;;
+    esac
+}
+
+cmd_config() {
+    run_setup_wizard
+}
+
+cmd_presence_help() {
+    echo -e "${BOLD}slack presence${NC} - Get or set your presence status
+
+${BOLD}USAGE${NC}
+    $SCRIPT_NAME presence [value] [options]
+
+${BOLD}VALUES${NC}
+    (none)            Show current presence
+    away              Set presence to away
+    auto              Set presence to active (auto)
+    active            Alias for 'auto'
+
+${BOLD}OPTIONS${NC}
+    -w, --workspace <name>    Target a specific workspace
+    --all                     Target all workspaces
+
+${BOLD}EXAMPLES${NC}
+    $SCRIPT_NAME presence         # Show current presence
+    $SCRIPT_NAME presence away    # Set to away
+    $SCRIPT_NAME presence auto    # Set to active
+    $SCRIPT_NAME presence away --all
+"
+}
+
+cmd_presence() {
+    # Check for help first
+    if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        cmd_presence_help
+        return 0
+    fi
+
+    local workspace=""
+    local all_workspaces=false
+    local presence=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -w|--workspace)
+                workspace="$2"
+                shift 2
+                ;;
+            --all)
+                all_workspaces=true
+                shift
+                ;;
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            -q|--quiet)
+                QUIET=true
+                shift
+                ;;
+            away|auto|active)
+                # "active" is an alias for "auto"
+                [[ "$1" == "active" ]] && presence="auto" || presence="$1"
+                shift
+                ;;
+            *)
+                die "Unknown option or presence value: $1 (use 'away' or 'auto')"
+                ;;
+        esac
+    done
+
+    local workspaces=()
+    if $all_workspaces; then
+        while IFS= read -r ws; do
+            workspaces+=("$ws")
+        done < <(get_workspaces)
+    elif [[ -n "$workspace" ]]; then
+        workspaces=("$workspace")
+    else
+        local primary
+        primary=$(get_primary_workspace)
+        if [[ -z "$primary" ]]; then
+            die "No primary workspace configured. Run '$SCRIPT_NAME config' or use -w/--workspace."
+        fi
+        workspaces=("$primary")
+    fi
+
+    local exit_code=0
+
+    # If no presence specified, show current presence
+    if [[ -z "$presence" ]]; then
+        for ws in "${workspaces[@]}"; do
+            if ! workspace_exists "$ws"; then
+                log_error "Workspace not found: $ws"
+                exit_code=1
+                continue
+            fi
+
+            local current_presence
+            if current_presence=$(get_presence "$ws"); then
+                echo -e "${BOLD}$ws${NC}: $current_presence"
+            else
+                exit_code=1
+            fi
+        done
+    else
+        for ws in "${workspaces[@]}"; do
+            if ! workspace_exists "$ws"; then
+                log_error "Workspace not found: $ws"
+                exit_code=1
+                continue
+            fi
+
+            if set_presence "$ws" "$presence"; then
+                local display_presence="$presence"
+                [[ "$presence" == "auto" ]] && display_presence="active (auto)"
+                log_info "Presence set on ${BOLD}$ws${NC}: $display_presence"
+            else
+                exit_code=1
+            fi
+        done
+    fi
+
+    return $exit_code
+}
+
+cmd_dnd_help() {
+    echo -e "${BOLD}slack dnd${NC} - Manage Do Not Disturb (notification snooze)
+
+${BOLD}USAGE${NC}
+    $SCRIPT_NAME dnd [action] [duration] [options]
+
+${BOLD}ACTIONS${NC}
+    (none)            Show current DND status
+    on [duration]     Snooze notifications (default: 1h)
+    off               Resume notifications
+    <duration>        Snooze for specific duration
+
+${BOLD}OPTIONS${NC}
+    -w, --workspace <name>    Target a specific workspace
+    --all                     Target all workspaces
+
+${BOLD}DURATION FORMAT${NC}
+    Seconds: 3600
+    Human-readable: 1h, 30m, 1h30m, 2h15m
+
+${BOLD}EXAMPLES${NC}
+    $SCRIPT_NAME dnd           # Show DND status
+    $SCRIPT_NAME dnd on        # Snooze for 1 hour
+    $SCRIPT_NAME dnd on 2h     # Snooze for 2 hours
+    $SCRIPT_NAME dnd 30m       # Snooze for 30 minutes
+    $SCRIPT_NAME dnd off       # Resume notifications
+"
+}
+
+cmd_dnd() {
+    # Check for help first
+    if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        cmd_dnd_help
+        return 0
+    fi
+
+    local workspace=""
+    local all_workspaces=false
+    local action=""
+    local duration=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -w|--workspace)
+                workspace="$2"
+                shift 2
+                ;;
+            --all)
+                all_workspaces=true
+                shift
+                ;;
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            -q|--quiet)
+                QUIET=true
+                shift
+                ;;
+            on|snooze)
+                action="snooze"
+                shift
+                # Check if next arg is a duration
+                if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
+                    duration="$1"
+                    shift
+                fi
+                ;;
+            off|end)
+                action="end"
+                shift
+                ;;
+            status|info)
+                action="status"
+                shift
+                ;;
+            *)
+                # Could be a duration for snooze
+                if [[ "$1" =~ ^[0-9] ]]; then
+                    action="snooze"
+                    duration="$1"
+                    shift
+                else
+                    die "Unknown option: $1"
+                fi
+                ;;
+        esac
+    done
+
+    local workspaces=()
+    if $all_workspaces; then
+        while IFS= read -r ws; do
+            workspaces+=("$ws")
+        done < <(get_workspaces)
+    elif [[ -n "$workspace" ]]; then
+        workspaces=("$workspace")
+    else
+        local primary
+        primary=$(get_primary_workspace)
+        if [[ -z "$primary" ]]; then
+            die "No primary workspace configured. Run '$SCRIPT_NAME config' or use -w/--workspace."
+        fi
+        workspaces=("$primary")
+    fi
+
+    # Default action is status
+    [[ -z "$action" ]] && action="status"
+
+    # Default duration for snooze is 1 hour
+    if [[ "$action" == "snooze" && -z "$duration" ]]; then
+        duration="1h"
+    fi
+
+    local exit_code=0
+
+    case "$action" in
+        status)
+            for ws in "${workspaces[@]}"; do
+                if ! workspace_exists "$ws"; then
+                    log_error "Workspace not found: $ws"
+                    exit_code=1
+                    continue
+                fi
+
+                local dnd_info
+                if dnd_info=$(get_dnd_info "$ws"); then
+                    echo -e "${BOLD}$ws${NC}: $dnd_info"
+                else
+                    exit_code=1
+                fi
+            done
+            ;;
+        snooze)
+            local seconds minutes
+            seconds=$(parse_duration "$duration")
+            minutes=$((seconds / 60))
+            [[ $minutes -lt 1 ]] && minutes=1
+
+            for ws in "${workspaces[@]}"; do
+                if ! workspace_exists "$ws"; then
+                    log_error "Workspace not found: $ws"
+                    exit_code=1
+                    continue
+                fi
+
+                if set_dnd_snooze "$ws" "$minutes"; then
+                    log_info "Notifications snoozed on ${BOLD}$ws${NC} for $(format_duration "$seconds")"
+                else
+                    exit_code=1
+                fi
+            done
+            ;;
+        end)
+            for ws in "${workspaces[@]}"; do
+                if ! workspace_exists "$ws"; then
+                    log_error "Workspace not found: $ws"
+                    exit_code=1
+                    continue
+                fi
+
+                if end_dnd_snooze "$ws"; then
+                    log_info "Notifications resumed on ${BOLD}$ws${NC}"
+                else
+                    exit_code=1
+                fi
+            done
+            ;;
+    esac
+
+    return $exit_code
+}
+
+cmd_messages_help() {
+    echo -e "${BOLD}slack messages${NC} - Read messages from channels, DMs, or threads
+
+${BOLD}USAGE${NC}
+    $SCRIPT_NAME messages <target> [options]
+
+${BOLD}TARGET${NC}
+    #channel          Channel name (with or without #)
+    @user             Direct message with user
+    <slack-url>       Slack message URL (workspace auto-detected)
+
+${BOLD}OPTIONS${NC}
+    -w, --workspace <name>    Target a specific workspace
+    -n, --limit <num>         Number of messages to fetch (default: 20)
+    --threads                 Expand thread replies inline
+    --json                    Output as JSON
+    --no-names                Skip user name lookups (faster)
+    --no-emoji                Show raw :emoji: codes (no conversion)
+    --workspace-emoji         Show workspace custom emoji as inline images
+
+${BOLD}REACTION OPTIONS${NC}
+    (default)                 Compact summary: [3 :heart:, 2 :+1:]
+    --reaction-names          Expanded with user names
+    --no-reactions            Hide reactions entirely
+
+${BOLD}EXAMPLES${NC}
+    $SCRIPT_NAME messages #general
+    $SCRIPT_NAME messages @john -n 50
+    $SCRIPT_NAME messages #dev --threads
+    $SCRIPT_NAME messages #announcements --reaction-names
+    $SCRIPT_NAME messages #general --workspace-emoji
+    $SCRIPT_NAME messages 'https://myteam.slack.com/archives/C123/p456'
+"
+}
+
+cmd_messages() {
+    local workspace=""
+    local target=""
+    local limit=20
+    local output_format="simple"
+    local skip_user_lookup=false
+    local with_threads=false
+    local show_emoji=true
+    local show_workspace_emoji=false
+    local reaction_mode="summary"  # summary, names, none
+
+    # Check for help first
+    if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        cmd_messages_help
+        return 0
+    fi
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -w|--workspace)
+                workspace="$2"
+                shift 2
+                ;;
+            -n|--limit)
+                limit="$2"
+                shift 2
+                ;;
+            --json)
+                output_format="json"
+                shift
+                ;;
+            --skip-user-lookup|--no-names)
+                skip_user_lookup=true
+                shift
+                ;;
+            --threads|--with-threads)
+                with_threads=true
+                shift
+                ;;
+            --no-emoji|--raw)
+                show_emoji=false
+                show_workspace_emoji=false
+                shift
+                ;;
+            --workspace-emoji)
+                show_workspace_emoji=true
+                shift
+                ;;
+            --no-reactions)
+                reaction_mode="none"
+                shift
+                ;;
+            --reaction-names)
+                reaction_mode="names"
+                shift
+                ;;
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            -q|--quiet)
+                QUIET=true
+                shift
+                ;;
+            -*)
+                die "Unknown option: $1"
+                ;;
+            *)
+                target="$1"
+                shift
+                ;;
+        esac
+    done
+
+    if [[ -z "$target" ]]; then
+        die "Usage: $SCRIPT_NAME messages <channel|@user|url> [-n limit] [--json] [-w workspace]"
+    fi
+
+    # Track original channel name for caching (strip leading #)
+    local original_channel_name=""
+    if [[ "$target" =~ ^#?([a-z0-9_-]+)$ ]]; then
+        original_channel_name="${BASH_REMATCH[1]}"
+    fi
+
+    # Determine workspace before parsing target (needed for channel lookups)
+    # Will be overridden by URL workspace if present
+    if [[ -z "$workspace" ]]; then
+        workspace=$(get_primary_workspace)
+        if [[ -z "$workspace" ]]; then
+            die "No primary workspace configured. Run '$SCRIPT_NAME config' or use -w/--workspace."
+        fi
+    fi
+
+    # Parse target to get channel ID, optional thread timestamp, and workspace from URL
+    local parsed channel_id thread_ts="" url_workspace=""
+    parsed=$(parse_slack_target "$target" "$workspace")
+
+    if [[ -z "$parsed" ]]; then
+        die "Could not find channel/user: $target"
+    fi
+
+    while IFS= read -r line; do
+        case "$line" in
+            workspace:*) url_workspace="${line#workspace:}" ;;
+            channel:*) channel_id="${line#channel:}" ;;
+            thread:*) thread_ts="${line#thread:}" ;;
+        esac
+    done <<< "$parsed"
+
+    # Override workspace if URL contained one
+    if [[ -n "$url_workspace" ]]; then
+        workspace="$url_workspace"
+    fi
+
+    if ! workspace_exists "$workspace"; then
+        die "Workspace not found: $workspace"
+    fi
+
+    if [[ -z "$channel_id" ]]; then
+        die "Could not resolve channel ID for: $target"
+    fi
+
+    log_verbose "Fetching messages from channel $channel_id (thread: ${thread_ts:-none})"
+
+    # Initialize API counter for tracking
+    init_api_counter
+
+    # Fetch and display messages
+    local messages_json is_thread="false"
+    [[ -n "$thread_ts" ]] && is_thread="true"
+
+    if messages_json=$(fetch_messages "$workspace" "$channel_id" "$thread_ts" "$limit"); then
+        # Cache the channel name→ID mapping if we have a name
+        if [[ -n "$original_channel_name" ]]; then
+            cache_channel "$workspace" "$original_channel_name" "$channel_id"
+        fi
+        format_messages "$workspace" "$messages_json" "$output_format" "$is_thread" "$skip_user_lookup" "$with_threads" "$channel_id" "$show_emoji" "$show_workspace_emoji" "$reaction_mode"
+    else
+        cleanup_api_counter
+        exit 1
+    fi
+
+    # Show API call count in verbose mode
+    $VERBOSE && log_info "API calls: $(get_api_count)"
+    cleanup_api_counter
+}
+
+cmd_unread_help() {
+    echo -e "${BOLD}slack unread${NC} - View and manage unread messages
+
+${BOLD}USAGE${NC}
+    $SCRIPT_NAME unread [options]
+    $SCRIPT_NAME unread clear [target]
+
+${BOLD}OPTIONS${NC}
+    -w, --workspace <name>    Target a specific workspace
+    --all                     Check all workspaces
+    -n, --limit <num>         Messages per channel (default: 10)
+    --muted                   Include muted channels
+    --json                    Output channel list as JSON (no fetch)
+    --workspace-emoji         Show workspace custom emoji as inline images
+    --no-emoji                Show raw :emoji: codes (no conversion)
+    --no-reactions            Hide reactions entirely
+    --reaction-names          Show reactions with user names
+
+${BOLD}ACTIONS${NC}
+    (default)                 Fetch and display unread messages
+    clear                     Mark all unread conversations as read
+    clear #channel            Mark specific channel as read
+    clear --muted             Also clear muted channels
+
+${BOLD}EXAMPLES${NC}
+    $SCRIPT_NAME unread
+    $SCRIPT_NAME unread --all
+    $SCRIPT_NAME unread -n 20
+    $SCRIPT_NAME unread --muted
+    $SCRIPT_NAME unread --workspace-emoji
+    $SCRIPT_NAME unread --reaction-names
+    $SCRIPT_NAME unread clear
+    $SCRIPT_NAME unread clear #general
+    $SCRIPT_NAME unread clear --all
+"
+}
+
+cmd_unread() {
+    local workspace=""
+    local output_format="simple"
+    local include_muted=false
+    local limit=10
+    local action=""
+    local target=""
+    local all_workspaces=false
+    local show_emoji=true
+    local show_workspace_emoji=false
+    local reaction_mode="summary"
+
+    # Check for help first
+    if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        cmd_unread_help
+        return 0
+    fi
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -w|--workspace)
+                workspace="$2"
+                shift 2
+                ;;
+            --all)
+                all_workspaces=true
+                shift
+                ;;
+            -n|--limit)
+                limit="$2"
+                shift 2
+                ;;
+            --json)
+                output_format="json"
+                shift
+                ;;
+            --muted)
+                include_muted=true
+                shift
+                ;;
+            --no-emoji|--raw)
+                show_emoji=false
+                show_workspace_emoji=false
+                shift
+                ;;
+            --workspace-emoji)
+                show_workspace_emoji=true
+                shift
+                ;;
+            --no-reactions)
+                reaction_mode="none"
+                shift
+                ;;
+            --reaction-names)
+                reaction_mode="names"
+                shift
+                ;;
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            -q|--quiet)
+                QUIET=true
+                shift
+                ;;
+            -*)
+                die "Unknown option: $1"
+                ;;
+            *)
+                # Positional arguments: action and optional target
+                if [[ -z "$action" ]]; then
+                    action="$1"
+                else
+                    target="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    # Determine workspaces to check
+    local workspaces=()
+    if $all_workspaces; then
+        while IFS= read -r ws; do
+            workspaces+=("$ws")
+        done < <(get_workspaces)
+    elif [[ -n "$workspace" ]]; then
+        workspaces=("$workspace")
+    else
+        local primary
+        primary=$(get_primary_workspace)
+        if [[ -z "$primary" ]]; then
+            die "No primary workspace configured. Run '$SCRIPT_NAME config' or use -w/--workspace."
+        fi
+        workspaces=("$primary")
+    fi
+
+    init_api_counter
+
+    # Process each workspace
+    for workspace in "${workspaces[@]}"; do
+        if ! workspace_exists "$workspace"; then
+            log_error "Workspace not found: $workspace"
+            continue
+        fi
+
+        # Show workspace header when checking multiple
+        if [[ ${#workspaces[@]} -gt 1 ]]; then
+            echo -e "\n${BOLD}━━━ $workspace ━━━${NC}"
+        fi
+
+    # Handle clear action
+    if [[ "$action" == "clear" ]]; then
+        if [[ -n "$target" ]]; then
+            # Clear specific channel
+            local channel_id
+            channel_id=$(get_channel_id "$workspace" "$target")
+            if [[ -z "$channel_id" ]]; then
+                die "Channel not found: $target"
+            fi
+
+            log_verbose "Marking $target as read..."
+            local now_ts
+            now_ts=$(date +%s).000000
+            local mark_response
+            mark_response=$(slack_api_call "$workspace" "conversations.mark" "{\"channel\":\"$channel_id\",\"ts\":\"$now_ts\"}")
+
+            local mark_ok
+            mark_ok=$(echo "$mark_response" | jq -r '.ok')
+            if [[ "$mark_ok" == "true" ]]; then
+                log_info "Marked $target as read"
+            else
+                local mark_error
+                mark_error=$(echo "$mark_response" | jq -r '.error // "unknown error"')
+                die "Failed to mark as read: $mark_error"
+            fi
+        else
+            # Clear all unreads - first get the list
+            log_verbose "Fetching unread channels..."
+            local counts_response
+            counts_response=$(slack_api_call "$workspace" "client.counts" '{}')
+
+            local ok
+            ok=$(echo "$counts_response" | jq -r '.ok')
+            if [[ "$ok" != "true" ]]; then
+                die "Failed to fetch unread counts"
+            fi
+
+            # Get muted channels if not including them
+            local muted_channels=""
+            if [[ "$include_muted" != "true" ]]; then
+                local prefs_response
+                prefs_response=$(slack_api_call "$workspace" "users.prefs.get" '{}')
+                muted_channels=$(echo "$prefs_response" | jq -r '.prefs.muted_channels // ""')
+            fi
+
+            # Get all channels with unreads
+            local unread_ids
+            unread_ids=$(echo "$counts_response" | jq -r '
+                [
+                    (.channels[]? | select(.has_unreads == true) | .id),
+                    (.mpims[]? | select(.has_unreads == true) | .id),
+                    (.ims[]? | select(.has_unreads == true) | .id)
+                ] | .[]
+            ')
+
+            # Filter out muted if needed
+            if [[ -n "$muted_channels" ]]; then
+                local filtered_ids=""
+                for cid in $unread_ids; do
+                    if ! echo "$muted_channels" | grep -q "$cid"; then
+                        filtered_ids="$filtered_ids $cid"
+                    fi
+                done
+                unread_ids="$filtered_ids"
+            fi
+
+            local count=0
+            local now_ts
+            now_ts=$(date +%s).000000
+
+            for channel_id in $unread_ids; do
+                [[ -z "$channel_id" ]] && continue
+                log_verbose "Marking $channel_id as read..."
+                slack_api_call "$workspace" "conversations.mark" "{\"channel\":\"$channel_id\",\"ts\":\"$now_ts\"}" > /dev/null
+                count=$((count + 1))
+            done
+
+            log_info "Marked $count conversations as read on ${BOLD}$workspace${NC}"
+        fi
+
+        continue
+    fi
+
+    # Use client.counts for efficient single-call unread info
+    log_verbose "Fetching unread counts for $workspace..."
+
+    local counts_response
+    counts_response=$(slack_api_call "$workspace" "client.counts" '{}')
+
+    local ok
+    ok=$(echo "$counts_response" | jq -r '.ok')
+
+    if [[ "$ok" != "true" ]]; then
+        local error
+        error=$(echo "$counts_response" | jq -r '.error // "unknown error"')
+        log_error "Failed to fetch unread counts for $workspace: $error (Note: client.counts requires a client token xoxc-)"
+        continue
+    fi
+
+    # Get muted channels from user prefs (unless --muted flag is set)
+    local muted_channels=""
+    if [[ "$include_muted" != "true" ]]; then
+        log_verbose "Fetching muted channels..."
+        local prefs_response
+        prefs_response=$(slack_api_call "$workspace" "users.prefs.get" '{}')
+        muted_channels=$(echo "$prefs_response" | jq -r '.prefs.muted_channels // ""')
+    fi
+
+    # Extract channels with unreads (include last_read for --fetch)
+    # Also check if threads have unreads (API just returns has_unreads, not per-channel)
+    local unread_list
+    unread_list=$(echo "$counts_response" | jq -r '
+        [
+            (.channels[]? | select(.has_unreads == true) | {id, mention_count, last_read, type: "channel"}),
+            (.mpims[]? | select(.has_unreads == true) | {id, mention_count, last_read, type: "group"}),
+            (.ims[]? | select(.has_unreads == true) | {id, mention_count, last_read, type: "dm"})
+        ] + (if .threads.has_unreads == true then [{id: "THREADS", mention_count: (.threads.mention_count // 0), type: "thread"}] else [] end)
+        | sort_by(-.mention_count)
+    ')
+
+    # Filter out muted channels
+    if [[ -n "$muted_channels" ]]; then
+        # Convert comma-separated string to jq array
+        local muted_array
+        muted_array=$(echo "$muted_channels" | tr ',' '\n' | jq -R . | jq -s .)
+        unread_list=$(echo "$unread_list" | jq --argjson muted "$muted_array" '[.[] | select(.id as $id | $muted | index($id) | not)]')
+    fi
+
+    local unread_count
+    unread_count=$(echo "$unread_list" | jq 'length')
+
+    # Fetch and cache channel names for channels with unreads
+    if [[ "$unread_count" -gt 0 && "$output_format" != "json" ]]; then
+        log_verbose "Fetching channel names..."
+
+        # users.conversations requires form data (not JSON)
+        local token cookie
+        token=$(get_workspace_token "$workspace")
+        cookie=$(get_workspace_cookie "$workspace")
+
+        local curl_args=(
+            -sS -X POST "$SLACK_API_BASE/users.conversations"
+            -H "Authorization: Bearer $token"
+            -d "types=public_channel,private_channel,mpim,im&limit=1000&exclude_archived=true"
+        )
+        [[ -n "$cookie" ]] && curl_args+=(-H "Cookie: d=$cookie")
+
+        increment_api_counter
+        log_verbose "API: users.conversations"
+        local channels_response
+        channels_response=$(curl "${curl_args[@]}" | tr -d '\000-\037')
+
+        # Build cache file directly (avoid subshell issues with while loop)
+        local cache_file="$CACHE_DIR/channels-$workspace.json"
+        mkdir -p "$CACHE_DIR"
+        local current_cache="{}"
+        [[ -f "$cache_file" ]] && current_cache=$(cat "$cache_file")
+
+        # Merge new channel names into cache
+        local new_entries
+        new_entries=$(echo "$channels_response" | jq '[.channels[]? | select(.name != null) | {key: .name, value: .id}] | from_entries')
+        echo "$current_cache" "$new_entries" | jq -s '.[0] * .[1]' > "$cache_file"
+    fi
+
+    if [[ "$output_format" == "json" ]]; then
+        echo "$unread_list" | jq .
+    elif [[ "$unread_count" -eq 0 ]]; then
+        log_info "No unread messages in $workspace"
+    else
+        # Fetch and display unread messages from each channel
+        echo "$unread_list" | jq -r '.[] | "\(.type)\t\(.id)\t\(.last_read)\t\(.mention_count)"' | while IFS=$'\t' read -r type id last_read mentions; do
+            local type_indicator name
+            case "$type" in
+                dm) type_indicator="@" ;;
+                group) type_indicator="&" ;;
+                thread) type_indicator="🧵 #" ;;
+                *) type_indicator="#" ;;
+            esac
+
+            # Get name from cache, fall back to ID
+            name=$(get_cached_channel_name "$workspace" "$id")
+            if [[ -z "$name" ]]; then
+                # For DMs, try to get the user name from the channel ID
+                if [[ "$type" == "dm" && "$id" == D* ]]; then
+                    # DM channel IDs map to users - look up via conversations.info (needs form data)
+                    local token cookie
+                    token=$(get_workspace_token "$workspace")
+                    cookie=$(get_workspace_cookie "$workspace")
+                    local curl_args=(-sS -X POST "$SLACK_API_BASE/conversations.info" -H "Authorization: Bearer $token" -d "channel=$id")
+                    [[ -n "$cookie" ]] && curl_args+=(-H "Cookie: d=$cookie")
+                    increment_api_counter
+                    log_verbose "API: conversations.info"
+                    local dm_info
+                    dm_info=$(curl "${curl_args[@]}" | tr -d '\000-\037')
+                    local dm_user
+                    dm_user=$(echo "$dm_info" | jq -r '.channel.user // empty')
+                    if [[ -n "$dm_user" ]]; then
+                        name=$(get_user_name "$workspace" "$dm_user")
+                        # Cache the DM channel → user name mapping
+                        [[ -n "$name" ]] && cache_channel "$workspace" "$name" "$id"
+                    fi
+                fi
+                [[ -z "$name" ]] && name="$id"
+            fi
+
+            # For threads, fetch and display unread thread replies
+            if [[ "$type" == "thread" ]]; then
+                log_verbose "Fetching unread threads..."
+                local threads_response
+                threads_response=$(slack_api_call "$workspace" "subscriptions.thread.getView" '{"limit":20}')
+                local threads_ok
+                threads_ok=$(echo "$threads_response" | jq -r '.ok // false')
+
+                if [[ "$threads_ok" == "true" ]]; then
+                    local total_unread
+                    total_unread=$(echo "$threads_response" | jq -r '.total_unread_replies // 0')
+                    echo -e "${BOLD}🧵 Threads${NC} ($total_unread unread replies)"
+                    echo ""
+
+                    # Process each thread with unread replies
+                    echo "$threads_response" | jq -r '.threads[] | select(.unread_replies | length > 0) | @json' | while IFS= read -r thread_json; do
+                        local channel_id root_text root_user thread_ts
+                        channel_id=$(echo "$thread_json" | jq -r '.root_msg.channel')
+                        root_text=$(echo "$thread_json" | jq -r '.root_msg.text // ""' | head -c 80)
+                        root_user=$(echo "$thread_json" | jq -r '(.root_msg.user_profile.display_name | select(. != "" and . != null)) // (.root_msg.user_profile.real_name | select(. != "" and . != null)) // .root_msg.username // .root_msg.user // "unknown"')
+                        # If root_user looks like a user ID, look up the name
+                        if [[ "$root_user" =~ ^U[A-Z0-9]+$ ]]; then
+                            root_user=$(get_user_name "$workspace" "$root_user")
+                        fi
+                        [[ -z "$root_user" || "$root_user" == "null" ]] && root_user="unknown"
+                        thread_ts=$(echo "$thread_json" | jq -r '.root_msg.thread_ts')
+
+                        # Get channel name
+                        local channel_name
+                        channel_name=$(get_cached_channel_name "$workspace" "$channel_id")
+                        [[ -z "$channel_name" ]] && channel_name="$channel_id"
+
+                        echo -e "  ${BLUE}#${channel_name}${NC} - thread by ${BOLD}${root_user}${NC}"
+
+                        # Show unread replies
+                        echo "$thread_json" | jq -r '.unread_replies[] | @json' | while IFS= read -r reply_json; do
+                            local reply_ts reply_user reply_user_id reply_text reply_reactions_json
+                            reply_ts=$(echo "$reply_json" | jq -r '.ts')
+                            # Try user_profile first, fall back to looking up user ID
+                            reply_user=$(echo "$reply_json" | jq -r '(.user_profile.display_name | select(. != "" and . != null)) // (.user_profile.real_name | select(. != "" and . != null)) // empty')
+                            if [[ -z "$reply_user" ]]; then
+                                reply_user_id=$(echo "$reply_json" | jq -r '.user // empty')
+                                if [[ -n "$reply_user_id" ]]; then
+                                    reply_user=$(get_user_name "$workspace" "$reply_user_id")
+                                fi
+                            fi
+                            [[ -z "$reply_user" ]] && reply_user="unknown"
+                            reply_text=$(echo "$reply_json" | jq -r '.text // ""')
+                            reply_text=$(echo "$reply_text" | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g')
+                            reply_text=$(replace_mentions "$reply_text" "$workspace")
+                            local reply_time
+                            reply_time=$(date -r "${reply_ts%.*}" "+%H:%M" 2>/dev/null || echo "$reply_ts")
+                            echo -e "    ${BLUE}[${reply_time}]${NC} ${BOLD}${reply_user}${NC}: ${reply_text}"
+
+                            # Display reactions if present
+                            reply_reactions_json=$(echo "$reply_json" | jq -c '.reactions // []')
+                            if [[ "$reply_reactions_json" != "[]" ]]; then
+                                local reply_reaction_parts=()
+                                while IFS=$'\t' read -r r_name r_users; do
+                                    [[ -z "$r_name" ]] && continue
+                                    local r_emoji=":${r_name}:"
+                                    local r_user_names=()
+                                    while IFS= read -r r_uid; do
+                                        [[ -z "$r_uid" ]] && continue
+                                        local r_uname
+                                        r_uname=$(get_user_name "$workspace" "$r_uid")
+                                        r_user_names+=("$r_uname")
+                                    done < <(echo "$r_users" | jq -r '.[]' 2>/dev/null)
+                                    local r_names_str
+                                    r_names_str=$(printf '%s\n' "${r_user_names[@]}" | paste -sd ',' - | sed 's/,/, /g')
+                                    reply_reaction_parts+=("${r_emoji} ${r_names_str}")
+                                done < <(echo "$reply_reactions_json" | jq -r '.[] | "\(.name)\t\(.users | @json)"' 2>/dev/null)
+                                if [[ ${#reply_reaction_parts[@]} -gt 0 ]]; then
+                                    local reply_reactions_display
+                                    reply_reactions_display=$(printf '      %b↳%b %s' "${YELLOW}" "${NC}" "${reply_reaction_parts[0]}")
+                                    for ((ri=1; ri<${#reply_reaction_parts[@]}; ri++)); do
+                                        reply_reactions_display+="; ${reply_reaction_parts[$ri]}"
+                                    done
+                                    echo -e "$reply_reactions_display"
+                                fi
+                            fi
+                        done
+                        echo ""
+                    done
+                else
+                    echo -e "${BOLD}🧵 Threads${NC} (unread replies)"
+                    echo -e "  ${YELLOW}Open Slack → Threads to view${NC}"
+                    echo ""
+                fi
+                continue
+            fi
+
+            # Fetch messages since last_read
+            log_verbose "Fetching messages from $name since $last_read..."
+            local payload="{\"channel\":\"$id\",\"oldest\":\"$last_read\",\"limit\":$limit}"
+            local history_response
+            history_response=$(slack_api_call "$workspace" "conversations.history" "$payload")
+
+            local messages
+            messages=$(echo "$history_response" | jq -r '.messages // []')
+            local msg_count
+            msg_count=$(echo "$messages" | jq 'length')
+
+            if [[ "$msg_count" -gt 0 ]]; then
+                local more_indicator=""
+                [[ "$msg_count" -eq "$limit" ]] && more_indicator=" (showing last $limit)"
+                echo -e "${BOLD}${type_indicator}${name}${NC} ($msg_count unread)$more_indicator"
+                echo ""
+
+                # Build user map from embedded user_profile data (works for Slack Connect users too)
+                unset msg_user_map
+                declare -A msg_user_map
+                while IFS=$'\t' read -r uid uname; do
+                    [[ -n "$uid" && -n "$uname" ]] && msg_user_map["$uid"]="$uname"
+                done < <(echo "$messages" | jq -r '.[] | select(.user_profile != null or .username != null) | "\(.user // .bot_id // "unknown")\t\((.user_profile.display_name | select(. != "" and . != null)) // .user_profile.real_name // .username // "unknown")"')
+
+                # Display messages (oldest first) - use record separator to avoid issues with tabs in text
+                while IFS=$'\x1e' read -r ts user_id text reactions_json; do
+                    local timestamp
+                    timestamp=$(date -r "${ts%.*}" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "$ts")
+
+                    # Get username from local map, then cache, then fall back to ID
+                    local username=""
+                    if [[ -n "$user_id" && "$user_id" != "unknown" ]]; then
+                        username="${msg_user_map[$user_id]:-}"
+                        if [[ -z "$username" ]]; then
+                            username=$(get_user_name "$workspace" "$user_id")
+                        fi
+                    fi
+                    [[ -z "$username" ]] && username="${user_id:-unknown}"
+
+                    # Decode basic slack formatting
+                    text=$(echo "$text" | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g')
+
+                    # Replace mentions with names
+                    text=$(replace_mentions "$text" "$workspace")
+
+                    # Replace emoji codes with Unicode/images
+                    if [[ "$show_emoji" == "true" ]]; then
+                        text=$(replace_emoji "$text" "$workspace" "$show_workspace_emoji")
+                    fi
+
+                    # Build reactions display
+                    local reactions_display=""
+                    if [[ "$reaction_mode" != "none" && -n "$reactions_json" && "$reactions_json" != "[]" ]]; then
+                        if [[ "$reaction_mode" == "summary" ]]; then
+                            # Compact summary: [3 :heart:, 2 :+1:]
+                            local summary_parts=()
+                            while IFS=$'\t' read -r reaction_name reaction_count; do
+                                [[ -z "$reaction_name" ]] && continue
+                                local reaction_emoji=":${reaction_name}:"
+                                if [[ "$show_emoji" == "true" ]]; then
+                                    reaction_emoji=$(replace_emoji "$reaction_emoji" "$workspace" "$show_workspace_emoji")
+                                fi
+                                summary_parts+=("${reaction_count} ${reaction_emoji}")
+                            done < <(echo "$reactions_json" | jq -r '
+                                group_by(.name | gsub("::skin-tone-[0-9]+$"; "") | gsub(":skin-tone-[0-9]+$"; ""))
+                                | map({
+                                    name: (.[0].name | gsub("::skin-tone-[0-9]+$"; "") | gsub(":skin-tone-[0-9]+$"; "")),
+                                    count: (map(.users | length) | add)
+                                })
+                                | sort_by(-.count)
+                                | .[]
+                                | "\(.name)\t\(.count)"
+                            ' 2>/dev/null)
+                            if [[ ${#summary_parts[@]} -gt 0 ]]; then
+                                local summary_str
+                                summary_str=$(printf '%s\n' "${summary_parts[@]}" | paste -sd ',' - | sed 's/,/, /g')
+                                reactions_display=" ${YELLOW}[${summary_str}]${NC}"
+                            fi
+                        else
+                            # Expanded mode (names): show each reaction with user names
+                            local reaction_parts=()
+                            while IFS=$'\t' read -r reaction_name reaction_users_json; do
+                                [[ -z "$reaction_name" ]] && continue
+                                local reaction_emoji=":${reaction_name}:"
+                                if [[ "$show_emoji" == "true" ]]; then
+                                    reaction_emoji=$(replace_emoji "$reaction_emoji" "$workspace" "$show_workspace_emoji")
+                                fi
+                                # Get usernames for reactors
+                                local reactor_names=()
+                                while IFS= read -r reactor_id; do
+                                    [[ -z "$reactor_id" ]] && continue
+                                    local reactor_name="${msg_user_map[$reactor_id]:-}"
+                                    [[ -z "$reactor_name" ]] && reactor_name=$(get_user_name "$workspace" "$reactor_id")
+                                    reactor_names+=("$reactor_name")
+                                done < <(echo "$reaction_users_json" | jq -r '.[]' 2>/dev/null)
+                                local reactors_str
+                                reactors_str=$(printf '%s\n' "${reactor_names[@]}" | paste -sd ',' - | sed 's/,/, /g')
+                                reaction_parts+=("${reaction_emoji} ${reactors_str}")
+                            done < <(echo "$reactions_json" | jq -r '.[] | "\(.name)\t\(.users)"' 2>/dev/null)
+                            if [[ ${#reaction_parts[@]} -gt 0 ]]; then
+                                reactions_display=$(printf '\n  %b↳%b %s' "${YELLOW}" "${NC}" "${reaction_parts[0]}")
+                                for ((i=1; i<${#reaction_parts[@]}; i++)); do
+                                    reactions_display+=$(printf '\n  %b↳%b %s' "${YELLOW}" "${NC}" "${reaction_parts[$i]}")
+                                done
+                            fi
+                        fi
+                    fi
+
+                    # Use print_with_images to handle %%IMG:%% markers for tmux
+                    local line
+                    line=$(printf "${BLUE}[%s]${NC} ${BOLD}%s${NC}: %s%b" "$timestamp" "$username" "$text" "$reactions_display")
+                    print_with_images "$line" "false"
+                    echo ""
+                done < <(echo "$messages" | jq -r 'reverse | .[] | "\(.ts)\u001e\(.user // .bot_id // "unknown")\u001e\((.text // "") | gsub("\n"; " "))\u001e\(.reactions // [] | @json)"')
+                echo ""
+            fi
+        done
+    fi
+
+    done  # end workspace loop
+
+    $VERBOSE && log_info "API calls: $(get_api_count)"
+    cleanup_api_counter
+}
+
+cmd_catchup_help() {
+    echo -e "${BOLD}slack catchup${NC} - Interactively review and dismiss unread messages
+
+${BOLD}USAGE${NC}
+    $SCRIPT_NAME catchup [options]
+
+${BOLD}OPTIONS${NC}
+    -w, --workspace <name>    Target a specific workspace
+    --all                     Process all workspaces
+    --muted                   Include muted channels
+    --workspace-emoji         Show workspace custom emoji as inline images
+    --no-emoji                Show raw :emoji: codes (no conversion)
+    --no-reactions            Hide reactions entirely
+    --reaction-names          Show reactions with user names
+
+${BOLD}ACTIONS${NC}
+    r                         Mark as read and continue
+    s, n, Enter               Skip (leave unread) and continue
+    o                         Open in Slack app
+    q                         Quit catchup
+
+${BOLD}EXAMPLES${NC}
+    $SCRIPT_NAME catchup
+    $SCRIPT_NAME catchup --all
+    $SCRIPT_NAME catchup --muted
+    $SCRIPT_NAME catchup --workspace-emoji
+    $SCRIPT_NAME catchup --reaction-names
+"
+}
+
+cmd_catchup() {
+    local workspace=""
+    local all_workspaces=false
+    local include_muted=false
+    local show_emoji=true
+    local show_workspace_emoji=false
+    local reaction_mode="summary"
+
+    # Check for help first
+    if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        cmd_catchup_help
+        return 0
+    fi
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -w|--workspace)
+                workspace="$2"
+                shift 2
+                ;;
+            --all)
+                all_workspaces=true
+                shift
+                ;;
+            --muted)
+                include_muted=true
+                shift
+                ;;
+            --no-emoji|--raw)
+                show_emoji=false
+                show_workspace_emoji=false
+                shift
+                ;;
+            --workspace-emoji)
+                show_workspace_emoji=true
+                shift
+                ;;
+            --no-reactions)
+                reaction_mode="none"
+                shift
+                ;;
+            --reaction-names)
+                reaction_mode="names"
+                shift
+                ;;
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            -q|--quiet)
+                QUIET=true
+                shift
+                ;;
+            -*)
+                die "Unknown option: $1"
+                ;;
+            *)
+                die "Unknown argument: $1"
+                ;;
+        esac
+    done
+
+    # Determine workspaces to check
+    local workspaces=()
+    if $all_workspaces; then
+        while IFS= read -r ws; do
+            workspaces+=("$ws")
+        done < <(get_workspaces)
+    elif [[ -n "$workspace" ]]; then
+        workspaces=("$workspace")
+    else
+        local primary
+        primary=$(get_primary_workspace)
+        if [[ -z "$primary" ]]; then
+            die "No primary workspace configured. Run '$SCRIPT_NAME config' or use -w/--workspace."
+        fi
+        workspaces=("$primary")
+    fi
+
+    init_api_counter
+
+    local total_marked=0
+    local total_skipped=0
+    local quit_requested=false
+
+    # Process each workspace
+    for workspace in "${workspaces[@]}"; do
+        if $quit_requested; then
+            break
+        fi
+
+        if ! workspace_exists "$workspace"; then
+            log_error "Workspace not found: $workspace"
+            continue
+        fi
+
+        # Fetch unread counts
+        log_verbose "Fetching unread counts for $workspace..."
+        local counts_response
+        counts_response=$(slack_api_call "$workspace" "client.counts" '{}')
+
+        local ok
+        ok=$(echo "$counts_response" | jq -r '.ok')
+
+        if [[ "$ok" != "true" ]]; then
+            local error
+            error=$(echo "$counts_response" | jq -r '.error // "unknown error"')
+            log_error "Failed to fetch unread counts for $workspace: $error"
+            continue
+        fi
+
+        # Get muted channels from user prefs (unless --muted flag is set)
+        local muted_channels=""
+        if [[ "$include_muted" != "true" ]]; then
+            log_verbose "Fetching muted channels..."
+            local prefs_response
+            prefs_response=$(slack_api_call "$workspace" "users.prefs.get" '{}')
+            muted_channels=$(echo "$prefs_response" | jq -r '.prefs.muted_channels // ""')
+        fi
+
+        # Extract channels with unreads (including threads)
+        local unread_list
+        unread_list=$(echo "$counts_response" | jq -r '
+            [
+                (.channels[]? | select(.has_unreads == true) | {id, mention_count, last_read, type: "channel"}),
+                (.mpims[]? | select(.has_unreads == true) | {id, mention_count, last_read, type: "group"}),
+                (.ims[]? | select(.has_unreads == true) | {id, mention_count, last_read, type: "dm"})
+            ] + (if .threads.has_unreads == true then [{id: "THREADS", mention_count: (.threads.mention_count // 0), type: "thread"}] else [] end)
+            | sort_by(-.mention_count)
+        ')
+
+        # Filter out muted channels
+        if [[ -n "$muted_channels" ]]; then
+            local muted_array
+            muted_array=$(echo "$muted_channels" | tr ',' '\n' | jq -R . | jq -s .)
+            unread_list=$(echo "$unread_list" | jq --argjson muted "$muted_array" '[.[] | select(.id as $id | $muted | index($id) | not)]')
+        fi
+
+        local unread_count
+        unread_count=$(echo "$unread_list" | jq 'length')
+
+        if [[ "$unread_count" -eq 0 ]]; then
+            if [[ ${#workspaces[@]} -gt 1 ]]; then
+                echo -e "${GREEN}✓${NC} No unreads in $workspace"
+            else
+                echo -e "${GREEN}✓${NC} No unread messages"
+            fi
+            continue
+        fi
+
+        # Show workspace header when processing multiple
+        if [[ ${#workspaces[@]} -gt 1 ]]; then
+            echo -e "\n${BOLD}━━━ $workspace ($unread_count channels) ━━━${NC}"
+        fi
+
+        # Fetch channel names for lookup
+        log_verbose "Fetching channel names..."
+        local token cookie
+        token=$(get_workspace_token "$workspace")
+        cookie=$(get_workspace_cookie "$workspace")
+
+        local curl_args=(
+            -sS -X POST "$SLACK_API_BASE/users.conversations"
+            -H "Authorization: Bearer $token"
+            -d "types=public_channel,private_channel,mpim,im&limit=1000&exclude_archived=true"
+        )
+        [[ -n "$cookie" ]] && curl_args+=(-H "Cookie: d=$cookie")
+
+        increment_api_counter
+        log_verbose "API: users.conversations"
+        local channels_response
+        channels_response=$(curl "${curl_args[@]}" | tr -d '\000-\037')
+
+        # Build cache
+        local cache_file="$CACHE_DIR/channels-$workspace.json"
+        mkdir -p "$CACHE_DIR"
+        local current_cache="{}"
+        [[ -f "$cache_file" ]] && current_cache=$(cat "$cache_file")
+        local new_entries
+        new_entries=$(echo "$channels_response" | jq '[.channels[]? | select(.name != null) | {key: .name, value: .id}] | from_entries')
+        echo "$current_cache" "$new_entries" | jq -s '.[0] * .[1]' > "$cache_file"
+
+        # Process each channel interactively
+        local channel_index=0
+        while IFS=$'\t' read -r type id last_read mentions; do
+            if $quit_requested; then
+                break
+            fi
+
+            channel_index=$((channel_index + 1))
+            local type_indicator name
+            case "$type" in
+                dm) type_indicator="@" ;;
+                group) type_indicator="&" ;;
+                thread) type_indicator="🧵 #" ;;
+                *) type_indicator="#" ;;
+            esac
+
+            # Get channel name
+            name=$(get_cached_channel_name "$workspace" "$id")
+            if [[ -z "$name" ]]; then
+                if [[ "$type" == "dm" && "$id" == D* ]]; then
+                    local curl_args=(-sS -X POST "$SLACK_API_BASE/conversations.info" -H "Authorization: Bearer $token" -d "channel=$id")
+                    [[ -n "$cookie" ]] && curl_args+=(-H "Cookie: d=$cookie")
+                    increment_api_counter
+                    log_verbose "API: conversations.info"
+                    local dm_info
+                    dm_info=$(curl "${curl_args[@]}" | tr -d '\000-\037')
+                    local dm_user
+                    dm_user=$(echo "$dm_info" | jq -r '.channel.user // empty')
+                    if [[ -n "$dm_user" ]]; then
+                        name=$(get_user_name "$workspace" "$dm_user")
+                        [[ -n "$name" ]] && cache_channel "$workspace" "$name" "$id"
+                    fi
+                fi
+                [[ -z "$name" ]] && name="$id"
+            fi
+
+            # For threads, fetch and display unread thread replies
+            if [[ "$type" == "thread" ]]; then
+                log_verbose "Fetching unread threads..."
+                local threads_response
+                threads_response=$(slack_api_call "$workspace" "subscriptions.thread.getView" '{"limit":20}')
+                local threads_ok
+                threads_ok=$(echo "$threads_response" | jq -r '.ok // false')
+
+                if [[ "$threads_ok" != "true" ]]; then
+                    echo ""
+                    echo -e "${BOLD}━━━ 🧵 Threads [$channel_index/$unread_count] ━━━${NC}"
+                    echo ""
+                    echo -e "${YELLOW}Could not fetch threads. Press [o] to open Slack, [s] to skip.${NC}"
+                    while true; do
+                        printf "${YELLOW}[s]kip  [o]pen  [q]uit${NC}  > "
+                        read -r -n 1 action < /dev/tty
+                        echo ""
+                        case "$action" in
+                            s|S|n|N|"") echo -e "${BLUE}→${NC} Skipped Threads"; total_skipped=$((total_skipped + 1)); break ;;
+                            o|O) open "slack://open" 2>/dev/null; total_skipped=$((total_skipped + 1)); break ;;
+                            q|Q) quit_requested=true; break ;;
+                            *) echo "Invalid option" ;;
+                        esac
+                    done
+                    continue
+                fi
+
+                local total_thread_unreads
+                total_thread_unreads=$(echo "$threads_response" | jq -r '.total_unread_replies // 0')
+
+                echo ""
+                echo -e "${BOLD}━━━ 🧵 Threads ($total_thread_unreads unread) [$channel_index/$unread_count] ━━━${NC}"
+                echo ""
+
+                # Build list of threads to mark (channel_id, thread_ts, latest_reply_ts, root_user)
+                local thread_mark_data
+                thread_mark_data=$(echo "$threads_response" | jq -r '
+                    .threads[] | select(.unread_replies | length > 0) |
+                    "\(.root_msg.channel)\t\(.root_msg.thread_ts)\t(.unread_replies | max_by(.ts) | .ts)\t\((.root_msg.user_profile.display_name | select(. != "" and . != null)) // (.root_msg.user_profile.real_name | select(. != "" and . != null)) // .root_msg.username // .root_msg.user // "unknown")"
+                ')
+
+                # Display each thread with unread replies
+                while IFS=$'\t' read -r t_channel t_thread_ts t_latest_ts t_root_user; do
+                    [[ -z "$t_channel" ]] && continue
+                    local channel_name
+                    channel_name=$(get_cached_channel_name "$workspace" "$t_channel")
+                    [[ -z "$channel_name" ]] && channel_name="$t_channel"
+
+                    # If root_user looks like a user ID, look up the name
+                    if [[ "$t_root_user" =~ ^U[A-Z0-9]+$ ]]; then
+                        t_root_user=$(get_user_name "$workspace" "$t_root_user")
+                    fi
+                    [[ -z "$t_root_user" || "$t_root_user" == "null" ]] && t_root_user="unknown"
+
+                    echo -e "${BLUE}#${channel_name}${NC} - thread by ${BOLD}${t_root_user}${NC}"
+
+                    # Get unread replies for this thread
+                    echo "$threads_response" | jq -r --arg tts "$t_thread_ts" '
+                        .threads[] | select(.root_msg.thread_ts == $tts) | .unread_replies[] | @json
+                    ' | while IFS= read -r reply_json; do
+                        local reply_ts reply_user reply_user_id reply_text reply_time reply_reactions_json
+                        reply_ts=$(echo "$reply_json" | jq -r '.ts')
+                        # Try user_profile first, fall back to looking up user ID
+                        reply_user=$(echo "$reply_json" | jq -r '(.user_profile.display_name | select(. != "" and . != null)) // (.user_profile.real_name | select(. != "" and . != null)) // empty')
+                        if [[ -z "$reply_user" ]]; then
+                            reply_user_id=$(echo "$reply_json" | jq -r '.user // empty')
+                            if [[ -n "$reply_user_id" ]]; then
+                                reply_user=$(get_user_name "$workspace" "$reply_user_id")
+                            fi
+                        fi
+                        [[ -z "$reply_user" ]] && reply_user="unknown"
+                        reply_text=$(echo "$reply_json" | jq -r '.text // ""')
+                        reply_text=$(echo "$reply_text" | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g')
+                        reply_text=$(replace_mentions "$reply_text" "$workspace")
+                        if [[ "$show_emoji" == "true" ]]; then
+                            reply_text=$(replace_emoji "$reply_text" "$workspace" "$show_workspace_emoji")
+                        fi
+                        reply_time=$(date -r "${reply_ts%.*}" "+%H:%M" 2>/dev/null || echo "$reply_ts")
+                        local line
+                        line=$(printf "  ${BLUE}[%s]${NC} ${BOLD}%s${NC}: %s" "$reply_time" "$reply_user" "$reply_text")
+                        print_with_images "$line" "false"
+                        echo ""
+
+                        # Display reactions if present
+                        reply_reactions_json=$(echo "$reply_json" | jq -c '.reactions // []')
+                        if [[ "$reply_reactions_json" != "[]" ]]; then
+                            local reply_reaction_parts=()
+                            while IFS=$'\t' read -r r_name r_users; do
+                                [[ -z "$r_name" ]] && continue
+                                local r_emoji=":${r_name}:"
+                                if [[ "$show_emoji" == "true" ]]; then
+                                    r_emoji=$(replace_emoji "$r_emoji" "$workspace" "$show_workspace_emoji")
+                                fi
+                                local r_user_names=()
+                                while IFS= read -r r_uid; do
+                                    [[ -z "$r_uid" ]] && continue
+                                    local r_uname
+                                    r_uname=$(get_user_name "$workspace" "$r_uid")
+                                    r_user_names+=("$r_uname")
+                                done < <(echo "$r_users" | jq -r '.[]' 2>/dev/null)
+                                local r_names_str
+                                r_names_str=$(printf '%s\n' "${r_user_names[@]}" | paste -sd ',' - | sed 's/,/, /g')
+                                reply_reaction_parts+=("${r_emoji} ${r_names_str}")
+                            done < <(echo "$reply_reactions_json" | jq -r '.[] | "\(.name)\t\(.users | @json)"' 2>/dev/null)
+                            if [[ ${#reply_reaction_parts[@]} -gt 0 ]]; then
+                                local reply_reactions_display
+                                reply_reactions_display=$(printf '    %b↳%b %s' "${YELLOW}" "${NC}" "${reply_reaction_parts[0]}")
+                                for ((ri=1; ri<${#reply_reaction_parts[@]}; ri++)); do
+                                    reply_reactions_display+="; ${reply_reaction_parts[$ri]}"
+                                done
+                                print_with_images "$reply_reactions_display" "false"
+                                echo ""
+                            fi
+                        fi
+                    done
+                    echo ""
+                done < <(echo "$threads_response" | jq -r '
+                    .threads[] | select(.unread_replies | length > 0) |
+                    "\(.root_msg.channel)\t\(.root_msg.thread_ts)\t\(.unread_replies | max_by(.ts) | .ts)\t\((.root_msg.user_profile.display_name | select(. != "" and . != null)) // (.root_msg.user_profile.real_name | select(. != "" and . != null)) // .root_msg.username // .root_msg.user // "unknown")"
+                ')
+
+                # Look up root user names if they're still user IDs
+                # (done inline above, but we need to handle when it's a user ID)
+
+                echo ""
+
+                while true; do
+                    printf "${YELLOW}[r]ead  [s]kip  [o]pen  [q]uit${NC}  > "
+                    read -r -n 1 action < /dev/tty
+                    echo ""
+
+                    case "$action" in
+                        r|R)
+                            # Mark all threads as read using subscriptions.thread.mark
+                            local mark_count=0
+                            local mark_failed=0
+                            while IFS=$'\t' read -r m_channel m_thread_ts m_latest_ts; do
+                                [[ -z "$m_channel" ]] && continue
+                                log_verbose "Marking thread $m_thread_ts in $m_channel as read"
+                                local mark_response
+                                # subscriptions.thread.mark requires form data
+                                local mark_token mark_cookie
+                                mark_token=$(get_workspace_token "$workspace")
+                                mark_cookie=$(get_workspace_cookie "$workspace")
+                                mark_response=$(curl -sS -X POST "$SLACK_API_BASE/subscriptions.thread.mark" \
+                                    -H "Authorization: Bearer $mark_token" \
+                                    -H "Cookie: d=$mark_cookie" \
+                                    -d "channel=$m_channel&thread_ts=$m_thread_ts&ts=$m_latest_ts")
+                                increment_api_counter
+                                local mark_ok
+                                mark_ok=$(echo "$mark_response" | jq -r '.ok // false')
+                                if [[ "$mark_ok" == "true" ]]; then
+                                    mark_count=$((mark_count + 1))
+                                else
+                                    mark_failed=$((mark_failed + 1))
+                                    log_verbose "Failed to mark thread: $(echo "$mark_response" | jq -r '.error // "unknown"')"
+                                fi
+                            done < <(echo "$threads_response" | jq -r '
+                                .threads[] | select(.unread_replies | length > 0) |
+                                "\(.root_msg.channel)\t\(.root_msg.thread_ts)\t\(.unread_replies | max_by(.ts) | .ts)"
+                            ')
+                            if [[ $mark_failed -eq 0 ]]; then
+                                echo -e "${GREEN}✓${NC} Marked $mark_count thread(s) as read"
+                            else
+                                echo -e "${YELLOW}!${NC} Marked $mark_count thread(s), $mark_failed failed"
+                            fi
+                            total_marked=$((total_marked + mark_count))
+                            break
+                            ;;
+                        s|S|n|N|"")
+                            echo -e "${BLUE}→${NC} Skipped Threads"
+                            total_skipped=$((total_skipped + 1))
+                            break
+                            ;;
+                        o|O)
+                            open "slack://open" 2>/dev/null || log_warn "Could not open Slack"
+                            echo -e "${BLUE}→${NC} Opened Slack"
+                            break
+                            ;;
+                        q|Q)
+                            quit_requested=true
+                            break
+                            ;;
+                        *)
+                            echo "Invalid option. Use r/s/o/q"
+                            ;;
+                    esac
+                done
+                continue
+            fi
+
+            # Fetch messages since last_read
+            log_verbose "Fetching messages from $name..."
+            local payload="{\"channel\":\"$id\",\"oldest\":\"$last_read\",\"limit\":1000}"
+            local history_response
+            history_response=$(slack_api_call "$workspace" "conversations.history" "$payload")
+
+            local messages
+            messages=$(echo "$history_response" | jq -r '.messages // []')
+            local msg_count
+            msg_count=$(echo "$messages" | jq 'length')
+
+            if [[ "$msg_count" -eq 0 ]]; then
+                continue
+            fi
+
+            # Display channel header
+            echo ""
+            echo -e "${BOLD}━━━ ${type_indicator}${name} (${msg_count} unread) [$channel_index/$unread_count] ━━━${NC}"
+            echo ""
+
+            # Build user map from embedded user_profile data (works for Slack Connect users too)
+            unset msg_user_map
+            declare -A msg_user_map
+            while IFS=$'\t' read -r uid uname; do
+                [[ -n "$uid" && -n "$uname" ]] && msg_user_map["$uid"]="$uname"
+            done < <(echo "$messages" | jq -r '.[] | select(.user_profile != null or .username != null) | "\(.user // .bot_id // "unknown")\t\((.user_profile.display_name | select(. != "" and . != null)) // .user_profile.real_name // .username // "unknown")"')
+
+            # Display messages (oldest first) - use record separator to avoid issues with tabs in text
+            while IFS=$'\x1e' read -r ts user_id text reactions_json; do
+                local timestamp
+                timestamp=$(date -r "${ts%.*}" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "$ts")
+
+                # Get username from local map, then cache, then fall back to ID
+                local username=""
+                if [[ -n "$user_id" && "$user_id" != "unknown" ]]; then
+                    username="${msg_user_map[$user_id]:-}"
+                    if [[ -z "$username" ]]; then
+                        username=$(get_user_name "$workspace" "$user_id")
+                    fi
+                fi
+                [[ -z "$username" ]] && username="${user_id:-unknown}"
+
+                # Decode basic slack formatting
+                text=$(echo "$text" | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g')
+
+                # Replace mentions with names
+                text=$(replace_mentions "$text" "$workspace")
+
+                # Replace emoji codes
+                if [[ "$show_emoji" == "true" ]]; then
+                    text=$(replace_emoji "$text" "$workspace" "$show_workspace_emoji")
+                fi
+
+                # Build reactions display
+                local reactions_display=""
+                if [[ "$reaction_mode" != "none" && -n "$reactions_json" && "$reactions_json" != "[]" && "$reactions_json" != "null" ]]; then
+                    if [[ "$reaction_mode" == "summary" ]]; then
+                        # Compact summary: [3 :heart:, 2 :+1:]
+                        local summary_parts=()
+                        while IFS=$'\t' read -r reaction_name reaction_count; do
+                            [[ -z "$reaction_name" ]] && continue
+                            local reaction_emoji=":${reaction_name}:"
+                            if [[ "$show_emoji" == "true" ]]; then
+                                reaction_emoji=$(replace_emoji "$reaction_emoji" "$workspace" "$show_workspace_emoji")
+                            fi
+                            summary_parts+=("${reaction_count} ${reaction_emoji}")
+                        done < <(echo "$reactions_json" | jq -r '.[] | "\(.name)\t\(.count)"')
+                        if [[ ${#summary_parts[@]} -gt 0 ]]; then
+                            local joined
+                            joined=$(printf '%s, ' "${summary_parts[@]}")
+                            joined="${joined%, }"  # Remove trailing ", "
+                            reactions_display=" ${CYAN}[${joined}]${NC}"
+                        fi
+                    else
+                        # Expanded mode (names): show each reaction with user names
+                        local reaction_lines=()
+                        while IFS=$'\t' read -r reaction_name reaction_users_json; do
+                            [[ -z "$reaction_name" ]] && continue
+                            local reaction_emoji=":${reaction_name}:"
+                            if [[ "$show_emoji" == "true" ]]; then
+                                reaction_emoji=$(replace_emoji "$reaction_emoji" "$workspace" "$show_workspace_emoji")
+                            fi
+                            # Get user names for reactors
+                            local reactor_names=()
+                            while IFS= read -r reactor_id; do
+                                [[ -z "$reactor_id" ]] && continue
+                                local reactor_name
+                                reactor_name="${msg_user_map[$reactor_id]:-}"
+                                if [[ -z "$reactor_name" ]]; then
+                                    reactor_name=$(get_user_name "$workspace" "$reactor_id")
+                                fi
+                                [[ -z "$reactor_name" ]] && reactor_name="$reactor_id"
+                                reactor_names+=("$reactor_name")
+                            done < <(echo "$reaction_users_json" | jq -r '.[]')
+                            if [[ ${#reactor_names[@]} -gt 0 ]]; then
+                                local joined_names
+                                joined_names=$(printf '%s, ' "${reactor_names[@]}")
+                                joined_names="${joined_names%, }"
+                                reaction_lines+=("${reaction_emoji} ${joined_names}")
+                            fi
+                        done < <(echo "$reactions_json" | jq -r '.[] | "\(.name)\t\(.users | @json)"')
+                        if [[ ${#reaction_lines[@]} -gt 0 ]]; then
+                            reactions_display=""
+                            for rline in "${reaction_lines[@]}"; do
+                                reactions_display+="\n        ${CYAN}${rline}${NC}"
+                            done
+                        fi
+                    fi
+                fi
+
+                # Use print_with_images to handle %%IMG:%% markers for tmux
+                local line
+                line=$(printf "${BLUE}[%s]${NC} ${BOLD}%s${NC}: %s%b" "$timestamp" "$username" "$text" "$reactions_display")
+                print_with_images "$line" "false"
+                echo ""
+            done < <(echo "$messages" | jq -r 'reverse | .[] | "\(.ts)\u001e\(.user // .bot_id // "unknown")\u001e\((.text // "") | gsub("\n"; " "))\u001e\(.reactions // [] | @json)"')
+
+            echo ""
+
+            # Prompt for action
+            while true; do
+                printf "${YELLOW}[r]ead  [s]kip  [o]pen  [q]uit${NC}  > "
+                read -r -n 1 action < /dev/tty
+                echo ""
+
+                case "$action" in
+                    r|R)
+                        # Mark as read
+                        local now_ts
+                        now_ts=$(date +%s).000000
+                        local mark_response
+                        mark_response=$(slack_api_call "$workspace" "conversations.mark" "{\"channel\":\"$id\",\"ts\":\"$now_ts\"}")
+                        local mark_ok
+                        mark_ok=$(echo "$mark_response" | jq -r '.ok')
+                        if [[ "$mark_ok" == "true" ]]; then
+                            echo -e "${GREEN}✓${NC} Marked ${type_indicator}${name} as read"
+                            total_marked=$((total_marked + 1))
+                        else
+                            log_error "Failed to mark as read"
+                        fi
+                        break
+                        ;;
+                    s|S|n|N|"")
+                        # Skip
+                        echo -e "${BLUE}→${NC} Skipped ${type_indicator}${name}"
+                        total_skipped=$((total_skipped + 1))
+                        break
+                        ;;
+                    o|O)
+                        # Open in Slack
+                        local slack_url="slack://channel?team=${workspace}&id=${id}"
+                        open "$slack_url" 2>/dev/null || log_warn "Could not open Slack"
+                        # Don't break - prompt again
+                        ;;
+                    q|Q)
+                        quit_requested=true
+                        break
+                        ;;
+                    *)
+                        echo "Invalid option. Use r/s/o/q"
+                        ;;
+                esac
+            done
+
+        done < <(echo "$unread_list" | jq -r '.[] | "\(.type)\t\(.id)\t\(.last_read)\t\(.mention_count)"')
+
+    done  # end workspace loop
+
+    # Summary
+    echo ""
+    echo -e "${BOLD}Catchup complete:${NC}"
+    [[ $total_marked -gt 0 ]] && echo -e "  ${GREEN}✓${NC} Marked $total_marked channels as read"
+    [[ $total_skipped -gt 0 ]] && echo -e "  ${BLUE}→${NC} Skipped $total_skipped channels"
+    [[ $total_marked -eq 0 && $total_skipped -eq 0 ]] && echo "  No channels processed"
+
+    $VERBOSE && log_info "API calls: $(get_api_count)"
+    cleanup_api_counter
+}
+
+cmd_cache_help() {
+    echo -e "${BOLD}slack cache${NC} - Manage user and channel caches
+
+${BOLD}USAGE${NC}
+    $SCRIPT_NAME cache [action] [workspace]
+
+${BOLD}ACTIONS${NC}
+    status            Show cache status (default)
+    clear [workspace] Clear user cache (all or specific workspace)
+    populate [ws]     Pre-populate user cache for a workspace
+
+${BOLD}EXAMPLES${NC}
+    $SCRIPT_NAME cache                # Show cache status
+    $SCRIPT_NAME cache clear          # Clear all caches
+    $SCRIPT_NAME cache clear myteam   # Clear cache for 'myteam'
+    $SCRIPT_NAME cache populate       # Populate cache for primary workspace
+"
+}
+
+cmd_cache() {
+    # Check for help first
+    if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        cmd_cache_help
+        return 0
+    fi
+
+    local action=""
+    local workspace=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            -*)
+                die "Unknown option: $1"
+                ;;
+            *)
+                if [[ -z "$action" ]]; then
+                    action="$1"
+                else
+                    workspace="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    action="${action:-status}"
+
+    case "$action" in
+        status|info)
+            echo -e "${BOLD}User cache status:${NC}"
+            if [[ -d "$CACHE_DIR" ]]; then
+                for cache_file in "$CACHE_DIR"/users-*.json; do
+                    if [[ -f "$cache_file" ]]; then
+                        local ws_name count modified
+                        ws_name=$(basename "$cache_file" .json | sed 's/users-//')
+                        count=$(jq 'keys | length' "$cache_file" 2>/dev/null || echo "0")
+                        modified=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M" "$cache_file" 2>/dev/null || stat -c "%y" "$cache_file" 2>/dev/null | cut -d. -f1)
+                        echo "  $ws_name: $count users (updated: $modified)"
+                    fi
+                done
+                if ! ls "$CACHE_DIR"/users-*.json &>/dev/null; then
+                    echo "  No user caches found"
+                fi
+            else
+                echo "  Cache directory not created yet"
+            fi
+            echo ""
+            echo -e "${BOLD}Channel cache status:${NC}"
+            if [[ -d "$CACHE_DIR" ]]; then
+                for cache_file in "$CACHE_DIR"/channels-*.json; do
+                    if [[ -f "$cache_file" ]]; then
+                        local ws_name count modified
+                        ws_name=$(basename "$cache_file" .json | sed 's/channels-//')
+                        count=$(jq 'keys | length' "$cache_file" 2>/dev/null || echo "0")
+                        modified=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M" "$cache_file" 2>/dev/null || stat -c "%y" "$cache_file" 2>/dev/null | cut -d. -f1)
+                        echo "  $ws_name: $count channels (updated: $modified)"
+                    fi
+                done
+                if ! ls "$CACHE_DIR"/channels-*.json &>/dev/null; then
+                    echo "  No channel caches found"
+                fi
+            fi
+            ;;
+        clear)
+            if [[ -n "$workspace" ]]; then
+                local user_cache="$CACHE_DIR/users-$workspace.json"
+                local channel_cache="$CACHE_DIR/channels-$workspace.json"
+                local cleared=false
+                if [[ -f "$user_cache" ]]; then
+                    rm "$user_cache"
+                    log_info "Cleared user cache for $workspace"
+                    cleared=true
+                fi
+                if [[ -f "$channel_cache" ]]; then
+                    rm "$channel_cache"
+                    log_info "Cleared channel cache for $workspace"
+                    cleared=true
+                fi
+                $cleared || log_warn "No cache found for $workspace"
+            else
+                if [[ -d "$CACHE_DIR" ]]; then
+                    rm -f "$CACHE_DIR"/users-*.json "$CACHE_DIR"/channels-*.json
+                    log_info "Cleared all caches"
+                else
+                    log_warn "No cache directory found"
+                fi
+            fi
+            ;;
+        populate|refresh)
+            init_api_counter
+            if [[ -n "$workspace" ]]; then
+                if ! workspace_exists "$workspace"; then
+                    die "Workspace not found: $workspace"
+                fi
+                populate_user_cache "$workspace"
+                log_info "Populated user cache for $workspace"
+            else
+                # Populate all workspaces
+                while IFS= read -r ws; do
+                    populate_user_cache "$ws"
+                    log_info "Populated user cache for $ws"
+                done < <(get_workspaces)
+            fi
+            $VERBOSE && log_info "API calls: $(get_api_count)"
+            cleanup_api_counter
+            ;;
+        *)
+            die "Unknown cache action: $action (use status, clear, or populate)"
+            ;;
+    esac
+}
+
+cmd_emoji_help() {
+    echo -e "${BOLD}slack emoji${NC} - Download and manage workspace emojis
+
+${BOLD}USAGE${NC}
+    $SCRIPT_NAME emoji [action] [workspace]
+
+${BOLD}ACTIONS${NC}
+    status            Show emoji cache status (default)
+    sync-standard     Download standard emoji database (gemoji)
+    download [ws]     Download workspace custom emojis
+    clear [workspace] Clear emoji cache
+
+${BOLD}OPTIONS${NC}
+    -w, --workspace <name>    Target a specific workspace
+
+${BOLD}EXAMPLES${NC}
+    $SCRIPT_NAME emoji                    # Show emoji status
+    $SCRIPT_NAME emoji sync-standard      # Download standard emojis
+    $SCRIPT_NAME emoji download           # Download from primary workspace
+    $SCRIPT_NAME emoji download myteam    # Download from 'myteam'
+    $SCRIPT_NAME emoji clear              # Clear all emoji caches
+"
+}
+
+cmd_emoji() {
+    # Check for help first
+    if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        cmd_emoji_help
+        return 0
+    fi
+
+    local action=""
+    local workspace=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -w|--workspace)
+                workspace="$2"
+                shift 2
+                ;;
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            -*)
+                die "Unknown option: $1"
+                ;;
+            *)
+                if [[ -z "$action" ]]; then
+                    action="$1"
+                elif [[ -z "$workspace" ]]; then
+                    workspace="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    action="${action:-status}"
+
+    # Get workspace if not specified
+    if [[ -z "$workspace" && "$action" != "status" ]]; then
+        workspace=$(get_primary_workspace)
+        if [[ -z "$workspace" ]]; then
+            die "No primary workspace configured. Specify with -w or run '$SCRIPT_NAME config'."
+        fi
+    fi
+
+    if [[ -n "$workspace" ]] && ! workspace_exists "$workspace"; then
+        die "Workspace not found: $workspace"
+    fi
+
+    # Use configured emoji_dir if set, otherwise fall back to cache
+    local emoji_dir
+    emoji_dir=$(get_config_value ".emoji_dir" "")
+    if [[ -z "$emoji_dir" ]]; then
+        emoji_dir="$CACHE_DIR/emoji"
+    fi
+
+    case "$action" in
+        status|list)
+            echo -e "${BOLD}Emoji cache status:${NC}"
+            # Show standard emoji database status
+            if [[ -f "$CACHE_DIR/gemoji.json" ]]; then
+                local gemoji_count
+                gemoji_count=$(jq 'length' "$CACHE_DIR/gemoji.json" 2>/dev/null || echo 0)
+                echo "  Standard emoji database: $gemoji_count emojis"
+            else
+                echo "  Standard emoji database: not downloaded"
+                echo "  Run 'slack emoji sync-standard' to download"
+            fi
+            echo ""
+            echo -e "${BOLD}Workspace emojis:${NC} ($emoji_dir)"
+            if [[ -d "$emoji_dir" ]]; then
+                local total=0
+                for ws_dir in "$emoji_dir"/*/; do
+                    if [[ -d "$ws_dir" ]]; then
+                        local ws_name count
+                        ws_name=$(basename "$ws_dir")
+                        count=$(find "$ws_dir" -type f \( -name "*.png" -o -name "*.gif" -o -name "*.jpg" \) 2>/dev/null | wc -l | tr -d ' ')
+                        if [[ "$count" -gt 0 ]]; then
+                            local size
+                            size=$(du -sh "$ws_dir" 2>/dev/null | cut -f1)
+                            echo "  $ws_name: $count emojis ($size)"
+                            total=$((total + count))
+                        fi
+                    fi
+                done
+                if [[ "$total" -eq 0 ]]; then
+                    echo "  No workspace emojis downloaded yet"
+                    echo "  Run 'slack emoji download' to download workspace emojis"
+                fi
+            else
+                echo "  No workspace emojis downloaded yet"
+                echo "  Run 'slack emoji download' to download workspace emojis"
+            fi
+            ;;
+        download|sync)
+            init_api_counter
+
+            log_info "Fetching emoji list for $workspace..."
+
+            # Get emoji list
+            local token cookie
+            token=$(get_workspace_token "$workspace")
+            cookie=$(get_workspace_cookie "$workspace")
+
+            local curl_args=(
+                -sS -X POST "$SLACK_API_BASE/emoji.list"
+                -H "Authorization: Bearer $token"
+            )
+            [[ -n "$cookie" ]] && curl_args+=(-H "Cookie: d=$cookie")
+
+            increment_api_counter
+            log_verbose "API: emoji.list"
+            local response
+            response=$(curl "${curl_args[@]}" | tr -d '\000-\037')
+
+            local ok
+            ok=$(echo "$response" | jq -r '.ok')
+            if [[ "$ok" != "true" ]]; then
+                local error
+                error=$(echo "$response" | jq -r '.error // "unknown error"')
+                die "Failed to fetch emoji list: $error"
+            fi
+
+            # Create emoji directory
+            local ws_emoji_dir="$emoji_dir/$workspace"
+            mkdir -p "$ws_emoji_dir"
+
+            # Get emoji URLs (filter out aliases which start with "alias:")
+            local emoji_count
+            emoji_count=$(echo "$response" | jq '[.emoji | to_entries[] | select(.value | startswith("alias:") | not)] | length')
+
+            log_info "Found $emoji_count custom emojis, downloading..."
+
+            # Progress bar helper (only used in non-verbose mode)
+            show_progress() {
+                local current="$1"
+                local total="$2"
+                local downloaded="$3"
+                local skipped="$4"
+                local width=30
+                local percent=$((current * 100 / total))
+                local filled=$((current * width / total))
+                local empty=$((width - filled))
+
+                # Build progress bar
+                local bar=""
+                for ((i=0; i<filled; i++)); do bar+="█"; done
+                for ((i=0; i<empty; i++)); do bar+="░"; done
+
+                printf "\r  [%s] %d/%d (%d%%) - %d new, %d skipped" "$bar" "$current" "$total" "$percent" "$downloaded" "$skipped"
+            }
+
+            local downloaded=0
+            local skipped=0
+            local current=0
+            local failed=0
+
+            # Download each emoji
+            while IFS=$'\t' read -r name url; do
+                current=$((current + 1))
+
+                # Determine file extension from URL
+                local ext="png"
+                [[ "$url" == *.gif* ]] && ext="gif"
+                [[ "$url" == *.jpg* || "$url" == *.jpeg* ]] && ext="jpg"
+
+                local filepath="$ws_emoji_dir/$name.$ext"
+
+                # Skip if already downloaded
+                if [[ -f "$filepath" ]]; then
+                    skipped=$((skipped + 1))
+                    log_verbose "Skipping $name (already exists)"
+                    $VERBOSE || show_progress "$current" "$emoji_count" "$downloaded" "$skipped"
+                    continue
+                fi
+
+                log_verbose "Downloading $name..."
+                if curl -sS -o "$filepath" "$url" 2>/dev/null; then
+                    downloaded=$((downloaded + 1))
+                else
+                    failed=$((failed + 1))
+                    log_verbose "Failed to download $name"
+                fi
+
+                $VERBOSE || show_progress "$current" "$emoji_count" "$downloaded" "$skipped"
+            done < <(echo "$response" | jq -r '.emoji | to_entries[] | select(.value | startswith("alias:") | not) | "\(.key)\t\(.value)"')
+
+            # Clear progress line (only if we showed it)
+            $VERBOSE || printf "\r%80s\r" ""
+
+            # Count results
+            local final_count
+            final_count=$(find "$ws_emoji_dir" -type f \( -name "*.png" -o -name "*.gif" -o -name "*.jpg" \) 2>/dev/null | wc -l | tr -d ' ')
+            local size
+            size=$(du -sh "$ws_emoji_dir" 2>/dev/null | cut -f1)
+
+            log_info "Downloaded emojis to $ws_emoji_dir"
+            log_info "Total: $final_count emojis ($size)"
+            [[ "$downloaded" -gt 0 ]] && log_info "New: $downloaded downloaded"
+            [[ "$skipped" -gt 0 ]] && log_info "Skipped: $skipped (already existed)"
+            [[ "$failed" -gt 0 ]] && log_warn "Failed: $failed downloads"
+
+            $VERBOSE && log_info "API calls: $(get_api_count)"
+            cleanup_api_counter
+            ;;
+        clear)
+            if [[ -n "$workspace" ]]; then
+                local ws_emoji_dir="$emoji_dir/$workspace"
+                if [[ -d "$ws_emoji_dir" ]]; then
+                    rm -rf "$ws_emoji_dir"
+                    log_info "Cleared emoji cache for $workspace"
+                else
+                    log_warn "No emoji cache found for $workspace"
+                fi
+            else
+                if [[ -d "$emoji_dir" ]]; then
+                    rm -rf "$emoji_dir"
+                    log_info "Cleared all emoji caches"
+                else
+                    log_warn "No emoji cache directory found"
+                fi
+            fi
+            ;;
+        sync-standard)
+            # Download comprehensive emoji database (gemoji)
+            download_emoji_data
+            ;;
+        *)
+            die "Unknown emoji action: $action (use status, download, sync-standard, or clear)"
+            ;;
+    esac
+}
+
+cmd_help() {
+    echo -e "${BOLD}slack${NC} v$VERSION - Slack CLI for status, presence, DND, and messages
+
+${BOLD}USAGE${NC}
+    $SCRIPT_NAME <command> [options]
+
+${BOLD}COMMANDS${NC}
+    status [text] [emoji] [duration] Get or set your status
+    preset <name|action>             Use or manage presets
+    messages <target>                Read messages from channel/DM/thread
+    unread                           Show unread message counts
+    catchup                          Interactively review and dismiss unreads
+    presence [away|auto]             Get or set presence (away/active)
+    dnd [on|off] [duration]          Snooze or resume notifications
+    workspaces <action>              Manage workspaces
+    cache <action>                   Manage user/channel cache
+    emoji <action>                   Download and manage workspace emojis
+    config                           Run setup wizard
+    help                             Show this help
+
+${BOLD}OPTIONS${NC}
+    -w, --workspace <name>   Target a specific workspace
+    --all                    Target all workspaces
+    -p, --presence <value>   Also set presence (away/auto/active)
+    -d, --dnd <duration>     Also snooze notifications (or 'off')
+    -v, --verbose            Show detailed output
+    -q, --quiet              Suppress output (for scripting)
+
+${BOLD}EXAMPLES${NC}
+    $SCRIPT_NAME status
+    $SCRIPT_NAME status \"Deep work\" :headphones: 2h
+    $SCRIPT_NAME status \"In a meeting\" :calendar: 1h30m -w oddball
+    $SCRIPT_NAME status \"On PTO\" :palm_tree: --all
+    $SCRIPT_NAME status \"Focus time\" :headphones: 2h -p away -d 2h
+    $SCRIPT_NAME status clear
+    $SCRIPT_NAME status --all
+    $SCRIPT_NAME preset lunch
+
+${BOLD}STATUS COMMANDS${NC}
+    status                   Show current status
+    status <text> [emoji] [duration]  Set status
+    status clear             Clear status
+    status --all             Show/set on all workspaces
+
+${BOLD}PRESET COMMANDS${NC}
+    preset list              List all presets
+    preset add               Add a new preset (interactive)
+    preset edit <name>       Edit a preset
+    preset delete <name>     Delete a preset
+    preset <name>            Apply a preset
+
+${BOLD}WORKSPACE COMMANDS${NC}
+    workspaces list          List configured workspaces
+    workspaces add           Add a workspace (interactive)
+    workspaces remove <name> Remove a workspace
+    workspaces primary [name] Get or set primary workspace
+
+${BOLD}PRESENCE COMMANDS${NC}
+    presence                 Show current presence
+    presence away            Set presence to away
+    presence auto            Set presence to active (auto)
+    presence active          Alias for 'presence auto'
+
+${BOLD}DND (DO NOT DISTURB) COMMANDS${NC}
+    dnd                      Show current DND status
+    dnd on [duration]        Snooze notifications (default: 1h)
+    dnd off                  Resume notifications
+    dnd 2h                   Snooze for specific duration
+
+${BOLD}MESSAGES COMMANDS${NC}
+    messages #channel            Read messages from a channel
+    messages @user               Read DM with a user
+    messages <url>               Read from Slack URL (workspace auto-detected)
+    messages <target> -n 50      Limit number of messages
+    messages <target> --threads  Expand thread replies inline
+    messages <target> --json     Output as JSON
+    messages <target> --no-names Skip user name lookups (faster)
+    messages <target> --no-emoji Disable emoji conversion (show raw :emoji: codes)
+    messages <target> --workspace-emoji Show workspace custom emoji as inline images
+    messages <target> --no-reactions    Hide reactions entirely
+    messages <target> --reaction-names  Show reactions expanded with user names
+
+${BOLD}UNREAD COMMANDS${NC}
+    unread                   Fetch and display unread messages (last 10 per channel)
+    unread --all             Check all workspaces
+    unread -n 20             Show more messages per channel
+    unread --muted           Include muted channels
+    unread --json            Output channel list as JSON (no fetch)
+    unread -w <workspace>    Check specific workspace
+    unread clear             Mark all unread conversations as read
+    unread clear #channel    Mark specific channel as read
+    unread clear --muted     Also clear muted channels
+    unread clear --all       Clear unreads on all workspaces
+
+${BOLD}CATCHUP COMMANDS${NC}
+    catchup                  Interactively triage unreads (r=read, s=skip, o=open, q=quit)
+    catchup --all            Process all workspaces
+    catchup --muted          Include muted channels
+
+${BOLD}CACHE COMMANDS${NC}
+    cache                    Show cache status
+    cache clear [workspace]  Clear user cache (all or specific workspace)
+    cache populate [workspace] Pre-populate user cache
+
+${BOLD}EMOJI COMMANDS${NC}
+    emoji                    Show emoji cache status
+    emoji sync-standard      Download standard emoji database (gemoji)
+    emoji download           Download workspace custom emojis
+    emoji download <ws>      Download emojis for specific workspace
+    emoji clear [workspace]  Clear emoji cache
+
+${BOLD}DURATION FORMAT${NC}
+    Seconds: 3600
+    Human-readable: 1h, 30m, 1h30m, 2h15m
+
+${BOLD}CONFIGURATION${NC}
+    Config directory: $CONFIG_DIR
+    Cache directory: $CACHE_DIR
+    Run '$SCRIPT_NAME config' to reconfigure
+"
+}
+
+#######################################
+# Main
+#######################################
+
+main() {
+    ensure_jq
+    ensure_curl
+
+    local command="${1:-help}"
+    shift || true
+
+    # Check if setup is needed
+    if [[ ! -f "$CONFIG_FILE" && "$command" != "config" && "$command" != "help" && "$command" != "--help" && "$command" != "-h" ]]; then
+        echo "No configuration found. Let's set things up!"
+        echo ""
+        run_setup_wizard
+        exit 0
+    fi
+
+    case "$command" in
+        status)
+            cmd_status "$@"
+            ;;
+        preset)
+            cmd_preset "$@"
+            ;;
+        messages|msgs|read)
+            cmd_messages "$@"
+            ;;
+        unread)
+            cmd_unread "$@"
+            ;;
+        catchup|triage)
+            cmd_catchup "$@"
+            ;;
+        presence)
+            cmd_presence "$@"
+            ;;
+        dnd|snooze)
+            cmd_dnd "$@"
+            ;;
+        workspaces|workspace|ws)
+            cmd_workspaces "$@"
+            ;;
+        config|setup)
+            cmd_config "$@"
+            ;;
+        cache)
+            cmd_cache "$@"
+            ;;
+        emoji)
+            cmd_emoji "$@"
+            ;;
+        help|--help|-h)
+            cmd_help
+            ;;
+        version|--version|-V)
+            echo "$SCRIPT_NAME v$VERSION"
+            ;;
+        *)
+            # Maybe it's a preset name as a shortcut?
+            local preset_data
+            preset_data=$(get_preset "$command" 2>/dev/null || true)
+            if [[ -n "$preset_data" ]]; then
+                cmd_preset "$command" "$@"
+            else
+                die "Unknown command: $command. Run '$SCRIPT_NAME help' for usage."
+            fi
+            ;;
+    esac
+}
+
+main "$@"

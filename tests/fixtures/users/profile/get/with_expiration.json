@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "profile": {
+    "title": "Software Engineer",
+    "phone": "",
+    "real_name": "Test User",
+    "display_name": "testuser",
+    "status_text": "In a meeting",
+    "status_emoji": ":calendar:",
+    "status_expiration": 1734300000,
+    "email": "test@example.com",
+    "first_name": "Test",
+    "last_name": "User"
+  }
+}

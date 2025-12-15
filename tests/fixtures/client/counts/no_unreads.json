@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "channels": [
+    {
+      "id": "C123456",
+      "name": "general",
+      "has_unreads": false,
+      "mention_count": 0
+    }
+  ],
+  "mpims": [],
+  "ims": [],
+  "threads": {
+    "has_unreads": false,
+    "mention_count": 0,
+    "unread_count": 0
+  }
+}

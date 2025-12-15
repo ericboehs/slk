@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "channels": [
+    {
+      "id": "C123456",
+      "name": "general",
+      "has_unreads": true,
+      "mention_count": 0,
+      "last_read": "1734200000.000000",
+      "latest": "1734250000.000000"
+    },
+    {
+      "id": "C789012",
+      "name": "random",
+      "has_unreads": false,
+      "mention_count": 0,
+      "last_read": "1734200000.000000",
+      "latest": "1734200000.000000"
+    }
+  ],
+  "mpims": [],
+  "ims": [
+    {
+      "id": "D111111",
+      "user_id": "U123456",
+      "has_unreads": true,
+      "mention_count": 1,
+      "last_read": "1734200000.000000",
+      "latest": "1734260000.000000"
+    }
+  ],
+  "threads": {
+    "has_unreads": true,
+    "mention_count": 0,
+    "unread_count": 2
+  }
+}

@@ -1,0 +1,16 @@
+# Test artifacts
+/tmp/
+*.pid
+
+# Ruby
+*.gem
+.bundle/
+vendor/bundle/
+
+# macOS
+.DS_Store
+
+# Editor
+*.swp
+*.swo
+*~

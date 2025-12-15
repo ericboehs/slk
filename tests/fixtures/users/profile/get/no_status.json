@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "profile": {
+    "title": "Software Engineer",
+    "phone": "",
+    "skype": "",
+    "real_name": "Test User",
+    "real_name_normalized": "Test User",
+    "display_name": "testuser",
+    "display_name_normalized": "testuser",
+    "fields": {},
+    "status_text": "",
+    "status_emoji": "",
+    "status_emoji_display_info": [],
+    "status_expiration": 0,
+    "avatar_hash": "abc123",
+    "email": "test@example.com",
+    "first_name": "Test",
+    "last_name": "User"
+  }
+}

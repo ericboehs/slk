@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "profile": {
+    "title": "Software Engineer",
+    "phone": "",
+    "skype": "",
+    "real_name": "Test User",
+    "real_name_normalized": "Test User",
+    "display_name": "testuser",
+    "display_name_normalized": "testuser",
+    "fields": {},
+    "status_text": "Working from home",
+    "status_emoji": ":house:",
+    "status_emoji_display_info": [],
+    "status_expiration": 0,
+    "avatar_hash": "abc123",
+    "image_original": "https://example.com/avatar.png",
+    "is_custom_image": true,
+    "email": "test@example.com",
+    "first_name": "Test",
+    "last_name": "User",
+    "image_24": "https://example.com/avatar_24.png",
+    "image_32": "https://example.com/avatar_32.png",
+    "image_48": "https://example.com/avatar_48.png",
+    "image_72": "https://example.com/avatar_72.png",
+    "image_192": "https://example.com/avatar_192.png",
+    "image_512": "https://example.com/avatar_512.png",
+    "image_1024": "https://example.com/avatar_1024.png",
+    "status_text_canonical": ""
+  }
+}
