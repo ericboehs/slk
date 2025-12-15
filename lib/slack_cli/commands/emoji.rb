@@ -142,7 +142,8 @@ module SlackCli
               puts "#{item[:char]}  :#{item[:name]}:"
             elsif item[:path] && inline_images_supported?
               print_inline_image(item[:path])
-              puts "  :#{item[:name]}:"
+              # tmux passthrough already includes trailing space, iTerm2 needs spacing
+              puts in_tmux? ? ":#{item[:name]}:" : " :#{item[:name]}:"
             else
               puts ":#{item[:name]}:"
             end
@@ -177,8 +178,8 @@ module SlackCli
         height = 1
 
         if in_tmux?
-          # tmux passthrough: image renders at col 0, then cursor moves past it
-          printf "\ePtmux;\e\e]1337;File=inline=1;preserveAspectRatio=0;size=%d;height=%d:%s\a\e\\",
+          # tmux passthrough: \n + space required for image to render
+          printf "\ePtmux;\e\e]1337;File=inline=1;preserveAspectRatio=0;size=%d;height=%d:%s\a\e\\\n ",
                  encoded.length, height, encoded
         else
           # Standard iTerm2 format
