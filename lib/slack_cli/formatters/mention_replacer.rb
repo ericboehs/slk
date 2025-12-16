@@ -28,8 +28,8 @@ module SlackCli
           if display_name && !display_name.empty?
             "@#{display_name}"
           else
-            cached = @cache.get_user(workspace.name, user_id)
-            cached ? "@#{cached}" : "<@#{user_id}>"
+            name = lookup_user_name(workspace, user_id)
+            name ? "@#{name}" : "<@#{user_id}>"
           end
         end
 
@@ -62,6 +62,33 @@ module SlackCli
       end
 
       private
+
+      def lookup_user_name(workspace, user_id)
+        # Try cache first
+        cached = @cache.get_user(workspace.name, user_id)
+        return cached if cached
+
+        # Try API lookup
+        return nil unless @api
+
+        begin
+          users_api = Api::Users.new(@api, workspace)
+          response = users_api.info(user_id)
+          if response["ok"] && response["user"]
+            profile = response["user"]["profile"] || {}
+            name = profile["display_name"]
+            name = profile["real_name"] if name.to_s.empty?
+            name = response["user"]["name"] if name.to_s.empty?
+            # Cache for future lookups
+            @cache.set_user(workspace.name, user_id, name, persist: true) if name && !name.empty?
+            return name unless name.to_s.empty?
+          end
+        rescue ApiError
+          # User might be external/deactivated, just return nil
+        end
+
+        nil
+      end
 
       def lookup_channel_name(workspace, channel_id)
         # Try cache first
