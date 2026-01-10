@@ -721,8 +721,13 @@ parse_slack_target() {
         # Use workspace from URL if available
         [[ -n "$url_workspace" ]] && echo "workspace:$url_workspace"
         echo "channel:$channel_id"
-        [[ -n "$thread_ts" ]] && echo "thread:$thread_ts"
-        [[ -n "$msg_ts" && -z "$thread_ts" ]] && echo "thread:$msg_ts"
+        if [[ -n "$thread_ts" ]]; then
+            # URL has ?thread_ts= parameter - this is a thread
+            echo "thread:$thread_ts"
+        elif [[ -n "$msg_ts" ]]; then
+            # URL has /p... timestamp - use as starting point for history
+            echo "msg_ts:$msg_ts"
+        fi
         return 0
     fi
 
@@ -828,6 +833,7 @@ fetch_messages() {
     local channel_id="$2"
     local thread_ts="${3:-}"
     local limit="${4:-20}"
+    local oldest="${5:-}"
 
     local token cookie
     token=$(get_workspace_token "$workspace")
@@ -836,12 +842,6 @@ fetch_messages() {
     if [[ -z "$token" ]]; then
         log_error "No token found for workspace: $workspace"
         return 1
-    fi
-
-    local url="$SLACK_API_BASE/conversations.history?channel=$channel_id&limit=$limit"
-
-    if [[ -n "$thread_ts" ]]; then
-        url="$SLACK_API_BASE/conversations.replies?channel=$channel_id&ts=$thread_ts&limit=$limit"
     fi
 
     local curl_args=(
@@ -855,6 +855,82 @@ fetch_messages() {
 
     local method="conversations.history"
     [[ -n "$thread_ts" ]] && method="conversations.replies"
+
+    # For threads, paginate to get all replies
+    if [[ -n "$thread_ts" ]]; then
+        local cursor=""
+        local all_messages="[]"
+        local has_more=true
+        local page_limit=200  # Slack max is 1000, but 200 is more reasonable per page
+
+        while [[ "$has_more" == "true" ]]; do
+            local url="$SLACK_API_BASE/conversations.replies?channel=$channel_id&ts=$thread_ts&limit=$page_limit"
+            [[ -n "$cursor" ]] && url="$url&cursor=$cursor"
+
+            increment_api_counter
+            log_verbose "API: $method (cursor: ${cursor:-none})"
+
+            local response
+            response=$(curl "${curl_args[@]}" "$url")
+
+            local ok
+            ok=$(echo "$response" | jq -r '.ok')
+
+            if [[ "$ok" != "true" ]]; then
+                local error
+                error=$(echo "$response" | jq -r '.error // "unknown error"')
+                log_error "Failed to fetch messages: $error"
+                return 1
+            fi
+
+            # Append messages to accumulator
+            local page_messages
+            page_messages=$(echo "$response" | jq -c '.messages // []')
+            if [[ "$all_messages" == "[]" ]]; then
+                all_messages="$page_messages"
+            else
+                all_messages=$(echo "$all_messages" "$page_messages" | jq -s '.[0] + .[1]')
+            fi
+
+            # Check for more pages
+            has_more=$(echo "$response" | jq -r '.has_more // false')
+            cursor=$(echo "$response" | jq -r '.response_metadata.next_cursor // empty')
+
+            if [[ -z "$cursor" ]]; then
+                has_more=false
+            fi
+
+            log_verbose "Fetched $(echo "$page_messages" | jq 'length') messages, total: $(echo "$all_messages" | jq 'length'), has_more: $has_more"
+        done
+
+        # Sort messages by timestamp (API returns newest-first when paginating, we want chronological)
+        # Keep parent message first, then sort replies by timestamp
+        all_messages=$(echo "$all_messages" | jq 'unique_by(.ts) | sort_by(.ts | tonumber)')
+        log_verbose "After dedup and sort: $(echo "$all_messages" | jq 'length') messages"
+
+        # Apply limit if specified (take from end since replies are chronological)
+        local total_count
+        total_count=$(echo "$all_messages" | jq 'length')
+        if [[ "$limit" -gt 0 && "$total_count" -gt "$limit" ]]; then
+            # Keep the parent (first message) plus the last (limit-1) replies
+            all_messages=$(echo "$all_messages" | jq --argjson lim "$limit" '.[0:1] + .[-($lim - 1):]')
+            log_verbose "Limited to $limit messages (parent + last $((limit - 1)) replies)"
+        fi
+
+        # Return in the same format as the API
+        echo "{\"ok\":true,\"messages\":$all_messages}"
+        return 0
+    fi
+
+    # For channel history, use simple single request (no pagination needed for typical use)
+    local url="$SLACK_API_BASE/conversations.history?channel=$channel_id&limit=$limit"
+    # Slack API oldest is exclusive - decrement slightly to include the target message
+    if [[ -n "$oldest" ]]; then
+        local oldest_adjusted
+        oldest_adjusted=$(echo "$oldest - 0.000001" | bc)
+        url="$url&oldest=$oldest_adjusted"
+    fi
+
     increment_api_counter
     log_verbose "API: $method"
 
@@ -1417,10 +1493,18 @@ format_messages() {
         local decoded
         decoded=$(echo "$msg" | base64 -d)
 
-        local user_id text ts embedded_name reply_count files_info attachments_info reactions_json
+        local user_id text ts embedded_name reply_count files_info attachments_info reactions_json blocks_text
         user_id=$(echo "$decoded" | jq -r '.user // .bot_id // "unknown"')
         text=$(echo "$decoded" | jq -r '.text // ""')
         ts=$(echo "$decoded" | jq -r '.ts')
+
+        # Extract text from blocks (Slack Block Kit) if present - used when .text is empty/minimal
+        blocks_text=$(echo "$decoded" | jq -r 'if .blocks then [.blocks[] | select(.type == "section" or .type == "rich_text") | if .type == "section" then .text.text // empty elif .type == "rich_text" then [.elements[]? | .elements[]? | select(.type == "text") | .text] | join("") else empty end] | join("\n") else "" end')
+
+        # Use blocks_text if text is empty or very short (like workflow status messages)
+        if [[ -z "$text" || ${#text} -lt 20 ]] && [[ -n "$blocks_text" ]]; then
+            text="$blocks_text"
+        fi
         reply_count=$(echo "$decoded" | jq -r '.reply_count // 0')
         reactions_json=$(echo "$decoded" | jq -c '.reactions // []')
         # Try to get name from embedded user_profile (works for external/Slack Connect users)
@@ -1618,13 +1702,21 @@ format_messages() {
                 thread_messages=$(echo "$thread_json" | jq -r '.messages[1:] | .[] | @base64')
 
                 for thread_msg in $thread_messages; do
-                    local t_decoded t_user_id t_text t_ts t_embedded_name t_username t_timestamp t_files_info t_attachments_info t_reactions_json
+                    local t_decoded t_user_id t_text t_ts t_embedded_name t_username t_timestamp t_files_info t_attachments_info t_reactions_json t_blocks_text
                     t_decoded=$(echo "$thread_msg" | base64 -d)
                     t_user_id=$(echo "$t_decoded" | jq -r '.user // .bot_id // "unknown"')
                     t_text=$(echo "$t_decoded" | jq -r '.text // ""')
                     t_ts=$(echo "$t_decoded" | jq -r '.ts')
                     t_reactions_json=$(echo "$t_decoded" | jq -c '.reactions // []')
                     t_embedded_name=$(echo "$t_decoded" | jq -r '(.user_profile.display_name | select(. != "")) // .user_profile.real_name // .username // empty')
+
+                    # Extract text from blocks (Slack Block Kit) if present
+                    t_blocks_text=$(echo "$t_decoded" | jq -r 'if .blocks then [.blocks[] | select(.type == "section" or .type == "rich_text") | if .type == "section" then .text.text // empty elif .type == "rich_text" then [.elements[]? | .elements[]? | select(.type == "text") | .text] | join("") else empty end] | join("\n") else "" end')
+
+                    # Use blocks_text if text is empty or very short
+                    if [[ -z "$t_text" || ${#t_text} -lt 20 ]] && [[ -n "$t_blocks_text" ]]; then
+                        t_text="$t_blocks_text"
+                    fi
 
                     # Check for files and attachments in thread replies - include URLs
                     t_files_info=$(echo "$t_decoded" | jq -r 'if .files then [.files[] | "[\(.mimetype | split("/")[0]):\(.name // .title // "file")] \(.permalink // .url_private // "")"] | join(" ") else "" end')
@@ -2711,10 +2803,11 @@ ${BOLD}TARGET${NC}
     #channel          Channel name (with or without #)
     @user             Direct message with user
     <slack-url>       Slack message URL (workspace auto-detected)
+                      Message URLs return that message + subsequent messages
 
 ${BOLD}OPTIONS${NC}
     -w, --workspace <name>    Target a specific workspace
-    -n, --limit <num>         Number of messages to fetch (default: 20)
+    -n, --limit <num>         Number of messages to fetch (default: 500, or 50 for message URLs)
     --threads                 Expand thread replies inline
     --json                    Output as JSON
     --no-names                Skip user name lookups (faster)
@@ -2739,7 +2832,8 @@ ${BOLD}EXAMPLES${NC}
 cmd_messages() {
     local workspace=""
     local target=""
-    local limit=20
+    local limit=500
+    local limit_set=false
     local output_format="simple"
     local skip_user_lookup=false
     local with_threads=false
@@ -2761,6 +2855,7 @@ cmd_messages() {
                 ;;
             -n|--limit)
                 limit="$2"
+                limit_set=true
                 shift 2
                 ;;
             --json)
@@ -2830,7 +2925,7 @@ cmd_messages() {
     fi
 
     # Parse target to get channel ID, optional thread timestamp, and workspace from URL
-    local parsed channel_id thread_ts="" url_workspace=""
+    local parsed channel_id thread_ts="" msg_ts="" url_workspace=""
     parsed=$(parse_slack_target "$target" "$workspace")
 
     if [[ -z "$parsed" ]]; then
@@ -2842,6 +2937,7 @@ cmd_messages() {
             workspace:*) url_workspace="${line#workspace:}" ;;
             channel:*) channel_id="${line#channel:}" ;;
             thread:*) thread_ts="${line#thread:}" ;;
+            msg_ts:*) msg_ts="${line#msg_ts:}" ;;
         esac
     done <<< "$parsed"
 
@@ -2858,7 +2954,12 @@ cmd_messages() {
         die "Could not resolve channel ID for: $target"
     fi
 
-    log_verbose "Fetching messages from channel $channel_id (thread: ${thread_ts:-none})"
+    # If URL contained a message timestamp, use it as starting point with default limit of 50
+    if [[ -n "$msg_ts" && "$limit_set" == "false" ]]; then
+        limit=50
+    fi
+
+    log_verbose "Fetching messages from channel $channel_id (thread: ${thread_ts:-none}, oldest: ${msg_ts:-none})"
 
     # Initialize API counter for tracking
     init_api_counter
@@ -2867,7 +2968,7 @@ cmd_messages() {
     local messages_json is_thread="false"
     [[ -n "$thread_ts" ]] && is_thread="true"
 
-    if messages_json=$(fetch_messages "$workspace" "$channel_id" "$thread_ts" "$limit"); then
+    if messages_json=$(fetch_messages "$workspace" "$channel_id" "$thread_ts" "$limit" "$msg_ts"); then
         # Cache the channel name→ID mapping if we have a name
         if [[ -n "$original_channel_name" ]]; then
             cache_channel "$workspace" "$original_channel_name" "$channel_id"
