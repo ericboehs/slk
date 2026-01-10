@@ -3,10 +3,14 @@
 module SlackCli
   module Services
     class CacheStore
+      attr_accessor :on_warning
+
       def initialize(paths: nil)
         @paths = paths || Support::XdgPaths.new
         @user_cache = {}
         @channel_cache = {}
+        @subteam_cache = {}
+        @on_warning = nil
       end
 
       # User cache methods
@@ -86,6 +90,19 @@ module SlackCli
         end
       end
 
+      # Subteam cache methods
+      def get_subteam(workspace_name, subteam_id)
+        load_subteam_cache(workspace_name)
+        @subteam_cache.dig(workspace_name, subteam_id)
+      end
+
+      def set_subteam(workspace_name, subteam_id, handle)
+        load_subteam_cache(workspace_name)
+        @subteam_cache[workspace_name] ||= {}
+        @subteam_cache[workspace_name][subteam_id] = handle
+        save_subteam_cache(workspace_name)
+      end
+
       # Cache status
       def user_cache_size(workspace_name)
         load_user_cache(workspace_name)
@@ -116,7 +133,8 @@ module SlackCli
         else
           {}
         end
-      rescue JSON::ParserError
+      rescue JSON::ParserError => e
+        @on_warning&.call("User cache corrupted for #{workspace_name}: #{e.message}")
         @user_cache[workspace_name] = {}
       end
 
@@ -129,7 +147,8 @@ module SlackCli
         else
           {}
         end
-      rescue JSON::ParserError
+      rescue JSON::ParserError => e
+        @on_warning&.call("Channel cache corrupted for #{workspace_name}: #{e.message}")
         @channel_cache[workspace_name] = {}
       end
 
@@ -147,6 +166,32 @@ module SlackCli
 
       def channel_cache_file(workspace_name)
         @paths.cache_file("channels-#{workspace_name}.json")
+      end
+
+      def load_subteam_cache(workspace_name)
+        return if @subteam_cache.key?(workspace_name)
+
+        file = subteam_cache_file(workspace_name)
+        @subteam_cache[workspace_name] = if File.exist?(file)
+          JSON.parse(File.read(file))
+        else
+          {}
+        end
+      rescue JSON::ParserError => e
+        @on_warning&.call("Subteam cache corrupted for #{workspace_name}: #{e.message}")
+        @subteam_cache[workspace_name] = {}
+      end
+
+      def save_subteam_cache(workspace_name)
+        return if @subteam_cache[workspace_name].nil? || @subteam_cache[workspace_name].empty?
+
+        @paths.ensure_cache_dir
+        file = subteam_cache_file(workspace_name)
+        File.write(file, JSON.pretty_generate(@subteam_cache[workspace_name]))
+      end
+
+      def subteam_cache_file(workspace_name)
+        @paths.cache_file("subteams-#{workspace_name}.json")
       end
     end
   end

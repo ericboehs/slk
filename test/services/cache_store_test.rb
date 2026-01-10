@@ -130,4 +130,96 @@ class CacheStoreTest < Minitest::Test
       assert_equal 'C123', new_store.get_channel_id('workspace1', 'general')
     end
   end
+
+  # Subteam cache tests
+  def test_get_subteam_returns_nil_for_unknown_subteam
+    with_temp_config do
+      store = SlackCli::Services::CacheStore.new
+      assert_nil store.get_subteam('workspace1', 'S123')
+    end
+  end
+
+  def test_set_and_get_subteam
+    with_temp_config do
+      store = SlackCli::Services::CacheStore.new
+      store.set_subteam('workspace1', 'S123', 'platform-team')
+      assert_equal 'platform-team', store.get_subteam('workspace1', 'S123')
+    end
+  end
+
+  def test_subteam_cache_persists_automatically
+    with_temp_config do
+      store = SlackCli::Services::CacheStore.new
+      store.set_subteam('workspace1', 'S123', 'devops')
+
+      # Create new store - should load from file
+      new_store = SlackCli::Services::CacheStore.new
+      assert_equal 'devops', new_store.get_subteam('workspace1', 'S123')
+    end
+  end
+
+  def test_subteam_cache_isolates_workspaces
+    with_temp_config do
+      store = SlackCli::Services::CacheStore.new
+      store.set_subteam('workspace1', 'S123', 'team-a')
+      store.set_subteam('workspace2', 'S123', 'team-b')
+
+      assert_equal 'team-a', store.get_subteam('workspace1', 'S123')
+      assert_equal 'team-b', store.get_subteam('workspace2', 'S123')
+    end
+  end
+
+  # Cache corruption warning tests
+  def test_corrupted_user_cache_triggers_warning
+    with_temp_config do |dir|
+      # Create a corrupted cache file
+      cache_dir = "#{dir}/cache/slack-cli"
+      FileUtils.mkdir_p(cache_dir)
+      File.write("#{cache_dir}/users-workspace1.json", "not valid json{")
+
+      warnings = []
+      store = SlackCli::Services::CacheStore.new
+      store.on_warning = ->(msg) { warnings << msg }
+
+      # Accessing the cache should trigger the warning
+      store.get_user('workspace1', 'U123')
+
+      assert_equal 1, warnings.size
+      assert_match(/User cache corrupted/, warnings.first)
+    end
+  end
+
+  def test_corrupted_channel_cache_triggers_warning
+    with_temp_config do |dir|
+      cache_dir = "#{dir}/cache/slack-cli"
+      FileUtils.mkdir_p(cache_dir)
+      File.write("#{cache_dir}/channels-workspace1.json", "not valid json{")
+
+      warnings = []
+      store = SlackCli::Services::CacheStore.new
+      store.on_warning = ->(msg) { warnings << msg }
+
+      store.get_channel_id('workspace1', 'general')
+
+      assert_equal 1, warnings.size
+      assert_match(/Channel cache corrupted/, warnings.first)
+    end
+  end
+
+  def test_corrupted_subteam_cache_triggers_warning
+    with_temp_config do |dir|
+      cache_dir = "#{dir}/cache/slack-cli"
+      FileUtils.mkdir_p(cache_dir)
+      File.write("#{cache_dir}/subteams-workspace1.json", "not valid json{")
+
+      warnings = []
+      store = SlackCli::Services::CacheStore.new
+      store.on_warning = ->(msg) { warnings << msg }
+
+      store.get_subteam('workspace1', 'S123')
+
+      assert_equal 1, warnings.size
+      assert_match(/Subteam cache corrupted/, warnings.first)
+    end
+  end
 end

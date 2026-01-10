@@ -65,7 +65,7 @@ module SlackCli
     end
 
     def bots_api(ws = nil)
-      Api::Bots.new(@api_client, workspace(ws))
+      Api::Bots.new(@api_client, workspace(ws), on_debug: ->(msg) { @output.debug(msg) })
     end
 
     def threads_api(ws = nil)
@@ -79,14 +79,16 @@ module SlackCli
         mention_replacer: mention_replacer,
         emoji_replacer: emoji_replacer,
         cache_store: @cache_store,
-        api_client: @api_client
+        api_client: @api_client,
+        on_debug: ->(msg) { @output.debug(msg) }
       )
     end
 
     def mention_replacer
       @mention_replacer ||= Formatters::MentionReplacer.new(
         cache_store: @cache_store,
-        api_client: @api_client
+        api_client: @api_client,
+        on_debug: ->(msg) { @output.debug(msg) }
       )
     end
 
@@ -111,6 +113,7 @@ module SlackCli
       @config.on_warning = warning_handler
       @token_store.on_warning = warning_handler
       @preset_store.on_warning = warning_handler
+      @cache_store.on_warning = warning_handler
     end
   end
 end

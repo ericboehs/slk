@@ -31,8 +31,14 @@ module SlackCli
           all: false,
           verbose: false,
           quiet: false,
-          json: false
+          json: false,
+          width: default_width
         }
+      end
+
+      # Default wrap width: 72 for interactive terminals, nil (no wrap) otherwise
+      def default_width
+        $stdout.tty? ? 72 : nil
       end
 
       def parse_options(args)
@@ -45,6 +51,11 @@ module SlackCli
           case arg
           when "-w", "--workspace"
             @options[:workspace] = args.shift
+          when "--width"
+            value = args.shift
+            @options[:width] = value == '0' ? nil : value.to_i
+          when "--no-wrap"
+            @options[:width] = nil
           when "--all"
             @options[:all] = true
           when "-v", "--verbose"

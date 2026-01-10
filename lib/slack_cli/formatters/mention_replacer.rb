@@ -5,6 +5,7 @@ module SlackCli
     class MentionReplacer
       USER_MENTION_REGEX = /<@([UW][A-Z0-9]+)(?:\|([^>]+))?>/
       CHANNEL_MENTION_REGEX = /<#([A-Z0-9]+)(?:\|([^>]*))?>/
+      SUBTEAM_MENTION_REGEX = /<!subteam\^([A-Z0-9]+)(?:\|@?([^>]+))?>/
       LINK_REGEX = /<(https?:\/\/[^|>]+)(?:\|([^>]+))?>/
       SPECIAL_MENTIONS = {
         "<!here>" => "@here",
@@ -12,9 +13,10 @@ module SlackCli
         "<!everyone>" => "@everyone"
       }.freeze
 
-      def initialize(cache_store:, api_client: nil)
+      def initialize(cache_store:, api_client: nil, on_debug: nil)
         @cache = cache_store
         @api = api_client
+        @on_debug = on_debug
       end
 
       def replace(text, workspace)
@@ -29,7 +31,7 @@ module SlackCli
             "@#{display_name}"
           else
             name = lookup_user_name(workspace, user_id)
-            name ? "@#{name}" : "<@#{user_id}>"
+            "@#{name || user_id}"
           end
         end
 
@@ -43,6 +45,19 @@ module SlackCli
           else
             name = lookup_channel_name(workspace, channel_id)
             name ? "##{name}" : "##{channel_id}"
+          end
+        end
+
+        # Replace subteam (user group) mentions
+        result.gsub!(SUBTEAM_MENTION_REGEX) do
+          subteam_id = ::Regexp.last_match(1)
+          handle = ::Regexp.last_match(2)
+
+          if handle && !handle.empty?
+            "@#{handle}"
+          else
+            name = lookup_subteam_handle(workspace, subteam_id)
+            "@#{name || subteam_id}"
           end
         end
 
@@ -83,8 +98,8 @@ module SlackCli
             @cache.set_user(workspace.name, user_id, name, persist: true) if name && !name.empty?
             return name unless name.to_s.empty?
           end
-        rescue ApiError
-          # User might be external/deactivated, just return nil
+        rescue ApiError => e
+          @on_debug&.call("User lookup failed for #{user_id}: #{e.message}")
         end
 
         nil
@@ -107,8 +122,29 @@ module SlackCli
             @cache.set_channel(workspace.name, name, channel_id) if name
             return name
           end
-        rescue ApiError
-          # Channel might be external/inaccessible, just return nil
+        rescue ApiError => e
+          @on_debug&.call("Channel lookup failed for #{channel_id}: #{e.message}")
+        end
+
+        nil
+      end
+
+      def lookup_subteam_handle(workspace, subteam_id)
+        # Try cache first
+        cached = @cache.get_subteam(workspace.name, subteam_id)
+        return cached if cached
+
+        # Try API lookup
+        return nil unless @api
+
+        begin
+          usergroups_api = Api::Usergroups.new(@api, workspace)
+          handle = usergroups_api.get_handle(subteam_id)
+          # Cache for future lookups
+          @cache.set_subteam(workspace.name, subteam_id, handle) if handle
+          return handle
+        rescue ApiError => e
+          @on_debug&.call("Subteam lookup failed for #{subteam_id}: #{e.message}")
         end
 
         nil

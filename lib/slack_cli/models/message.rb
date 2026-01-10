@@ -11,6 +11,7 @@ module SlackCli
       :thread_ts,
       :files,
       :attachments,
+      :blocks,
       :user_profile,
       :bot_profile,
       :username,
@@ -18,10 +19,11 @@ module SlackCli
     ) do
       def self.from_api(data)
         text = data["text"] || ""
+        blocks = data["blocks"] || []
 
         # Extract text from Block Kit blocks if text is empty or minimal
         if text.length < 20
-          blocks_text = extract_block_text(data["blocks"])
+          blocks_text = extract_block_text(blocks)
           text = blocks_text unless blocks_text.empty?
         end
 
@@ -34,6 +36,7 @@ module SlackCli
           thread_ts: data["thread_ts"],
           files: data["files"] || [],
           attachments: data["attachments"] || [],
+          blocks: blocks,
           user_profile: data["user_profile"],
           bot_profile: data["bot_profile"],
           username: data["username"],
@@ -75,6 +78,7 @@ module SlackCli
         thread_ts: nil,
         files: [],
         attachments: [],
+        blocks: [],
         user_profile: nil,
         bot_profile: nil,
         username: nil,
@@ -89,6 +93,7 @@ module SlackCli
           thread_ts: thread_ts&.freeze,
           files: files.freeze,
           attachments: attachments.freeze,
+          blocks: blocks.freeze,
           user_profile: user_profile&.freeze,
           bot_profile: bot_profile&.freeze,
           username: username&.freeze,
@@ -114,6 +119,10 @@ module SlackCli
 
       def has_files?
         !files.empty?
+      end
+
+      def has_blocks?
+        !blocks.empty?
       end
 
       def embedded_username

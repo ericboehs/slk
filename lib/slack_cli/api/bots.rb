@@ -3,9 +3,10 @@
 module SlackCli
   module Api
     class Bots
-      def initialize(api_client, workspace)
+      def initialize(api_client, workspace, on_debug: nil)
         @api = api_client
         @workspace = workspace
+        @on_debug = on_debug
       end
 
       # Look up bot information by ID
@@ -14,7 +15,8 @@ module SlackCli
       def info(bot_id)
         response = @api.post_form(@workspace, "bots.info", { bot: bot_id })
         response["bot"] if response["ok"]
-      rescue ApiError
+      rescue ApiError => e
+        @on_debug&.call("Bot lookup failed for #{bot_id}: #{e.message}")
         nil
       end
 

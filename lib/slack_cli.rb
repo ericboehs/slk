@@ -73,6 +73,7 @@ module SlackCli
     autoload :Client, "slack_cli/api/client"
     autoload :Bots, "slack_cli/api/bots"
     autoload :Threads, "slack_cli/api/threads"
+    autoload :Usergroups, "slack_cli/api/usergroups"
   end
 
   module Support

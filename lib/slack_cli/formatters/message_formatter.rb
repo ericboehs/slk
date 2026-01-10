@@ -3,12 +3,13 @@
 module SlackCli
   module Formatters
     class MessageFormatter
-      def initialize(output:, mention_replacer:, emoji_replacer:, cache_store:, api_client: nil)
+      def initialize(output:, mention_replacer:, emoji_replacer:, cache_store:, api_client: nil, on_debug: nil)
         @output = output
         @mentions = mention_replacer
         @emoji = emoji_replacer
         @cache = cache_store
         @api_client = api_client
+        @on_debug = on_debug
       end
 
       def format(message, workspace:, options: {})
@@ -16,24 +17,39 @@ module SlackCli
         timestamp = format_timestamp(message.timestamp)
         text = process_text(message.text, workspace, options)
 
-        # Build the main line: [timestamp] username: text
-        parts = []
-        parts << @output.blue("[#{timestamp}]")
-        parts << @output.bold(username)
+        # Build the header: [timestamp] username:
+        header = "#{@output.blue("[#{timestamp}]")} #{@output.bold(username)}:"
+        header_visible_width = visible_length("[#{timestamp}] #{username}: ")
 
-        # Collapse newlines to spaces for single-line display
-        display_text = text.gsub(/\n+/, ' ').strip
+        # Preserve newlines in message text (just strip leading/trailing whitespace)
+        display_text = text.strip
 
-        main_line = "#{parts.join(' ')}: #{display_text}"
+        # Wrap text if width is specified
+        width = options[:width]
+        if width && width > header_visible_width && !display_text.empty?
+          # First line has less space (width minus header), continuation lines use full width
+          first_line_width = width - header_visible_width
+          display_text = wrap_text(display_text, first_line_width, width)
+        end
+
+        # If no text but there are files, put first file inline with header
+        if display_text.empty? && message.has_files? && !options[:no_files]
+          first_file = message.files.first
+          file_name = first_file['name'] || 'file'
+          display_text = @output.blue("[File: #{file_name}]")
+        end
+
+        main_line = "#{header} #{display_text}"
 
         lines = [main_line]
 
-        format_attachments(message, lines, options)
-        format_files(message, lines, options)
+        format_blocks(message, lines, workspace, options)
+        format_attachments(message, lines, workspace, options)
+        format_files(message, lines, options, skip_first: display_text.include?('[File:'))
         format_reactions(message, lines, options)
         format_thread_indicator(message, lines, options)
 
-        lines.join(" ")
+        lines.join("\n")
       end
 
       def format_simple(message, workspace:, options: {})
@@ -64,7 +80,9 @@ module SlackCli
           text: message.text,
           reactions: message.reactions.map { |r| { name: r.name, count: r.count } },
           reply_count: message.reply_count,
-          thread_ts: message.thread_ts
+          thread_ts: message.thread_ts,
+          attachments: message.attachments,
+          files: message.files
         }
       end
 
@@ -92,7 +110,7 @@ module SlackCli
       end
 
       def lookup_bot_name(workspace, bot_id)
-        bots_api = Api::Bots.new(@api_client, workspace)
+        bots_api = Api::Bots.new(@api_client, workspace, on_debug: @on_debug)
         name = bots_api.get_name(bot_id)
         if name
           # Cache for future lookups (persist to disk)
@@ -108,6 +126,9 @@ module SlackCli
       def process_text(text, workspace, options)
         result = text.dup
 
+        # Decode HTML entities (Slack encodes these)
+        result = decode_html_entities(result)
+
         # Replace mentions
         result = @mentions.replace(result, workspace)
 
@@ -117,6 +138,65 @@ module SlackCli
         end
 
         result
+      end
+
+      def decode_html_entities(text)
+        text
+          .gsub('&amp;', '&')
+          .gsub('&lt;', '<')
+          .gsub('&gt;', '>')
+      end
+
+      # Calculate visible length of text (excluding ANSI escape codes)
+      def visible_length(text)
+        text.gsub(/\e\[[0-9;]*m/, '').length
+      end
+
+      # Wrap text to width, handling first line differently and preserving existing newlines
+      def wrap_text(text, first_line_width, continuation_width)
+        result = []
+
+        text.each_line do |paragraph|
+          paragraph = paragraph.chomp
+          if paragraph.empty?
+            result << ''
+            next
+          end
+
+          # For each paragraph, wrap to width
+          # First paragraph's first line uses first_line_width, all other lines use continuation_width
+          current_first_width = result.empty? ? first_line_width : continuation_width
+          wrapped = wrap_paragraph(paragraph, current_first_width, continuation_width)
+          result << wrapped
+        end
+
+        result.join("\n")
+      end
+
+      # Wrap a single paragraph (no internal newlines)
+      def wrap_paragraph(text, first_width, rest_width)
+        words = text.split(/(\s+)/)
+        lines = []
+        current_line = ''
+        current_width = first_width
+
+        words.each do |word|
+          word_len = visible_length(word)
+
+          if current_line.empty?
+            current_line = word
+          elsif visible_length(current_line) + word_len <= current_width
+            current_line += word
+          else
+            lines << current_line
+            current_line = word.lstrip
+            current_width = rest_width
+          end
+        end
+
+        lines << current_line unless current_line.empty?
+
+        lines.join("\n")
       end
 
       def format_header(timestamp, username, message, options)
@@ -136,28 +216,106 @@ module SlackCli
         text.lines.map { |line| "#{prefix}#{line.chomp}" }.join("\n")
       end
 
-      def format_attachments(message, lines, options)
+      def format_attachments(message, lines, workspace, options)
         return if message.attachments.empty?
         return if options[:no_attachments]
 
         message.attachments.each do |att|
-          if att["text"]
-            lines << @output.gray("| #{att["text"]}")
-          elsif att["fallback"]
-            lines << @output.gray("| #{att["fallback"]}")
+          att_text = att['text'] || att['fallback']
+          image_url = att['image_url'] || att['thumb_url']
+          title = att['title']
+
+          # Skip if no text and no image
+          next unless att_text || image_url
+
+          # Blank line before attachment
+          lines << ''
+
+          # Show author if available (for linked messages, bot messages, etc.)
+          author = att['author_name'] || att['author_subname']
+          lines << "> #{@output.bold(author)}:" if author
+
+          # Show text content if present
+          if att_text
+            # Process attachment text through the same pipeline as message text
+            processed_text = process_text(att_text, workspace, options)
+
+            # Wrap attachment text if width is specified (account for "> " prefix)
+            width = options[:width]
+            if width && width > 2
+              processed_text = wrap_text(processed_text, width - 2, width - 2)
+            end
+
+            # Prefix each line with > to show it's quoted/attachment content
+            processed_text.each_line do |line|
+              lines << "> #{line.chomp}"
+            end
+          end
+
+          # Show image info if present
+          if image_url
+            # Extract filename from URL or use title
+            filename = title || File.basename(URI.parse(image_url).path) rescue 'image'
+            lines << "> [Image: #{filename}]"
           end
         end
       end
 
-      def format_files(message, lines, options)
+      def format_blocks(message, lines, workspace, options)
+        return unless message.has_blocks?
+        return if options[:no_blocks]
+
+        # Extract text content from blocks (skip if it duplicates the main text)
+        block_texts = extract_block_texts(message.blocks)
+        return if block_texts.empty?
+
+        # Don't show blocks if they just repeat the main message text
+        main_text_normalized = message.text.gsub(/\s+/, ' ').strip.downcase
+        block_texts.reject! do |bt|
+          bt.gsub(/\s+/, ' ').strip.downcase == main_text_normalized
+        end
+        return if block_texts.empty?
+
+        # Blank line before blocks
+        lines << ''
+
+        block_texts.each do |block_text|
+          # Process text through mention/emoji pipeline
+          processed = process_text(block_text, workspace, options)
+
+          # Wrap if width specified (account for "> " prefix)
+          width = options[:width]
+          if width && width > 2
+            processed = wrap_text(processed, width - 2, width - 2)
+          end
+
+          # Prefix each line with >
+          processed.each_line do |line|
+            lines << "> #{line.chomp}"
+          end
+        end
+      end
+
+      def extract_block_texts(blocks)
+        return [] unless blocks.is_a?(Array)
+
+        blocks.filter_map do |block|
+          next unless block['type'] == 'section'
+
+          block.dig('text', 'text')
+        end
+      end
+
+      def format_files(message, lines, options, skip_first: false)
         return if message.files.empty?
         return if options[:no_files]
 
-        message.files.each do |file|
-          name = file["name"] || "file"
-          url = file["url_private"] || file["permalink"]
+        files_to_show = skip_first ? message.files[1..] : message.files
+        return if files_to_show.nil? || files_to_show.empty?
+
+        files_to_show.each do |file|
+          name = file['name'] || 'file'
           lines << @output.blue("[File: #{name}]")
-          lines << @output.gray(url) if url && !options[:no_urls]
         end
       end
 

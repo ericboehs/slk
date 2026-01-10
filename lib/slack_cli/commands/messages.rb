@@ -90,6 +90,8 @@ module SlackCli
           s.option("--no-names", "Skip user name lookups (faster)")
           s.option("--no-workspace-emoji", "Disable workspace emoji images")
           s.option("--reaction-names", "Show reactions with user names")
+          s.option("--width N", "Wrap text at N columns (default: 72 on TTY, no wrap otherwise)")
+          s.option("--no-wrap", "Disable text wrapping")
           s.option("--json", "Output as JSON")
           s.option("-w, --workspace", "Specify workspace")
           s.option("-v, --verbose", "Show debug information")
@@ -258,7 +260,8 @@ module SlackCli
           no_reactions: @options[:no_reactions],
           no_names: @options[:no_names],
           workspace_emoji: @options[:workspace_emoji],
-          reaction_names: @options[:reaction_names]
+          reaction_names: @options[:reaction_names],
+          width: @options[:width]
         }
 
         messages.each_with_index do |message, index|
@@ -284,7 +287,14 @@ module SlackCli
         replies[1..].each do |reply_data|
           reply = Models::Message.from_api(reply_data)
           formatted = formatter.format(reply, workspace: workspace, options: format_options)
-          puts "  └ #{formatted}"
+
+          # Indent multiline messages so continuation lines align with the first line
+          lines = formatted.lines
+          first_line = "  └ #{lines.first}"
+          continuation_lines = lines[1..].map { |line| "    #{line}" }
+
+          puts first_line
+          continuation_lines.each { |line| puts line }
         end
       end
     end

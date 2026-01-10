@@ -191,4 +191,109 @@ class MessageTest < Minitest::Test
 
     assert_equal 'MyBot', message.embedded_username
   end
+
+  def test_has_blocks_returns_true_when_blocks_present
+    message = SlackCli::Models::Message.new(
+      ts: '1234567890.123456',
+      user_id: 'U123',
+      blocks: [
+        { 'type' => 'section', 'text' => { 'text' => 'Block content' } }
+      ]
+    )
+
+    assert message.has_blocks?
+  end
+
+  def test_has_blocks_returns_false_when_blocks_empty
+    message = SlackCli::Models::Message.new(
+      ts: '1234567890.123456',
+      user_id: 'U123',
+      blocks: []
+    )
+
+    refute message.has_blocks?
+  end
+
+  def test_has_blocks_returns_false_when_blocks_default
+    message = SlackCli::Models::Message.new(
+      ts: '1234567890.123456',
+      user_id: 'U123'
+    )
+
+    refute message.has_blocks?
+  end
+
+  def test_blocks_field_preserved_in_message
+    blocks = [
+      { 'type' => 'section', 'text' => { 'text' => 'First block' } },
+      { 'type' => 'section', 'text' => { 'text' => 'Second block' } }
+    ]
+
+    message = SlackCli::Models::Message.new(
+      ts: '1234567890.123456',
+      user_id: 'U123',
+      blocks: blocks
+    )
+
+    assert_equal 2, message.blocks.size
+    assert_equal 'section', message.blocks[0]['type']
+  end
+
+  def test_from_api_preserves_blocks
+    data = {
+      'ts' => '1234567890.123456',
+      'user' => 'U123',
+      'text' => 'Some message text',
+      'blocks' => [
+        { 'type' => 'section', 'text' => { 'type' => 'mrkdwn', 'text' => 'Block content' } }
+      ]
+    }
+
+    message = SlackCli::Models::Message.from_api(data)
+
+    assert message.has_blocks?
+    assert_equal 1, message.blocks.size
+    assert_equal 'section', message.blocks[0]['type']
+  end
+
+  def test_has_files_returns_true_when_files_present
+    message = SlackCli::Models::Message.new(
+      ts: '1234567890.123456',
+      user_id: 'U123',
+      files: [{ 'id' => 'F123', 'name' => 'file.txt' }]
+    )
+
+    assert message.has_files?
+  end
+
+  def test_has_files_returns_false_when_files_empty
+    message = SlackCli::Models::Message.new(
+      ts: '1234567890.123456',
+      user_id: 'U123',
+      files: []
+    )
+
+    refute message.has_files?
+  end
+
+  def test_has_reactions_returns_true_when_reactions_present
+    reaction = SlackCli::Models::Reaction.new(name: 'thumbsup', count: 3, users: [])
+    message = SlackCli::Models::Message.new(
+      ts: '1234567890.123456',
+      user_id: 'U123',
+      reactions: [reaction]
+    )
+
+    assert message.has_reactions?
+  end
+
+  def test_has_reactions_returns_false_when_reactions_empty
+    message = SlackCli::Models::Message.new(
+      ts: '1234567890.123456',
+      user_id: 'U123',
+      reactions: []
+    )
+
+    refute message.has_reactions?
+  end
 end
