@@ -75,4 +75,13 @@ class SlackUrlParserTest < Minitest::Test
 
     assert_equal 'G0123ABC', result.channel_id
   end
+
+  def test_parses_direct_message_channel_id
+    result = @parser.parse('https://dsva.slack.com/archives/D0A3SL10ECX/p1766408491040009')
+
+    assert_equal 'dsva', result.workspace
+    assert_equal 'D0A3SL10ECX', result.channel_id
+    assert_equal '1766408491.040009', result.msg_ts
+    assert result.message?
+  end
 end

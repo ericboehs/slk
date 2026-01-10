@@ -4,11 +4,12 @@ module SlackCli
   module Support
     class SlackUrlParser
       # Patterns for Slack URLs
+      # Channel IDs: C=channel, G=group DM, D=direct message
       URL_PATTERNS = [
         # https://workspace.slack.com/archives/C123ABC/p1234567890123456
-        %r{https?://([^.]+)\.slack\.com/archives/([CG][A-Z0-9]+)/p(\d+)(?:\?thread_ts=(\d+\.\d+))?},
+        %r{https?://([^.]+)\.slack\.com/archives/([CDG][A-Z0-9]+)/p(\d+)(?:\?thread_ts=(\d+\.\d+))?},
         # https://workspace.slack.com/archives/C123ABC (no message)
-        %r{https?://([^.]+)\.slack\.com/archives/([CG][A-Z0-9]+)/?$}
+        %r{https?://([^.]+)\.slack\.com/archives/([CDG][A-Z0-9]+)/?$}
       ].freeze
 
       Result = Data.define(:workspace, :channel_id, :msg_ts, :thread_ts) do
