@@ -16,17 +16,24 @@ module SlackCli
         timestamp = format_timestamp(message.timestamp)
         text = process_text(message.text, workspace, options)
 
-        lines = []
-        lines << "#{format_header(timestamp, username, message, options)}:"
+        # Build the main line: [timestamp] username: text
+        parts = []
+        parts << @output.blue("[#{timestamp}]")
+        parts << @output.bold(username)
 
-        lines << text unless text.empty?
+        # Collapse newlines to spaces for single-line display
+        display_text = text.gsub(/\n+/, ' ').strip
+
+        main_line = "#{parts.join(' ')}: #{display_text}"
+
+        lines = [main_line]
 
         format_attachments(message, lines, options)
         format_files(message, lines, options)
         format_reactions(message, lines, options)
         format_thread_indicator(message, lines, options)
 
-        lines.join("\n")
+        lines.join(" ")
       end
 
       def format_simple(message, workspace:, options: {})

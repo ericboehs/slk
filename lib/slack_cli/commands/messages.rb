@@ -284,10 +284,7 @@ module SlackCli
         replies[1..].each do |reply_data|
           reply = Models::Message.from_api(reply_data)
           formatted = formatter.format(reply, workspace: workspace, options: format_options)
-
-          # Indent thread replies
-          indented = formatted.lines.map { |line| "    #{line}" }.join
-          puts indented
+          puts "  └ #{formatted}"
         end
       end
     end
