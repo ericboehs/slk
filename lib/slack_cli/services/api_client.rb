@@ -11,14 +11,14 @@ module SlackCli
       def initialize
         @call_count = 0
         @on_request = nil
+        @http_cache = {}
       end
 
       def post(workspace, method, params = {})
         log_request(method)
         uri = URI("#{BASE_URL}/#{method}")
 
-        http = Net::HTTP.new(uri.host, uri.port)
-        configure_ssl(http, uri)
+        http = get_http(uri)
 
         request = Net::HTTP::Post.new(uri)
         workspace.headers.each { |k, v| request[k] = v }
@@ -33,8 +33,7 @@ module SlackCli
         uri = URI("#{BASE_URL}/#{method}")
         uri.query = URI.encode_www_form(params) unless params.empty?
 
-        http = Net::HTTP.new(uri.host, uri.port)
-        configure_ssl(http, uri)
+        http = get_http(uri)
 
         request = Net::HTTP::Get.new(uri)
         request["Authorization"] = workspace.headers["Authorization"]
@@ -49,8 +48,7 @@ module SlackCli
         log_request(method)
         uri = URI("#{BASE_URL}/#{method}")
 
-        http = Net::HTTP.new(uri.host, uri.port)
-        configure_ssl(http, uri)
+        http = get_http(uri)
 
         request = Net::HTTP::Post.new(uri)
         request["Authorization"] = workspace.headers["Authorization"]
@@ -68,10 +66,30 @@ module SlackCli
         @on_request&.call(method, @call_count)
       end
 
+      # Get or create a persistent HTTP connection for the given URI
+      def get_http(uri)
+        key = "#{uri.host}:#{uri.port}"
+        cached = @http_cache[key]
+
+        # Return cached connection if it's still active
+        if cached && cached.started?
+          return cached
+        end
+
+        # Create new connection
+        http = Net::HTTP.new(uri.host, uri.port)
+        configure_ssl(http, uri)
+        http.start
+
+        @http_cache[key] = http
+        http
+      end
+
       def configure_ssl(http, uri)
         http.use_ssl = uri.scheme == "https"
         http.open_timeout = 10
         http.read_timeout = 30
+        http.keep_alive_timeout = 30
 
         return unless http.use_ssl?
 
