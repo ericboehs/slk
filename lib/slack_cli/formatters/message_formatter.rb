@@ -17,11 +17,9 @@ module SlackCli
         text = process_text(message.text, workspace, options)
 
         lines = []
-        lines << format_header(timestamp, username, message, options)
+        lines << "#{format_header(timestamp, username, message, options)}:"
 
-        unless text.empty?
-          lines << indent(text)
-        end
+        lines << text unless text.empty?
 
         format_attachments(message, lines, options)
         format_files(message, lines, options)
@@ -137,9 +135,9 @@ module SlackCli
 
         message.attachments.each do |att|
           if att["text"]
-            lines << indent(@output.gray("| #{att["text"]}"), spaces: 4)
+            lines << @output.gray("| #{att["text"]}")
           elsif att["fallback"]
-            lines << indent(@output.gray("| #{att["fallback"]}"), spaces: 4)
+            lines << @output.gray("| #{att["fallback"]}")
           end
         end
       end
@@ -151,8 +149,8 @@ module SlackCli
         message.files.each do |file|
           name = file["name"] || "file"
           url = file["url_private"] || file["permalink"]
-          lines << indent(@output.blue("[File: #{name}]"), spaces: 4)
-          lines << indent(@output.gray(url), spaces: 6) if url && !options[:no_urls]
+          lines << @output.blue("[File: #{name}]")
+          lines << @output.gray(url) if url && !options[:no_urls]
         end
       end
 
@@ -165,7 +163,7 @@ module SlackCli
           "#{r.count} #{emoji}"
         end.join("  ")
 
-        lines << indent(@output.yellow("[#{reaction_text}]"), spaces: 4)
+        lines << @output.yellow("[#{reaction_text}]")
       end
 
       def format_thread_indicator(message, lines, options)
@@ -174,7 +172,7 @@ module SlackCli
         return if options[:no_threads]
 
         reply_text = message.reply_count == 1 ? "1 reply" : "#{message.reply_count} replies"
-        lines << indent(@output.cyan("[#{reply_text}]"), spaces: 4)
+        lines << @output.cyan("[#{reply_text}]")
       end
     end
   end
