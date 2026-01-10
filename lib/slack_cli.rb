@@ -80,5 +80,6 @@ module SlackCli
     autoload :SlackUrlParser, "slack_cli/support/slack_url_parser"
     autoload :InlineImages, "slack_cli/support/inline_images"
     autoload :HelpFormatter, "slack_cli/support/help_formatter"
+    autoload :ErrorLogger, "slack_cli/support/error_logger"
   end
 end

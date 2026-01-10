@@ -7,6 +7,17 @@ module SlackCli
   module Commands
     class Emoji < Base
       include Support::InlineImages
+
+      NETWORK_ERRORS = [
+        SocketError,
+        Errno::ECONNREFUSED,
+        Errno::ETIMEDOUT,
+        Net::OpenTimeout,
+        Net::ReadTimeout,
+        URI::InvalidURIError,
+        OpenSSL::SSL::SSLError
+      ].freeze
+
       def execute
         return show_help if show_help?
 
@@ -238,7 +249,7 @@ module SlackCli
         rescue JSON::ParserError => e
           error("Failed to parse emoji data: #{e.message}")
           1
-        rescue SocketError, Errno::ECONNREFUSED, Errno::ETIMEDOUT, Net::OpenTimeout, Net::ReadTimeout => e
+        rescue *NETWORK_ERRORS => e
           error("Network error: #{e.message}")
           1
         rescue SystemCallError => e
@@ -304,9 +315,7 @@ module SlackCli
               else
                 failed += 1
               end
-            rescue SocketError, Errno::ECONNREFUSED, Errno::ETIMEDOUT,
-                   Net::OpenTimeout, Net::ReadTimeout, URI::InvalidURIError,
-                   OpenSSL::SSL::SSLError, SystemCallError
+            rescue *NETWORK_ERRORS, SystemCallError
               failed += 1
             end
 
