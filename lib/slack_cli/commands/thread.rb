@@ -29,6 +29,7 @@ module SlackCli
       def default_options
         super.merge(
           limit: 1,
+          limit_set: true,  # Prevent apply_default_limit from overriding
           threads: true
         )
       end
