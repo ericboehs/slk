@@ -11,13 +11,19 @@ module SlackCli
         %r{https?://([^.]+)\.slack\.com/archives/([CG][A-Z0-9]+)/?$}
       ].freeze
 
-      Result = Data.define(:workspace, :channel_id, :ts, :thread_ts) do
+      Result = Data.define(:workspace, :channel_id, :msg_ts, :thread_ts) do
         def message?
-          !ts.nil?
+          !msg_ts.nil?
         end
 
         def thread?
           !thread_ts.nil?
+        end
+
+        # For backward compatibility - returns thread_ts if present, otherwise nil
+        # This is what you use when you want to fetch replies
+        def ts
+          thread_ts
         end
       end
 
@@ -30,13 +36,13 @@ module SlackCli
 
           workspace = match[1]
           channel_id = match[2]
-          ts = match[3] ? format_ts(match[3]) : nil
+          msg_ts = match[3] ? format_ts(match[3]) : nil
           thread_ts = match[4]
 
           return Result.new(
             workspace: workspace,
             channel_id: channel_id,
-            ts: ts,
+            msg_ts: msg_ts,
             thread_ts: thread_ts
           )
         end

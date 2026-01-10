@@ -25,7 +25,8 @@ module SlackCli
       def replies(channel:, ts:, limit: 100, cursor: nil)
         params = { channel: channel, ts: ts, limit: limit }
         params[:cursor] = cursor if cursor
-        @api.post(@workspace, "conversations.replies", params)
+        # Use form encoding - some workspaces (Enterprise Grid) require it
+        @api.post_form(@workspace, "conversations.replies", params)
       end
 
       def open(users:)

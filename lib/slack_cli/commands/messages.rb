@@ -14,13 +14,17 @@ module SlackCli
           return 1
         end
 
-        workspace, channel_id, thread_ts = resolve_target(target)
-        messages = fetch_messages(workspace, channel_id, thread_ts)
+        workspace, channel_id, thread_ts, msg_ts = resolve_target(target)
+
+        # Apply default limits based on target type
+        apply_default_limit(msg_ts)
+
+        messages = fetch_messages(workspace, channel_id, thread_ts, oldest: msg_ts)
 
         if @options[:json]
           output_json(messages.map { |m| runner.message_formatter.format_json(m) })
         else
-          display_messages(messages, workspace)
+          display_messages(messages, workspace, channel_id)
         end
 
         0
@@ -33,7 +37,8 @@ module SlackCli
 
       def default_options
         super.merge(
-          limit: 20,
+          limit: 500,
+          limit_set: false,
           threads: false,
           no_emoji: false,
           no_reactions: false,
@@ -47,6 +52,7 @@ module SlackCli
         case arg
         when "-n", "--limit"
           @options[:limit] = args.shift.to_i
+          @options[:limit_set] = true
         when "--threads"
           @options[:threads] = true
         when "--no-emoji"
@@ -73,11 +79,11 @@ module SlackCli
           s.item("channel", "Channel by name (without #)")
           s.item("@user", "Direct message with user")
           s.item("C123ABC", "Channel by ID")
-          s.item("<slack_url>", "Slack message URL")
+          s.item("<slack_url>", "Slack message URL (returns message + subsequent)")
         end
 
         help.section("OPTIONS") do |s|
-          s.option("-n, --limit N", "Number of messages to show (default: 20)")
+          s.option("-n, --limit N", "Number of messages (default: 500, or 50 for message URLs)")
           s.option("--threads", "Show thread replies inline")
           s.option("--no-emoji", "Show :emoji: codes instead of unicode")
           s.option("--no-reactions", "Hide reactions")
@@ -103,7 +109,12 @@ module SlackCli
           result = url_parser.parse(target)
           if result
             ws = runner.workspace(result.workspace)
-            return [ws, result.channel_id, result.thread_ts || result.ts]
+            # thread_ts means it's a thread, msg_ts means start from that message
+            if result.thread?
+              return [ws, result.channel_id, result.thread_ts, nil]
+            else
+              return [ws, result.channel_id, nil, result.msg_ts]
+            end
           end
         end
 
@@ -111,21 +122,21 @@ module SlackCli
 
         # Direct channel ID
         if target.match?(/^[CDG][A-Z0-9]+$/)
-          return [workspace, target, nil]
+          return [workspace, target, nil, nil]
         end
 
         # Channel by name
         if target.start_with?("#") || !target.start_with?("@")
           channel_name = target.delete_prefix("#")
           channel_id = resolve_channel(workspace, channel_name)
-          return [workspace, channel_id, nil]
+          return [workspace, channel_id, nil, nil]
         end
 
         # DM by username
         if target.start_with?("@")
           username = target.delete_prefix("@")
           channel_id = resolve_dm(workspace, username)
-          return [workspace, channel_id, nil]
+          return [workspace, channel_id, nil, nil]
         end
 
         raise ConfigError, "Could not resolve target: #{target}"
@@ -180,14 +191,29 @@ module SlackCli
         user&.dig("id")
       end
 
-      def fetch_messages(workspace, channel_id, thread_ts = nil)
+      # Apply default limit based on target type (50 for message URLs, 500 otherwise)
+      def apply_default_limit(msg_ts)
+        return if @options[:limit_set]
+
+        @options[:limit] = msg_ts ? 50 : 500
+      end
+
+      def fetch_messages(workspace, channel_id, thread_ts = nil, oldest: nil)
         api = runner.conversations_api(workspace.name)
 
         if thread_ts
-          response = api.replies(channel: channel_id, ts: thread_ts, limit: @options[:limit])
-          messages = response["messages"] || []
+          # For threads, paginate to fetch all replies
+          messages = fetch_all_thread_replies(api, channel_id, thread_ts)
+
+          # Apply limit (keep parent + last N-1 replies)
+          if @options[:limit] > 0 && messages.length > @options[:limit]
+            messages = [messages.first] + messages.last(@options[:limit] - 1)
+          end
         else
-          response = api.history(channel: channel_id, limit: @options[:limit])
+          # For channel history, use oldest parameter if provided
+          # Slack API oldest is exclusive - decrement slightly to include the target message
+          oldest_adjusted = oldest ? adjust_timestamp(oldest, -0.000001) : nil
+          response = api.history(channel: channel_id, limit: @options[:limit], oldest: oldest_adjusted)
           messages = response["messages"] || []
         end
 
@@ -198,7 +224,34 @@ module SlackCli
         messages.reverse
       end
 
-      def display_messages(messages, workspace)
+      # Adjust a Slack timestamp by a small amount while preserving precision
+      def adjust_timestamp(ts, delta)
+        require 'bigdecimal'
+        (BigDecimal(ts) + BigDecimal(delta.to_s)).to_s('F')
+      end
+
+      def fetch_all_thread_replies(api, channel_id, thread_ts)
+        all_messages = []
+        cursor = nil
+
+        loop do
+          response = api.replies(channel: channel_id, ts: thread_ts, limit: 200, cursor: cursor)
+          page_messages = response["messages"] || []
+          all_messages.concat(page_messages)
+
+          debug("Fetched #{page_messages.length} messages, total: #{all_messages.length}")
+
+          cursor = response.dig("response_metadata", "next_cursor")
+          break if cursor.nil? || cursor.empty? || !response["has_more"]
+        end
+
+        # Deduplicate and sort by timestamp
+        all_messages
+          .uniq { |m| m["ts"] }
+          .sort_by { |m| m["ts"].to_f }
+      end
+
+      def display_messages(messages, workspace, channel_id)
         formatter = runner.message_formatter
         format_options = {
           no_emoji: @options[:no_emoji],
@@ -215,17 +268,27 @@ module SlackCli
 
           # Show thread replies if requested
           if @options[:threads] && message.has_thread? && !message.is_reply?
-            show_thread_replies(workspace, message, format_options)
+            show_thread_replies(workspace, channel_id, message, format_options)
           end
         end
       end
 
-      def show_thread_replies(workspace, parent_message, format_options)
+      def show_thread_replies(workspace, channel_id, parent_message, format_options)
         api = runner.conversations_api(workspace.name)
+        formatter = runner.message_formatter
 
-        # Get channel from context - we need to track this
-        # For now, skip thread expansion (would need channel_id passed through)
-        debug("Thread expansion not yet implemented")
+        # Fetch all replies with pagination
+        replies = fetch_all_thread_replies(api, channel_id, parent_message.ts)
+
+        # Skip the parent message (first one) and show replies
+        replies[1..].each do |reply_data|
+          reply = Models::Message.from_api(reply_data)
+          formatted = formatter.format(reply, workspace: workspace, options: format_options)
+
+          # Indent thread replies
+          indented = formatted.lines.map { |line| "    #{line}" }.join
+          puts indented
+        end
       end
     end
   end

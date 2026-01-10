@@ -17,10 +17,18 @@ module SlackCli
       :subtype
     ) do
       def self.from_api(data)
+        text = data["text"] || ""
+
+        # Extract text from Block Kit blocks if text is empty or minimal
+        if text.length < 20
+          blocks_text = extract_block_text(data["blocks"])
+          text = blocks_text unless blocks_text.empty?
+        end
+
         new(
           ts: data["ts"],
           user_id: data["user"] || data["bot_id"] || data["username"],
-          text: data["text"] || "",
+          text: text,
           reactions: (data["reactions"] || []).map { |r| Reaction.from_api(r) },
           reply_count: data["reply_count"] || 0,
           thread_ts: data["thread_ts"],
@@ -31,6 +39,31 @@ module SlackCli
           username: data["username"],
           subtype: data["subtype"]
         )
+      end
+
+      def self.extract_block_text(blocks)
+        return "" unless blocks.is_a?(Array)
+
+        blocks.filter_map do |block|
+          case block["type"]
+          when "section"
+            block.dig("text", "text")
+          when "rich_text"
+            extract_rich_text_content(block["elements"])
+          end
+        end.join("\n")
+      end
+
+      def self.extract_rich_text_content(elements)
+        return "" unless elements.is_a?(Array)
+
+        elements.filter_map do |element|
+          next unless element["elements"].is_a?(Array)
+
+          element["elements"].filter_map do |item|
+            item["text"] if item["type"] == "text"
+          end.join
+        end.join
       end
 
       def initialize(
