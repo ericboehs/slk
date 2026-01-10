@@ -12,6 +12,7 @@ module SlackCli
   class Error < StandardError; end
   class ApiError < Error; end
   class ConfigError < Error; end
+  class EncryptionError < Error; end
   class WorkspaceNotFoundError < ConfigError; end
   class PresetNotFoundError < ConfigError; end
 

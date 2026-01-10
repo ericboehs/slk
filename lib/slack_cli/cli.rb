@@ -52,6 +52,10 @@ module SlackCli
       @output.error(e.message)
       log_error(e)
       1
+    rescue EncryptionError => e
+      @output.error("Encryption error: #{e.message}")
+      log_error(e)
+      1
     rescue ApiError => e
       @output.error("API error: #{e.message}")
       log_error(e)
@@ -99,7 +103,7 @@ module SlackCli
 
     def preset_exists?(name)
       Services::PresetStore.new.exists?(name)
-    rescue StandardError
+    rescue JSON::ParserError, ConfigError
       false
     end
 

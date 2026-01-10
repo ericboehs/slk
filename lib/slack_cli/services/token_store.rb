@@ -3,10 +3,13 @@
 module SlackCli
   module Services
     class TokenStore
+      attr_accessor :on_warning
+
       def initialize(config: nil, encryption: nil, paths: nil)
         @config = config || Configuration.new
         @encryption = encryption || Encryption.new
         @paths = paths || Support::XdgPaths.new
+        @on_warning = nil
       end
 
       def workspace(name)
@@ -66,17 +69,21 @@ module SlackCli
         else
           {}
         end
-      rescue JSON::ParserError
+      rescue JSON::ParserError => e
+        @on_warning&.call("Tokens file #{plain_tokens_file} is corrupted (#{e.message}). Using empty token store.")
         {}
       end
 
       def save_tokens(tokens)
         @paths.ensure_config_dir
 
-        if @config.ssh_key && @encryption.available?
-          if @encryption.encrypt(JSON.generate(tokens), @config.ssh_key, encrypted_tokens_file)
+        if @config.ssh_key
+          begin
+            @encryption.encrypt(JSON.generate(tokens), @config.ssh_key, encrypted_tokens_file)
             File.delete(plain_tokens_file) if File.exist?(plain_tokens_file)
             return
+          rescue EncryptionError => e
+            @on_warning&.call("Encryption failed (#{e.message}). Falling back to plain text storage.")
           end
         end
 
@@ -88,7 +95,11 @@ module SlackCli
       def decrypt_tokens
         content = @encryption.decrypt(encrypted_tokens_file, @config.ssh_key)
         content ? JSON.parse(content) : {}
-      rescue JSON::ParserError
+      rescue EncryptionError => e
+        @on_warning&.call("Token decryption failed: #{e.message}")
+        {}
+      rescue JSON::ParserError => e
+        @on_warning&.call("Tokens file corrupted (#{e.message}). Using empty token store.")
         {}
       end
 

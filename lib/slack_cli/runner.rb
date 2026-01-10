@@ -18,6 +18,9 @@ module SlackCli
       @api_client = api_client || Services::ApiClient.new
       @cache_store = cache_store || Services::CacheStore.new
       @preset_store = preset_store || Services::PresetStore.new
+
+      # Wire up warning callbacks to show warnings to users
+      wire_up_warnings
     end
 
     # Workspace helpers
@@ -106,6 +109,16 @@ module SlackCli
         f.puts error.backtrace.first(10).map { |line| "  #{line}" }.join("\n") if error.backtrace
         f.puts
       end
+    end
+
+    private
+
+    def wire_up_warnings
+      warning_handler = ->(message) { @output.warn(message) }
+
+      @config.on_warning = warning_handler
+      @token_store.on_warning = warning_handler
+      @preset_store.on_warning = warning_handler
     end
   end
 end

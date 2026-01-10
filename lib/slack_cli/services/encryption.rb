@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "open3"
+
 module SlackCli
   module Services
     class Encryption
@@ -8,29 +10,35 @@ module SlackCli
       end
 
       def encrypt(content, ssh_key_path, output_file)
-        return false unless available?
+        raise EncryptionError, "age encryption tool not available" unless available?
 
         public_key = "#{ssh_key_path}.pub"
-        return false unless File.exist?(public_key)
+        raise EncryptionError, "Public key not found: #{public_key}" unless File.exist?(public_key)
 
-        IO.popen(["age", "-R", public_key, "-o", output_file], "w") do |io|
-          io.write(content)
+        _output, error, status = Open3.capture3("age", "-R", public_key, "-o", output_file, stdin_data: content)
+
+        unless status.success?
+          raise EncryptionError, "Failed to encrypt: #{error.strip}"
         end
 
-        $?.success?
+        true
       end
 
       def decrypt(encrypted_file, ssh_key_path)
         return nil unless available?
         return nil unless File.exist?(encrypted_file)
+        raise EncryptionError, "SSH key not found: #{ssh_key_path}" unless File.exist?(ssh_key_path)
 
-        output, status = Open3.capture2("age", "-d", "-i", ssh_key_path, encrypted_file)
-        status.success? ? output : nil
-      rescue Errno::ENOENT
-        nil
+        output, error, status = Open3.capture3("age", "-d", "-i", ssh_key_path, encrypted_file)
+
+        unless status.success?
+          raise EncryptionError, "Failed to decrypt #{encrypted_file}: #{error.strip}"
+        end
+
+        output
+      rescue Errno::ENOENT => e
+        raise EncryptionError, "Decryption failed: #{e.message}"
       end
     end
   end
 end
-
-require "open3"

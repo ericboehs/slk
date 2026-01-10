@@ -235,8 +235,14 @@ module SlackCli
           puts "  Location: #{emoji_json_path}"
 
           0
-        rescue StandardError => e
-          error("Failed to sync: #{e.message}")
+        rescue JSON::ParserError => e
+          error("Failed to parse emoji data: #{e.message}")
+          1
+        rescue SocketError, Errno::ECONNREFUSED, Errno::ETIMEDOUT, Net::OpenTimeout, Net::ReadTimeout => e
+          error("Network error: #{e.message}")
+          1
+        rescue SystemCallError => e
+          error("File system error: #{e.message}")
           1
         end
       end
@@ -298,7 +304,9 @@ module SlackCli
               else
                 failed += 1
               end
-            rescue StandardError => e
+            rescue SocketError, Errno::ECONNREFUSED, Errno::ETIMEDOUT,
+                   Net::OpenTimeout, Net::ReadTimeout, URI::InvalidURIError,
+                   OpenSSL::SSL::SSLError, SystemCallError
               failed += 1
             end
 

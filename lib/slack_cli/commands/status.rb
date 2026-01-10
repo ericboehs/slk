@@ -163,7 +163,7 @@ module SlackCli
           success("DND disabled on #{workspace.name}")
         else
           duration = Models::Duration.parse(value)
-          dnd_api.set_snooze(duration.to_minutes)
+          dnd_api.set_snooze(duration)
           success("DND enabled for #{value} on #{workspace.name}")
         end
       end

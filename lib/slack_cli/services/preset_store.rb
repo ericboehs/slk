@@ -41,8 +41,11 @@ module SlackCli
         }
       }.freeze
 
+      attr_accessor :on_warning
+
       def initialize(paths: nil)
         @paths = paths || Support::XdgPaths.new
+        @on_warning = nil
         ensure_default_presets
       end
 
@@ -91,7 +94,8 @@ module SlackCli
         return {} unless File.exist?(presets_file)
 
         JSON.parse(File.read(presets_file))
-      rescue JSON::ParserError
+      rescue JSON::ParserError => e
+        @on_warning&.call("Presets file #{presets_file} is corrupted (#{e.message}). Using defaults.")
         {}
       end
 
