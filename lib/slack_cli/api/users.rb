@@ -67,8 +67,27 @@ module SlackCli
 
       def muted_channels
         prefs = get_prefs
-        muted = prefs.dig("prefs", "muted_channels") || ""
-        muted.split(",").reject(&:empty?)
+
+        # First try the legacy muted_channels format (comma-separated string)
+        muted = prefs.dig("prefs", "muted_channels")
+        if muted.is_a?(String) && !muted.empty?
+          return muted.split(",").reject(&:empty?)
+        end
+
+        # New format: muted channels are in all_notifications_prefs JSON string
+        # Structure: {"channels": {"C123": {"muted": true}, ...}}
+        notifications_prefs = prefs.dig("prefs", "all_notifications_prefs")
+        if notifications_prefs.is_a?(String) && !notifications_prefs.empty?
+          begin
+            parsed = JSON.parse(notifications_prefs)
+            channels = parsed["channels"] || {}
+            return channels.select { |_id, opts| opts["muted"] == true }.keys
+          rescue JSON::ParserError
+            # Fall through to empty array
+          end
+        end
+
+        []
       end
 
       def conversations(cursor: nil, limit: 1000)

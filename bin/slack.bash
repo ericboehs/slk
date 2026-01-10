@@ -3174,7 +3174,19 @@ cmd_unread() {
             if [[ "$include_muted" != "true" ]]; then
                 local prefs_response
                 prefs_response=$(slack_api_call "$workspace" "users.prefs.get" '{}')
+
+                # First try legacy muted_channels format (comma-separated string)
                 muted_channels=$(echo "$prefs_response" | jq -r '.prefs.muted_channels // ""')
+
+                # If empty, try new all_notifications_prefs format (JSON string with per-channel settings)
+                if [[ -z "$muted_channels" ]]; then
+                    local notifications_prefs
+                    notifications_prefs=$(echo "$prefs_response" | jq -r '.prefs.all_notifications_prefs // ""')
+                    if [[ -n "$notifications_prefs" ]]; then
+                        # Extract channel IDs where muted is true
+                        muted_channels=$(echo "$notifications_prefs" | jq -r '.channels | to_entries | map(select(.value.muted == true)) | map(.key) | join(",")')
+                    fi
+                fi
             fi
 
             # Get all channels with unreads
@@ -3237,7 +3249,19 @@ cmd_unread() {
         log_verbose "Fetching muted channels..."
         local prefs_response
         prefs_response=$(slack_api_call "$workspace" "users.prefs.get" '{}')
+
+        # First try legacy muted_channels format (comma-separated string)
         muted_channels=$(echo "$prefs_response" | jq -r '.prefs.muted_channels // ""')
+
+        # If empty, try new all_notifications_prefs format (JSON string with per-channel settings)
+        if [[ -z "$muted_channels" ]]; then
+            local notifications_prefs
+            notifications_prefs=$(echo "$prefs_response" | jq -r '.prefs.all_notifications_prefs // ""')
+            if [[ -n "$notifications_prefs" ]]; then
+                # Extract channel IDs where muted is true
+                muted_channels=$(echo "$notifications_prefs" | jq -r '.channels | to_entries | map(select(.value.muted == true)) | map(.key) | join(",")')
+            fi
+        fi
     fi
 
     # Extract channels with unreads (include last_read for --fetch)
@@ -3701,7 +3725,19 @@ cmd_catchup() {
             log_verbose "Fetching muted channels..."
             local prefs_response
             prefs_response=$(slack_api_call "$workspace" "users.prefs.get" '{}')
+
+            # First try legacy muted_channels format (comma-separated string)
             muted_channels=$(echo "$prefs_response" | jq -r '.prefs.muted_channels // ""')
+
+            # If empty, try new all_notifications_prefs format (JSON string with per-channel settings)
+            if [[ -z "$muted_channels" ]]; then
+                local notifications_prefs
+                notifications_prefs=$(echo "$prefs_response" | jq -r '.prefs.all_notifications_prefs // ""')
+                if [[ -n "$notifications_prefs" ]]; then
+                    # Extract channel IDs where muted is true
+                    muted_channels=$(echo "$notifications_prefs" | jq -r '.channels | to_entries | map(select(.value.muted == true)) | map(.key) | join(",")')
+                fi
+            fi
         fi
 
         # Extract channels with unreads (including threads)
