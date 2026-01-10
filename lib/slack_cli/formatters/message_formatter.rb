@@ -111,9 +111,6 @@ module SlackCli
           result = @emoji.replace(result, workspace)
         end
 
-        # Handle newlines
-        result.gsub!(/\n/, "\n    ")
-
         result
       end
 
