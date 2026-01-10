@@ -7,6 +7,7 @@ module SlackCli
       "presence" => Commands::Presence,
       "dnd" => Commands::Dnd,
       "messages" => Commands::Messages,
+      "thread" => Commands::Thread,
       "unread" => Commands::Unread,
       "catchup" => Commands::Catchup,
       "preset" => Commands::Preset,

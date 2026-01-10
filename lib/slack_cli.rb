@@ -53,6 +53,7 @@ module SlackCli
     autoload :Presence, "slack_cli/commands/presence"
     autoload :Dnd, "slack_cli/commands/dnd"
     autoload :Messages, "slack_cli/commands/messages"
+    autoload :Thread, "slack_cli/commands/thread"
     autoload :Unread, "slack_cli/commands/unread"
     autoload :Catchup, "slack_cli/commands/catchup"
     autoload :Preset, "slack_cli/commands/preset"
