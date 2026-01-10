@@ -39,7 +39,7 @@ module SlackCli
           reaction_text = format_reaction_inline(message, options)
         end
 
-        "#{@output.gray("[#{timestamp}]")} #{@output.bold(username)}: #{text}#{reaction_text}"
+        "#{@output.blue("[#{timestamp}]")} #{@output.bold(username)}: #{text}#{reaction_text}"
       end
 
       def format_reaction_inline(message, options)
@@ -114,7 +114,7 @@ module SlackCli
 
       def format_header(timestamp, username, message, options)
         parts = []
-        parts << @output.gray("[#{timestamp}]")
+        parts << @output.blue("[#{timestamp}]")
         parts << @output.bold(username)
 
         if message.is_reply? && !options[:in_thread]
