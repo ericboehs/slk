@@ -5,6 +5,8 @@ require_relative "../support/help_formatter"
 module SlackCli
   module Commands
     class Unread < Base
+      include Support::UserResolver
+
       def execute
         return show_help if show_help?
 
@@ -32,7 +34,8 @@ module SlackCli
           no_emoji: false,
           no_reactions: false,
           workspace_emoji: true, # Default to showing workspace emoji as images
-          reaction_names: false
+          reaction_names: false,
+          reaction_timestamps: false
         )
       end
 
@@ -50,6 +53,8 @@ module SlackCli
           @options[:workspace_emoji] = false
         when "--reaction-names"
           @options[:reaction_names] = true
+        when "--reaction-timestamps"
+          @options[:reaction_timestamps] = true
         else
           remaining << arg
         end
@@ -72,6 +77,7 @@ module SlackCli
           s.option("--no-reactions", "Hide reactions")
           s.option("--no-workspace-emoji", "Disable workspace emoji images")
           s.option("--reaction-names", "Show reactions with user names")
+          s.option("--reaction-timestamps", "Show when each person reacted")
           s.option("-w, --workspace", "Limit to specific workspace")
           s.option("--json", "Output as JSON")
           s.option("-q, --quiet", "Suppress output")
@@ -103,7 +109,7 @@ module SlackCli
 
           unread_ims.each do |im|
             mention_count = im["mention_count"] || 0
-            user_name = get_dm_user_name(workspace, im["id"], conversations_api)
+            user_name = resolve_dm_user_name(workspace, im["id"], conversations_api)
             puts
             puts output.bold("@#{user_name}") + (mention_count > 0 ? " (#{mention_count} mentions)" : "")
             puts
@@ -181,7 +187,7 @@ module SlackCli
 
           # Display unread replies (limit to @options[:limit])
           unread_replies.first(@options[:limit]).each do |reply|
-            message = Models::Message.from_api(reply)
+            message = Models::Message.from_api(reply, channel_id: channel_id)
             puts "    #{formatter.format_simple(message, workspace: workspace, options: format_options)}"
           end
 
@@ -189,40 +195,28 @@ module SlackCli
         end
       end
 
-      def extract_user_from_message(msg, workspace)
-        # Try user_profile embedded in message
-        if msg["user_profile"]
-          name = msg["user_profile"]["display_name"]
-          name = msg["user_profile"]["real_name"] if name.to_s.empty?
-          return name unless name.to_s.empty?
-        end
-
-        # Try username field
-        return msg["username"] unless msg["username"].to_s.empty?
-
-        # Try cache
-        user_id = msg["user"] || msg["bot_id"]
-        if user_id
-          cached = cache_store.get_user(workspace.name, user_id)
-          return cached if cached
-        end
-
-        user_id || "unknown"
-      end
-
       def show_channel_messages(workspace, channel_id, limit, api, formatter)
         history = api.history(channel: channel_id, limit: limit)
-        messages = (history["messages"] || []).reverse
+        raw_messages = (history["messages"] || []).reverse
+
+        # Convert to model objects
+        messages = raw_messages.map { |msg| Models::Message.from_api(msg, channel_id: channel_id) }
+
+        # Enrich with reaction timestamps if requested
+        if @options[:reaction_timestamps]
+          enricher = Services::ReactionEnricher.new(activity_api: runner.activity_api(workspace.name))
+          messages = enricher.enrich_messages(messages, channel_id)
+        end
 
         format_options = {
           no_emoji: @options[:no_emoji],
           no_reactions: @options[:no_reactions],
           workspace_emoji: @options[:workspace_emoji],
-          reaction_names: @options[:reaction_names]
+          reaction_names: @options[:reaction_names],
+          reaction_timestamps: @options[:reaction_timestamps]
         }
 
-        messages.each do |msg|
-          message = Models::Message.from_api(msg)
+        messages.each do |message|
           puts formatter.format_simple(message, workspace: workspace, options: format_options)
         end
       rescue ApiError => e
@@ -269,8 +263,8 @@ module SlackCli
                   api.mark(channel: channel["id"], ts: messages.first["ts"])
                   channels_cleared += 1
                 end
-              rescue ApiError
-                # Skip channels we can't access
+              rescue ApiError => e
+                debug("Could not clear channel #{channel["id"]}: #{e.message}")
               end
             end
 
@@ -292,8 +286,8 @@ module SlackCli
                 begin
                   threads_api.mark(channel: channel_id, thread_ts: thread_ts, ts: latest_ts)
                   threads_cleared += 1
-                rescue ApiError
-                  # Skip threads we can't mark
+                rescue ApiError => e
+                  debug("Could not mark thread #{thread_ts} in #{channel_id}: #{e.message}")
                 end
               end
             end
@@ -303,76 +297,6 @@ module SlackCli
         end
 
         0
-      end
-
-      def get_dm_user_name(workspace, channel_id, conversations)
-        # Try to get user from conversation info
-        begin
-          info = conversations.info(channel: channel_id)
-          if info["ok"] && info["channel"]
-            user_id = info["channel"]["user"]
-            if user_id
-              # Try cache first
-              cached = cache_store.get_user(workspace.name, user_id)
-              return cached if cached
-
-              # Try users API lookup
-              begin
-                users_api = runner.users_api(workspace.name)
-                user_info = users_api.info(user_id)
-                if user_info["ok"] && user_info["user"]
-                  profile = user_info["user"]["profile"] || {}
-                  name = profile["display_name"]
-                  name = profile["real_name"] if name.to_s.empty?
-                  name = user_info["user"]["name"] if name.to_s.empty?
-                  if name && !name.empty?
-                    # Cache for future lookups
-                    cache_store.set_user(workspace.name, user_id, name, persist: true)
-                    return name
-                  end
-                end
-              rescue ApiError
-                # Fall through to user ID
-              end
-
-              return user_id
-            end
-          end
-        rescue ApiError
-          # Fall through to channel ID
-        end
-
-        channel_id
-      end
-
-      def resolve_conversation_label(workspace, channel_id)
-        # DM channels start with D
-        if channel_id.start_with?("D")
-          conversations = runner.conversations_api(workspace.name)
-          user_name = get_dm_user_name(workspace, channel_id, conversations)
-          return "@#{user_name}"
-        end
-
-        # Try cache first
-        cached_name = cache_store.get_channel_name(workspace.name, channel_id)
-        return "##{cached_name}" if cached_name
-
-        # Try API lookup
-        begin
-          conversations = runner.conversations_api(workspace.name)
-          response = conversations.info(channel: channel_id)
-          if response["ok"] && response["channel"]
-            name = response["channel"]["name"]
-            if name
-              cache_store.set_channel(workspace.name, name, channel_id)
-              return "##{name}"
-            end
-          end
-        rescue ApiError
-          # Fall through to channel ID
-        end
-
-        "##{channel_id}"
       end
 
       def resolve_channel(workspace, name)

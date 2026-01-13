@@ -21,8 +21,18 @@ module SlackCli
 
         messages = fetch_messages(workspace, channel_id, thread_ts, oldest: msg_ts)
 
+        # Enrich with reaction timestamps if requested
+        if @options[:reaction_timestamps]
+          enricher = Services::ReactionEnricher.new(activity_api: runner.activity_api(workspace.name))
+          messages = enricher.enrich_messages(messages, channel_id)
+        end
+
         if @options[:json]
-          output_json(messages.map { |m| runner.message_formatter.format_json(m) })
+          format_options = {
+            no_names: @options[:no_names],
+            reaction_timestamps: @options[:reaction_timestamps]
+          }
+          output_json(messages.map { |m| runner.message_formatter.format_json(m, workspace: workspace, options: format_options) })
         else
           display_messages(messages, workspace, channel_id)
         end
@@ -44,7 +54,8 @@ module SlackCli
           no_reactions: false,
           no_names: false,
           workspace_emoji: true, # Default to showing workspace emoji as images
-          reaction_names: false
+          reaction_names: false,
+          reaction_timestamps: false
         )
       end
 
@@ -65,6 +76,8 @@ module SlackCli
           @options[:workspace_emoji] = false
         when "--reaction-names"
           @options[:reaction_names] = true
+        when "--reaction-timestamps"
+          @options[:reaction_timestamps] = true
         else
           remaining << arg
         end
@@ -90,6 +103,7 @@ module SlackCli
           s.option("--no-names", "Skip user name lookups (faster)")
           s.option("--no-workspace-emoji", "Disable workspace emoji images")
           s.option("--reaction-names", "Show reactions with user names")
+          s.option("--reaction-timestamps", "Show when each person reacted")
           s.option("--width N", "Wrap text at N columns (default: 72 on TTY, no wrap otherwise)")
           s.option("--no-wrap", "Disable text wrapping")
           s.option("--json", "Output as JSON")
@@ -220,7 +234,7 @@ module SlackCli
         end
 
         # Convert to model objects
-        messages = messages.map { |m| Models::Message.from_api(m) }
+        messages = messages.map { |m| Models::Message.from_api(m, channel_id: channel_id) }
 
         # Reverse to show oldest first
         messages.reverse
@@ -285,7 +299,7 @@ module SlackCli
 
         # Skip the parent message (first one) and show replies
         replies[1..].each do |reply_data|
-          reply = Models::Message.from_api(reply_data)
+          reply = Models::Message.from_api(reply_data, channel_id: channel_id)
           formatted = formatter.format(reply, workspace: workspace, options: format_options)
 
           # Indent multiline messages so continuation lines align with the first line

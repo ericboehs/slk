@@ -46,7 +46,7 @@ module SlackCli
         format_blocks(message, lines, workspace, options)
         format_attachments(message, lines, workspace, options)
         format_files(message, lines, options, skip_first: display_text.include?('[File:'))
-        format_reactions(message, lines, options)
+        format_reactions(message, lines, workspace, options)
         format_thread_indicator(message, lines, options)
 
         lines.join("\n")
@@ -73,12 +73,43 @@ module SlackCli
         " [#{parts.join(", ")}]"
       end
 
-      def format_json(message)
+      def format_json(message, workspace: nil, options: {})
+        reactions_json = message.reactions.map do |r|
+          reaction_hash = { name: r.name, count: r.count }
+
+          # Always return user objects with id, name (if available), and reacted_at (if available)
+          reaction_hash[:users] = r.users.map do |user_id|
+            user_hash = { id: user_id }
+
+            # Try to resolve display name
+            unless options[:no_names]
+              workspace_name = workspace&.name
+              if workspace_name
+                cached_name = @cache.get_user(workspace_name, user_id)
+                user_hash[:name] = cached_name if cached_name
+              end
+            end
+
+            # Add timestamp if available
+            if r.has_timestamps?
+              timestamp = r.timestamp_for(user_id)
+              if timestamp
+                user_hash[:reacted_at] = timestamp
+                user_hash[:reacted_at_iso8601] = Time.at(timestamp.to_f).iso8601
+              end
+            end
+
+            user_hash
+          end
+
+          reaction_hash
+        end
+
         {
           ts: message.ts,
           user: message.user_id,
           text: message.text,
-          reactions: message.reactions.map { |r| { name: r.name, count: r.count } },
+          reactions: reactions_json,
           reply_count: message.reply_count,
           thread_ts: message.thread_ts,
           attachments: message.attachments,
@@ -255,7 +286,7 @@ module SlackCli
           # Show image info if present
           if image_url
             # Extract filename from URL or use title
-            filename = title || File.basename(URI.parse(image_url).path) rescue 'image'
+            filename = title || extract_filename_from_url(image_url)
             lines << "> [Image: #{filename}]"
           end
         end
@@ -306,6 +337,13 @@ module SlackCli
         end
       end
 
+      # Extract filename from a URL path, returning 'image' if parsing fails
+      def extract_filename_from_url(url)
+        File.basename(URI.parse(url).path)
+      rescue URI::InvalidURIError
+        'image'
+      end
+
       def format_files(message, lines, options, skip_first: false)
         return if message.files.empty?
         return if options[:no_files]
@@ -319,16 +357,63 @@ module SlackCli
         end
       end
 
-      def format_reactions(message, lines, options)
+      def format_reactions(message, lines, workspace, options)
         return if message.reactions.empty?
         return if options[:no_reactions]
 
-        reaction_text = message.reactions.map do |r|
-          emoji = options[:no_emoji] ? r.emoji_code : (@emoji.lookup_emoji(r.name) || r.emoji_code)
-          "#{r.count} #{emoji}"
-        end.join("  ")
+        # Check if we should show timestamps and if any reactions have them
+        if options[:reaction_timestamps] && message.reactions.any?(&:has_timestamps?)
+          format_reactions_with_timestamps(message, lines, workspace, options)
+        else
+          # Standard reaction display
+          reaction_text = message.reactions.map do |r|
+            emoji = options[:no_emoji] ? r.emoji_code : (@emoji.lookup_emoji(r.name) || r.emoji_code)
+            "#{r.count} #{emoji}"
+          end.join("  ")
 
-        lines << @output.yellow("[#{reaction_text}]")
+          lines << @output.yellow("[#{reaction_text}]")
+        end
+      end
+
+      def format_reactions_with_timestamps(message, lines, workspace, options)
+        workspace_name = workspace&.name
+
+        message.reactions.each do |reaction|
+          emoji = options[:no_emoji] ? reaction.emoji_code : (@emoji.lookup_emoji(reaction.name) || reaction.emoji_code)
+
+          # Group users with their timestamps
+          user_strings = reaction.users.map do |user_id|
+            username = resolve_user_for_reaction(user_id, workspace_name, options)
+            timestamp = reaction.timestamp_for(user_id)
+
+            if timestamp
+              time_str = format_reaction_time(timestamp)
+              "#{username} (#{time_str})"
+            else
+              username
+            end
+          end
+
+          lines << @output.yellow("  ↳ #{emoji} #{user_strings.join(', ')}")
+        end
+      end
+
+      def resolve_user_for_reaction(user_id, workspace_name, options)
+        return user_id if options[:no_names]
+
+        # Try cache lookup
+        if workspace_name
+          cached = @cache.get_user(workspace_name, user_id)
+          return cached if cached
+        end
+
+        # Fall back to user ID
+        user_id
+      end
+
+      def format_reaction_time(slack_timestamp)
+        time = Time.at(slack_timestamp.to_f)
+        time.strftime("%-I:%M %p")  # e.g., "2:45 PM"
       end
 
       def format_thread_indicator(message, lines, options)

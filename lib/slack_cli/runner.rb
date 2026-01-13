@@ -45,7 +45,7 @@ module SlackCli
 
     # API helpers - create API instances bound to workspace
     def users_api(ws = nil)
-      Api::Users.new(@api_client, workspace(ws))
+      Api::Users.new(@api_client, workspace(ws), on_debug: ->(msg) { @output.debug(msg) })
     end
 
     def conversations_api(ws = nil)
@@ -70,6 +70,10 @@ module SlackCli
 
     def threads_api(ws = nil)
       Api::Threads.new(@api_client, workspace(ws))
+    end
+
+    def activity_api(ws = nil)
+      Api::Activity.new(@api_client, workspace(ws))
     end
 
     # Formatter helpers

@@ -15,14 +15,21 @@ module SlackCli
       :user_profile,
       :bot_profile,
       :username,
-      :subtype
+      :subtype,
+      :channel_id
     ) do
-      def self.from_api(data)
+      # Minimum text length before we extract content from Block Kit blocks.
+      # Slack sometimes sends minimal text (like a link preview) with the full
+      # content in blocks. 20 chars catches most of these cases without
+      # unnecessarily processing blocks for normal messages.
+      BLOCK_TEXT_THRESHOLD = 20
+
+      def self.from_api(data, channel_id: nil)
         text = data["text"] || ""
         blocks = data["blocks"] || []
 
         # Extract text from Block Kit blocks if text is empty or minimal
-        if text.length < 20
+        if text.length < BLOCK_TEXT_THRESHOLD
           blocks_text = extract_block_text(blocks)
           text = blocks_text unless blocks_text.empty?
         end
@@ -40,7 +47,8 @@ module SlackCli
           user_profile: data["user_profile"],
           bot_profile: data["bot_profile"],
           username: data["username"],
-          subtype: data["subtype"]
+          subtype: data["subtype"],
+          channel_id: channel_id
         )
       end
 
@@ -82,23 +90,53 @@ module SlackCli
         user_profile: nil,
         bot_profile: nil,
         username: nil,
-        subtype: nil
+        subtype: nil,
+        channel_id: nil
       )
+        ts_str = ts.to_s.strip
+        user_id_str = user_id.to_s.strip
+
+        raise ArgumentError, "ts cannot be empty" if ts_str.empty?
+        raise ArgumentError, "user_id cannot be empty" if user_id_str.empty?
+
         super(
-          ts: ts.to_s.freeze,
-          user_id: user_id.to_s.freeze,
+          ts: ts_str.freeze,
+          user_id: user_id_str.freeze,
           text: text.to_s.freeze,
           reactions: reactions.freeze,
           reply_count: reply_count.to_i,
           thread_ts: thread_ts&.freeze,
-          files: files.freeze,
-          attachments: attachments.freeze,
-          blocks: blocks.freeze,
-          user_profile: user_profile&.freeze,
-          bot_profile: bot_profile&.freeze,
+          files: deep_freeze(files),
+          attachments: deep_freeze(attachments),
+          blocks: deep_freeze(blocks),
+          user_profile: deep_freeze(user_profile),
+          bot_profile: deep_freeze(bot_profile),
           username: username&.freeze,
-          subtype: subtype&.freeze
+          subtype: subtype&.freeze,
+          channel_id: channel_id&.freeze
         )
+      end
+
+      # Recursively freeze nested structures (arrays and hashes)
+      def self.deep_freeze(obj)
+        case obj
+        when Hash
+          obj.each_value { |v| deep_freeze(v) }
+          obj.freeze
+        when Array
+          obj.each { |v| deep_freeze(v) }
+          obj.freeze
+        else
+          obj.freeze if obj.respond_to?(:freeze)
+        end
+        obj
+      end
+
+      private_class_method :deep_freeze
+
+      # Instance method delegate to class method for use in initialize
+      def deep_freeze(obj)
+        self.class.send(:deep_freeze, obj)
       end
 
       def timestamp
@@ -153,6 +191,26 @@ module SlackCli
 
       def system_message?
         %w[channel_join channel_leave channel_topic channel_purpose].include?(subtype)
+      end
+
+      # Create a copy of this message with updated reactions
+      def with_reactions(new_reactions)
+        Message.new(
+          ts: ts,
+          user_id: user_id,
+          text: text,
+          reactions: new_reactions,
+          reply_count: reply_count,
+          thread_ts: thread_ts,
+          files: files,
+          attachments: attachments,
+          blocks: blocks,
+          user_profile: user_profile,
+          bot_profile: bot_profile,
+          username: username,
+          subtype: subtype,
+          channel_id: channel_id
+        )
       end
     end
   end

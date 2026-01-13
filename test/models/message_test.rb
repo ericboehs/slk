@@ -296,4 +296,130 @@ class MessageTest < Minitest::Test
 
     refute message.has_reactions?
   end
+
+  # Validation tests
+  def test_raises_when_ts_empty
+    error = assert_raises(ArgumentError) do
+      SlackCli::Models::Message.new(ts: '', user_id: 'U123')
+    end
+    assert_equal 'ts cannot be empty', error.message
+  end
+
+  def test_raises_when_ts_whitespace_only
+    error = assert_raises(ArgumentError) do
+      SlackCli::Models::Message.new(ts: '   ', user_id: 'U123')
+    end
+    assert_equal 'ts cannot be empty', error.message
+  end
+
+  def test_raises_when_user_id_empty
+    error = assert_raises(ArgumentError) do
+      SlackCli::Models::Message.new(ts: '1234567890.123456', user_id: '')
+    end
+    assert_equal 'user_id cannot be empty', error.message
+  end
+
+  def test_raises_when_user_id_whitespace_only
+    error = assert_raises(ArgumentError) do
+      SlackCli::Models::Message.new(ts: '1234567890.123456', user_id: '   ')
+    end
+    assert_equal 'user_id cannot be empty', error.message
+  end
+
+  # Deep freeze tests
+  def test_user_profile_is_deeply_frozen
+    profile = { 'display_name' => 'johnd', 'nested' => { 'key' => 'value' } }
+    message = SlackCli::Models::Message.new(
+      ts: '1234567890.123456',
+      user_id: 'U123',
+      user_profile: profile
+    )
+
+    assert message.user_profile.frozen?
+    assert message.user_profile['nested'].frozen?
+  end
+
+  def test_blocks_are_deeply_frozen
+    blocks = [
+      { 'type' => 'section', 'text' => { 'text' => 'Hello' } }
+    ]
+    message = SlackCli::Models::Message.new(
+      ts: '1234567890.123456',
+      user_id: 'U123',
+      blocks: blocks
+    )
+
+    assert message.blocks.frozen?
+    assert message.blocks[0].frozen?
+    assert message.blocks[0]['text'].frozen?
+  end
+
+  def test_files_are_deeply_frozen
+    files = [{ 'id' => 'F123', 'metadata' => { 'size' => 100 } }]
+    message = SlackCli::Models::Message.new(
+      ts: '1234567890.123456',
+      user_id: 'U123',
+      files: files
+    )
+
+    assert message.files.frozen?
+    assert message.files[0].frozen?
+    assert message.files[0]['metadata'].frozen?
+  end
+
+  def test_attachments_are_deeply_frozen
+    attachments = [{ 'text' => 'attached', 'fields' => [{ 'title' => 'Field' }] }]
+    message = SlackCli::Models::Message.new(
+      ts: '1234567890.123456',
+      user_id: 'U123',
+      attachments: attachments
+    )
+
+    assert message.attachments.frozen?
+    assert message.attachments[0].frozen?
+    assert message.attachments[0]['fields'].frozen?
+    assert message.attachments[0]['fields'][0].frozen?
+  end
+
+  def test_from_api_with_channel_id
+    data = {
+      'ts' => '1234567890.123456',
+      'user' => 'U123',
+      'text' => 'Hello world'
+    }
+
+    message = SlackCli::Models::Message.from_api(data, channel_id: 'C123ABC')
+
+    assert_equal 'C123ABC', message.channel_id
+  end
+
+  def test_from_api_without_channel_id_defaults_to_nil
+    data = {
+      'ts' => '1234567890.123456',
+      'user' => 'U123',
+      'text' => 'Hello world'
+    }
+
+    message = SlackCli::Models::Message.from_api(data)
+
+    assert_nil message.channel_id
+  end
+
+  def test_with_reactions_preserves_channel_id
+    reaction1 = SlackCli::Models::Reaction.new(name: 'thumbsup', count: 1)
+    reaction2 = SlackCli::Models::Reaction.new(name: 'heart', count: 2)
+
+    original = SlackCli::Models::Message.new(
+      ts: '1234567890.123456',
+      user_id: 'U123',
+      text: 'Hello',
+      reactions: [reaction1],
+      channel_id: 'C123ABC'
+    )
+
+    updated = original.with_reactions([reaction2])
+
+    assert_equal 'C123ABC', updated.channel_id
+    assert_equal [reaction2], updated.reactions
+  end
 end

@@ -58,4 +58,69 @@ class ReactionTest < Minitest::Test
     reaction = SlackCli::Models::Reaction.new(name: "test")
     assert_equal 0, reaction.count
   end
+
+  def test_negative_count_normalized_to_zero
+    reaction = SlackCli::Models::Reaction.new(name: "test", count: -5)
+    assert_equal 0, reaction.count
+  end
+
+  def test_negative_count_from_api_normalized_to_zero
+    data = { "name" => "test", "count" => -10 }
+    reaction = SlackCli::Models::Reaction.from_api(data)
+    assert_equal 0, reaction.count
+  end
+
+  def test_from_api_has_nil_timestamps
+    data = { "name" => "thumbsup", "count" => 1, "users" => %w[U123] }
+    reaction = SlackCli::Models::Reaction.from_api(data)
+    assert_nil reaction.timestamps
+  end
+
+  def test_with_timestamps
+    reaction = SlackCli::Models::Reaction.new(name: "star", count: 2, users: %w[U123 U456])
+    timestamps = { "U123" => "1767996268.000000", "U456" => "1767996300.000000" }
+
+    enriched = reaction.with_timestamps(timestamps)
+
+    assert_equal "star", enriched.name
+    assert_equal 2, enriched.count
+    assert_equal %w[U123 U456], enriched.users
+    assert_equal timestamps, enriched.timestamps
+  end
+
+  def test_has_timestamps_with_nil
+    reaction = SlackCli::Models::Reaction.new(name: "wave", count: 1)
+    assert_equal false, reaction.has_timestamps?
+  end
+
+  def test_has_timestamps_with_empty_hash
+    reaction = SlackCli::Models::Reaction.new(name: "wave", count: 1, timestamps: {})
+    assert_equal false, reaction.has_timestamps?
+  end
+
+  def test_has_timestamps_with_timestamps
+    timestamps = { "U123" => "1767996268.000000" }
+    reaction = SlackCli::Models::Reaction.new(name: "wave", count: 1, timestamps: timestamps)
+    assert_equal true, reaction.has_timestamps?
+  end
+
+  def test_timestamp_for_user
+    timestamps = { "U123" => "1767996268.000000", "U456" => "1767996300.000000" }
+    reaction = SlackCli::Models::Reaction.new(name: "fire", count: 2, timestamps: timestamps)
+
+    assert_equal "1767996268.000000", reaction.timestamp_for("U123")
+    assert_equal "1767996300.000000", reaction.timestamp_for("U456")
+    assert_nil reaction.timestamp_for("U999")
+  end
+
+  def test_timestamp_for_without_timestamps
+    reaction = SlackCli::Models::Reaction.new(name: "fire", count: 1)
+    assert_nil reaction.timestamp_for("U123")
+  end
+
+  def test_timestamps_are_frozen
+    timestamps = { "U123" => "1767996268.000000" }
+    reaction = SlackCli::Models::Reaction.new(name: "heart", count: 1, timestamps: timestamps)
+    assert reaction.timestamps.frozen?
+  end
 end
