@@ -13,6 +13,7 @@ module SlackCli
   class ApiError < Error; end
   class ConfigError < Error; end
   class EncryptionError < Error; end
+  class TokenStoreError < Error; end
   class WorkspaceNotFoundError < ConfigError; end
   class PresetNotFoundError < ConfigError; end
 
@@ -38,6 +39,7 @@ module SlackCli
     autoload :CacheStore, "slack_cli/services/cache_store"
     autoload :PresetStore, "slack_cli/services/preset_store"
     autoload :Encryption, "slack_cli/services/encryption"
+    autoload :ReactionEnricher, "slack_cli/services/reaction_enricher"
   end
 
   module Formatters
@@ -57,6 +59,7 @@ module SlackCli
     autoload :Thread, "slack_cli/commands/thread"
     autoload :Unread, "slack_cli/commands/unread"
     autoload :Catchup, "slack_cli/commands/catchup"
+    autoload :Activity, "slack_cli/commands/activity"
     autoload :Preset, "slack_cli/commands/preset"
     autoload :Workspaces, "slack_cli/commands/workspaces"
     autoload :Cache, "slack_cli/commands/cache"
@@ -74,6 +77,7 @@ module SlackCli
     autoload :Bots, "slack_cli/api/bots"
     autoload :Threads, "slack_cli/api/threads"
     autoload :Usergroups, "slack_cli/api/usergroups"
+    autoload :Activity, "slack_cli/api/activity"
   end
 
   module Support
@@ -82,5 +86,6 @@ module SlackCli
     autoload :InlineImages, "slack_cli/support/inline_images"
     autoload :HelpFormatter, "slack_cli/support/help_formatter"
     autoload :ErrorLogger, "slack_cli/support/error_logger"
+    autoload :UserResolver, "slack_cli/support/user_resolver"
   end
 end

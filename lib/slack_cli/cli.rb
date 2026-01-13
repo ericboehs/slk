@@ -10,6 +10,7 @@ module SlackCli
       "thread" => Commands::Thread,
       "unread" => Commands::Unread,
       "catchup" => Commands::Catchup,
+      "activity" => Commands::Activity,
       "preset" => Commands::Preset,
       "workspaces" => Commands::Workspaces,
       "cache" => Commands::Cache,
@@ -66,8 +67,8 @@ module SlackCli
       130
     rescue StandardError => e
       @output.error("Unexpected error: #{e.message}")
-      log_error(e)
-      @output.puts "See error log for details." if @output.verbose
+      log_path = log_error(e)
+      @output.puts "Details logged to: #{log_path}" if log_path
       1
     end
 
@@ -99,12 +100,15 @@ module SlackCli
       end
 
       result
+    ensure
+      # Clean up HTTP connections
+      runner&.api_client&.close
     end
 
     def preset_exists?(name)
+      # PresetStore handles JSON parse errors internally via on_warning callback
+      # ConfigError should propagate as it indicates a real configuration problem
       Services::PresetStore.new.exists?(name)
-    rescue JSON::ParserError, ConfigError
-      false
     end
 
     def log_error(error)
