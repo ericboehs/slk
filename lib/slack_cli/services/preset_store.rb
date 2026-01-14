@@ -4,40 +4,40 @@ module SlackCli
   module Services
     class PresetStore
       DEFAULT_PRESETS = {
-        "meeting" => {
-          "text" => "In a meeting",
-          "emoji" => ":calendar:",
-          "duration" => "1h",
-          "presence" => "",
-          "dnd" => ""
+        'meeting' => {
+          'text' => 'In a meeting',
+          'emoji' => ':calendar:',
+          'duration' => '1h',
+          'presence' => '',
+          'dnd' => ''
         },
-        "lunch" => {
-          "text" => "Lunch",
-          "emoji" => ":knife_fork_plate:",
-          "duration" => "1h",
-          "presence" => "away",
-          "dnd" => ""
+        'lunch' => {
+          'text' => 'Lunch',
+          'emoji' => ':knife_fork_plate:',
+          'duration' => '1h',
+          'presence' => 'away',
+          'dnd' => ''
         },
-        "focus" => {
-          "text" => "Focus time",
-          "emoji" => ":headphones:",
-          "duration" => "2h",
-          "presence" => "",
-          "dnd" => "2h"
+        'focus' => {
+          'text' => 'Focus time',
+          'emoji' => ':headphones:',
+          'duration' => '2h',
+          'presence' => '',
+          'dnd' => '2h'
         },
-        "brb" => {
-          "text" => "Be right back",
-          "emoji" => ":brb:",
-          "duration" => "15m",
-          "presence" => "away",
-          "dnd" => ""
+        'brb' => {
+          'text' => 'Be right back',
+          'emoji' => ':brb:',
+          'duration' => '15m',
+          'presence' => 'away',
+          'dnd' => ''
         },
-        "clear" => {
-          "text" => "",
-          "emoji" => "",
-          "duration" => "0",
-          "presence" => "auto",
-          "dnd" => "off"
+        'clear' => {
+          'text' => '',
+          'emoji' => '',
+          'duration' => '0',
+          'presence' => 'auto',
+          'dnd' => 'off'
         }
       }.freeze
 
@@ -105,7 +105,7 @@ module SlackCli
       end
 
       def presets_file
-        @paths.config_file("presets.json")
+        @paths.config_file('presets.json')
       end
     end
   end

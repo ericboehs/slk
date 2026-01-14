@@ -49,26 +49,24 @@ module SlackCli
       def render
         lines = []
         lines << "USAGE: #{@usage}"
-        lines << ""
+        lines << ''
 
-        if @description
-          lines << @description
-        end
+        lines << @description if @description
 
         @notes.each do |note|
           lines << note
         end
 
-        lines << "" if @description || @notes.any?
+        lines << '' if @description || @notes.any?
 
         @sections.each do |section|
           lines << "#{section.title}:"
           lines.concat(section.render)
-          lines << ""
+          lines << ''
         end
 
         # Remove trailing blank line
-        lines.pop if lines.last == ""
+        lines.pop if lines.last == ''
 
         lines.join("\n")
       end
@@ -111,9 +109,9 @@ module SlackCli
 
           # Calculate max width of left column
           max_left = @items
-            .reject { |type, _, _| type == :text }
-            .map { |_, left, _| left.length }
-            .max || 0
+                     .reject { |type, _, _| type == :text }
+                     .map { |_, left, _| left.length }
+                     .max || 0
 
           # Add padding (2 spaces between columns)
           padding = 2

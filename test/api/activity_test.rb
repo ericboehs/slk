@@ -11,18 +11,18 @@ class ActivityApiTest < Minitest::Test
 
   def test_feed_calls_api
     @mock_client.stub('activity.feed', {
-      'ok' => true,
-      'items' => [
-        {
-          'feed_ts' => '1767996268.000000',
-          'item' => {
-            'type' => 'message_reaction',
-            'reaction' => { 'user' => 'U123', 'name' => 'thumbsup' },
-            'message' => { 'ts' => '1767996106.296789', 'channel' => 'C123' }
-          }
-        }
-      ]
-    })
+                        'ok' => true,
+                        'items' => [
+                          {
+                            'feed_ts' => '1767996268.000000',
+                            'item' => {
+                              'type' => 'message_reaction',
+                              'reaction' => { 'user' => 'U123', 'name' => 'thumbsup' },
+                              'message' => { 'ts' => '1767996106.296789', 'channel' => 'C123' }
+                            }
+                          }
+                        ]
+                      })
 
     result = @api.feed
     assert_equal 1, result['items'].size
@@ -79,6 +79,6 @@ class ActivityApiTest < Minitest::Test
     @api.feed
 
     call = @mock_client.calls.last
-    refute call[:params].key?(:token), "Token should not be in form params"
+    refute call[:params].key?(:token), 'Token should not be in form params'
   end
 end

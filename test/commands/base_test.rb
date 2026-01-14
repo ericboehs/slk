@@ -98,7 +98,7 @@ class BaseCommandTest < Minitest::Test
     end
 
     def help_text
-      "Test command help"
+      'Test command help'
     end
   end
 end

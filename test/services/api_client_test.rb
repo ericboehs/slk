@@ -60,7 +60,7 @@ class ApiClientTest < Minitest::Test
   # BASE_URL tests
   def test_base_url_defaults_to_slack_api
     # Temporarily unset env var to test default
-    old_val = ENV['SLACK_API_BASE']
+    old_val = ENV.fetch('SLACK_API_BASE', nil)
     ENV.delete('SLACK_API_BASE')
 
     # Need to reload the constant - since we can't, just verify current value

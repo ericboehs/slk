@@ -104,7 +104,7 @@ class ConfigurationTest < Minitest::Test
     config = SlackCli::Services::Configuration.new(paths: @paths)
 
     # Remove the config dir
-    FileUtils.rmdir(@paths.config_dir) if Dir.exist?(@paths.config_dir)
+    FileUtils.rm_f(@paths.config_dir)
 
     config.primary_workspace = 'test'
 
@@ -136,13 +136,7 @@ class ConfigurationTest < Minitest::Test
       @cache_dir = File.join(tmpdir, 'cache')
     end
 
-    def config_dir
-      @config_dir
-    end
-
-    def cache_dir
-      @cache_dir
-    end
+    attr_reader :config_dir, :cache_dir
 
     def config_file(name)
       File.join(@config_dir, name)

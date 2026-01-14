@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../support/help_formatter"
+require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
@@ -10,13 +10,13 @@ module SlackCli
         return result if result
 
         case positional_args
-        in ["show"] | []
+        in ['show'] | []
           show_config
-        in ["setup"]
+        in ['setup']
           run_setup
-        in ["get", key]
+        in ['get', key]
           get_value(key)
-        in ["set", key, value]
+        in ['set', key, value]
           set_value(key, value)
         else
           run_setup
@@ -26,24 +26,24 @@ module SlackCli
       protected
 
       def help_text
-        help = Support::HelpFormatter.new("slk config [action]")
-        help.description("Manage configuration.")
+        help = Support::HelpFormatter.new('slk config [action]')
+        help.description('Manage configuration.')
 
-        help.section("ACTIONS") do |s|
-          s.action("show", "Show current configuration")
-          s.action("setup", "Run setup wizard")
-          s.action("get <key>", "Get a config value")
-          s.action("set <key> <val>", "Set a config value")
+        help.section('ACTIONS') do |s|
+          s.action('show', 'Show current configuration')
+          s.action('setup', 'Run setup wizard')
+          s.action('get <key>', 'Get a config value')
+          s.action('set <key> <val>', 'Set a config value')
         end
 
-        help.section("CONFIG KEYS") do |s|
-          s.item("primary_workspace", "Default workspace name")
-          s.item("ssh_key", "Path to SSH key for encryption")
-          s.item("emoji_dir", "Custom emoji directory")
+        help.section('CONFIG KEYS') do |s|
+          s.item('primary_workspace', 'Default workspace name')
+          s.item('ssh_key', 'Path to SSH key for encryption')
+          s.item('emoji_dir', 'Custom emoji directory')
         end
 
-        help.section("OPTIONS") do |s|
-          s.option("-q, --quiet", "Suppress output")
+        help.section('OPTIONS') do |s|
+          s.option('-q, --quiet', 'Suppress output')
         end
 
         help.render
@@ -52,12 +52,12 @@ module SlackCli
       private
 
       def show_config
-        puts "Configuration:"
-        puts "  Primary workspace: #{config.primary_workspace || "(not set)"}"
-        puts "  SSH key: #{config.ssh_key || "(not set)"}"
-        puts "  Emoji dir: #{config.emoji_dir || "(default)"}"
+        puts 'Configuration:'
+        puts "  Primary workspace: #{config.primary_workspace || '(not set)'}"
+        puts "  SSH key: #{config.ssh_key || '(not set)'}"
+        puts "  Emoji dir: #{config.emoji_dir || '(default)'}"
         puts
-        puts "Workspaces: #{runner.workspace_names.join(", ")}"
+        puts "Workspaces: #{runner.workspace_names.join(', ')}"
         puts
         paths = Support::XdgPaths.new
         puts "Config dir: #{paths.config_dir}"
@@ -67,31 +67,31 @@ module SlackCli
       end
 
       def run_setup
-        puts "Slack CLI Setup"
-        puts "==============="
+        puts 'Slack CLI Setup'
+        puts '==============='
         puts
 
         # Check for existing config
         if runner.has_workspaces?
-          puts "You already have workspaces configured."
-          print "Add another workspace? (y/n): "
+          puts 'You already have workspaces configured.'
+          print 'Add another workspace? (y/n): '
           answer = $stdin.gets&.chomp&.downcase
-          return 0 unless answer == "y"
+          return 0 unless answer == 'y'
         end
 
         # Setup encryption
         if config.ssh_key.nil?
           puts
-          puts "Encryption Setup (optional)"
-          puts "----------------------------"
-          puts "You can encrypt your tokens with age using an SSH key."
-          print "SSH key path (or press Enter to skip): "
+          puts 'Encryption Setup (optional)'
+          puts '----------------------------'
+          puts 'You can encrypt your tokens with age using an SSH key.'
+          print 'SSH key path (or press Enter to skip): '
           ssh_key = $stdin.gets&.chomp
 
           unless ssh_key.nil? || ssh_key.empty?
             if File.exist?(ssh_key)
               config.ssh_key = ssh_key
-              success("SSH key configured")
+              success('SSH key configured')
             else
               warn("File not found: #{ssh_key}")
             end
@@ -100,50 +100,44 @@ module SlackCli
 
         # Add workspace
         puts
-        puts "Workspace Setup"
-        puts "---------------"
+        puts 'Workspace Setup'
+        puts '---------------'
 
-        print "Workspace name: "
+        print 'Workspace name: '
         name = $stdin.gets&.chomp
-        return error("Name is required") if name.nil? || name.empty?
+        return error('Name is required') if name.nil? || name.empty?
 
-        print "Token (xoxb-... or xoxc-...): "
+        print 'Token (xoxb-... or xoxc-...): '
         token = $stdin.gets&.chomp
-        return error("Token is required") if token.nil? || token.empty?
+        return error('Token is required') if token.nil? || token.empty?
 
         cookie = nil
-        if token.start_with?("xoxc-")
+        if token.start_with?('xoxc-')
           puts
-          puts "xoxc tokens require a cookie for authentication."
-          print "Cookie (d=...): "
+          puts 'xoxc tokens require a cookie for authentication.'
+          print 'Cookie (d=...): '
           cookie = $stdin.gets&.chomp
         end
 
         token_store.add(name, token, cookie)
 
         # Set as primary if first
-        if config.primary_workspace.nil?
-          config.primary_workspace = name
-        end
+        config.primary_workspace = name if config.primary_workspace.nil?
 
         puts
-        success("Setup complete!")
+        success('Setup complete!')
         puts
-        puts "Try these commands:"
-        puts "  slack status           - View your status"
-        puts "  slack messages #general - Read channel messages"
-        puts "  slack help             - See all commands"
+        puts 'Try these commands:'
+        puts '  slack status           - View your status'
+        puts '  slack messages #general - Read channel messages'
+        puts '  slack help             - See all commands'
 
         0
       end
 
       def get_value(key)
         value = config[key]
-        if value
-          puts value
-        else
-          puts "(not set)"
-        end
+        puts value || '(not set)'
 
         0
       end

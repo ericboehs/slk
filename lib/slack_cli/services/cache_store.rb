@@ -54,10 +54,10 @@ module SlackCli
         if workspace_name
           @user_cache.delete(workspace_name)
           file = user_cache_file(workspace_name)
-          File.delete(file) if File.exist?(file)
+          FileUtils.rm_f(file)
         else
           @user_cache.clear
-          Dir.glob(@paths.cache_file("users-*.json")).each { |f| File.delete(f) }
+          Dir.glob(@paths.cache_file('users-*.json')).each { |f| File.delete(f) }
         end
       end
 
@@ -83,10 +83,10 @@ module SlackCli
         if workspace_name
           @channel_cache.delete(workspace_name)
           file = channel_cache_file(workspace_name)
-          File.delete(file) if File.exist?(file)
+          FileUtils.rm_f(file)
         else
           @channel_cache.clear
-          Dir.glob(@paths.cache_file("channels-*.json")).each { |f| File.delete(f) }
+          Dir.glob(@paths.cache_file('channels-*.json')).each { |f| File.delete(f) }
         end
       end
 
@@ -129,10 +129,10 @@ module SlackCli
 
         file = user_cache_file(workspace_name)
         @user_cache[workspace_name] = if File.exist?(file)
-          JSON.parse(File.read(file))
-        else
-          {}
-        end
+                                        JSON.parse(File.read(file))
+                                      else
+                                        {}
+                                      end
       rescue JSON::ParserError => e
         @on_warning&.call("User cache corrupted for #{workspace_name}: #{e.message}")
         @user_cache[workspace_name] = {}
@@ -143,10 +143,10 @@ module SlackCli
 
         file = channel_cache_file(workspace_name)
         @channel_cache[workspace_name] = if File.exist?(file)
-          JSON.parse(File.read(file))
-        else
-          {}
-        end
+                                           JSON.parse(File.read(file))
+                                         else
+                                           {}
+                                         end
       rescue JSON::ParserError => e
         @on_warning&.call("Channel cache corrupted for #{workspace_name}: #{e.message}")
         @channel_cache[workspace_name] = {}
@@ -173,10 +173,10 @@ module SlackCli
 
         file = subteam_cache_file(workspace_name)
         @subteam_cache[workspace_name] = if File.exist?(file)
-          JSON.parse(File.read(file))
-        else
-          {}
-        end
+                                           JSON.parse(File.read(file))
+                                         else
+                                           {}
+                                         end
       rescue JSON::ParserError => e
         @on_warning&.call("Subteam cache corrupted for #{workspace_name}: #{e.message}")
         @subteam_cache[workspace_name] = {}

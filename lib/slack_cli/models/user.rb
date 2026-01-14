@@ -4,14 +4,14 @@ module SlackCli
   module Models
     User = Data.define(:id, :name, :real_name, :display_name, :is_bot) do
       def self.from_api(data)
-        profile = data["profile"] || {}
+        profile = data['profile'] || {}
 
         new(
-          id: data["id"],
-          name: data["name"],
-          real_name: profile["real_name"] || data["real_name"],
-          display_name: profile["display_name"] || profile["display_name_normalized"],
-          is_bot: data["is_bot"] || false
+          id: data['id'],
+          name: data['name'],
+          real_name: profile['real_name'] || data['real_name'],
+          display_name: profile['display_name'] || profile['display_name_normalized'],
+          is_bot: data['is_bot'] || false
         )
       end
 
@@ -20,7 +20,7 @@ module SlackCli
 
       def initialize(id:, name: nil, real_name: nil, display_name: nil, is_bot: false)
         id_str = id.to_s.strip
-        raise ArgumentError, "user id cannot be empty" if id_str.empty?
+        raise ArgumentError, 'user id cannot be empty' if id_str.empty?
 
         # Validate user ID format (starts with U or W followed by alphanumeric)
         unless id_str.match?(USER_ID_PATTERN)

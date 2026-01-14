@@ -28,9 +28,9 @@ class TokenStoreTest < Minitest::Test
   def test_workspace_names_returns_all_names
     with_temp_config do |dir|
       write_tokens_file(dir, {
-        'workspace1' => { 'token' => 'xoxb-test1' },
-        'workspace2' => { 'token' => 'xoxb-test2' }
-      })
+                          'workspace1' => { 'token' => 'xoxb-test1' },
+                          'workspace2' => { 'token' => 'xoxb-test2' }
+                        })
       store = SlackCli::Services::TokenStore.new
       assert_equal %w[workspace1 workspace2].sort, store.workspace_names.sort
     end
@@ -76,8 +76,8 @@ class TokenStoreTest < Minitest::Test
   def test_workspace_returns_workspace_with_cookie
     with_temp_config do |dir|
       write_tokens_file(dir, {
-        'myworkspace' => { 'token' => 'xoxc-test-token', 'cookie' => 'xoxd-cookie' }
-      })
+                          'myworkspace' => { 'token' => 'xoxc-test-token', 'cookie' => 'xoxd-cookie' }
+                        })
       store = SlackCli::Services::TokenStore.new
       workspace = store.workspace('myworkspace')
 
@@ -96,14 +96,14 @@ class TokenStoreTest < Minitest::Test
   def test_all_workspaces_returns_workspace_models
     with_temp_config do |dir|
       write_tokens_file(dir, {
-        'ws1' => { 'token' => 'xoxb-test1' },
-        'ws2' => { 'token' => 'xoxb-test2' }
-      })
+                          'ws1' => { 'token' => 'xoxb-test1' },
+                          'ws2' => { 'token' => 'xoxb-test2' }
+                        })
       store = SlackCli::Services::TokenStore.new
       workspaces = store.all_workspaces
 
       assert_equal 2, workspaces.size
-      assert workspaces.all? { |ws| ws.is_a?(SlackCli::Models::Workspace) }
+      assert(workspaces.all? { |ws| ws.is_a?(SlackCli::Models::Workspace) })
       assert_equal %w[ws1 ws2].sort, workspaces.map(&:name).sort
     end
   end

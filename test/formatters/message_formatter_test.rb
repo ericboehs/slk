@@ -71,7 +71,7 @@ class MessageFormatterTest < Minitest::Test
     message = create_message_with_reactions(
       text: 'Great idea!',
       reactions: [
-        { 'name' => 'thumbsup', 'count' => 2, 'users' => ['U111AAA', 'U222BBB'] }
+        { 'name' => 'thumbsup', 'count' => 2, 'users' => %w[U111AAA U222BBB] }
       ]
     )
     workspace = mock_workspace('test')
@@ -166,13 +166,11 @@ class MessageFormatterTest < Minitest::Test
     # Build reactions with timestamps using with_timestamps
     built_reactions = reactions.map do |r|
       reaction = SlackCli::Models::Reaction.from_api({
-        'name' => r['name'],
-        'count' => r['count'],
-        'users' => r['users']
-      })
-      if r['user_timestamps']
-        reaction = reaction.with_timestamps(r['user_timestamps'])
-      end
+                                                       'name' => r['name'],
+                                                       'count' => r['count'],
+                                                       'users' => r['users']
+                                                     })
+      reaction = reaction.with_timestamps(r['user_timestamps']) if r['user_timestamps']
       reaction
     end
 

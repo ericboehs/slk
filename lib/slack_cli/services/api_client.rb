@@ -3,7 +3,7 @@
 module SlackCli
   module Services
     class ApiClient
-      BASE_URL = ENV.fetch("SLACK_API_BASE", "https://slack.com/api")
+      BASE_URL = ENV.fetch('SLACK_API_BASE', 'https://slack.com/api')
 
       # Network errors that should be wrapped in ApiError
       NETWORK_ERRORS = [
@@ -60,8 +60,8 @@ module SlackCli
         http = get_http(uri)
 
         request = Net::HTTP::Get.new(uri)
-        request["Authorization"] = workspace.headers["Authorization"]
-        request["Cookie"] = workspace.headers["Cookie"] if workspace.headers["Cookie"]
+        request['Authorization'] = workspace.headers['Authorization']
+        request['Cookie'] = workspace.headers['Cookie'] if workspace.headers['Cookie']
 
         response = http.request(request)
         handle_response(response, method)
@@ -77,8 +77,8 @@ module SlackCli
         http = get_http(uri)
 
         request = Net::HTTP::Post.new(uri)
-        request["Authorization"] = workspace.headers["Authorization"]
-        request["Cookie"] = workspace.headers["Cookie"] if workspace.headers["Cookie"]
+        request['Authorization'] = workspace.headers['Authorization']
+        request['Cookie'] = workspace.headers['Cookie'] if workspace.headers['Cookie']
         request.set_form_data(params)
 
         response = http.request(request)
@@ -100,9 +100,7 @@ module SlackCli
         cached = @http_cache[key]
 
         # Return cached connection if it's still active
-        if cached && cached.started?
-          return cached
-        end
+        return cached if cached&.started?
 
         # Create new connection
         http = Net::HTTP.new(uri.host, uri.port)
@@ -114,7 +112,7 @@ module SlackCli
       end
 
       def configure_ssl(http, uri)
-        http.use_ssl = uri.scheme == "https"
+        http.use_ssl = uri.scheme == 'https'
         http.open_timeout = 10
         http.read_timeout = 30
         http.keep_alive_timeout = 30
@@ -127,22 +125,22 @@ module SlackCli
         http.cert_store.set_default_paths
       end
 
-      def handle_response(response, method)
+      def handle_response(response, _method)
         case response
         when Net::HTTPSuccess
           result = JSON.parse(response.body)
-          raise ApiError, result["error"] || "Unknown error" unless result["ok"]
+          raise ApiError, result['error'] || 'Unknown error' unless result['ok']
 
           result
         when Net::HTTPUnauthorized
-          raise ApiError, "Invalid token or session expired"
+          raise ApiError, 'Invalid token or session expired'
         when Net::HTTPTooManyRequests
-          raise ApiError, "Rate limited - please wait and try again"
+          raise ApiError, 'Rate limited - please wait and try again'
         else
           raise ApiError, "HTTP #{response.code}: #{response.message}"
         end
       rescue JSON::ParserError
-        raise ApiError, "Invalid JSON response from Slack API"
+        raise ApiError, 'Invalid JSON response from Slack API'
       end
     end
   end

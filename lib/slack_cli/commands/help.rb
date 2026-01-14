@@ -19,24 +19,24 @@ module SlackCli
 
       def show_general_help
         puts <<~HELP
-          #{output.bold("slk")} - Slack CLI v#{VERSION}
+          #{output.bold('slk')} - Slack CLI v#{VERSION}
 
-          #{output.bold("USAGE:")}
+          #{output.bold('USAGE:')}
             slk <command> [options]
 
-          #{output.bold("COMMANDS:")}
-            #{output.cyan("status")}       Get or set your status
-            #{output.cyan("presence")}     Get or set your presence (away/active)
-            #{output.cyan("dnd")}          Manage Do Not Disturb
-            #{output.cyan("messages")}     Read channel or DM messages
-            #{output.cyan("unread")}       View and clear unread messages
-            #{output.cyan("preset")}       Manage and apply status presets
-            #{output.cyan("workspaces")}   Manage Slack workspaces
-            #{output.cyan("cache")}        Manage user/channel cache
-            #{output.cyan("emoji")}        Download workspace custom emoji
-            #{output.cyan("config")}       Configuration and setup
+          #{output.bold('COMMANDS:')}
+            #{output.cyan('status')}       Get or set your status
+            #{output.cyan('presence')}     Get or set your presence (away/active)
+            #{output.cyan('dnd')}          Manage Do Not Disturb
+            #{output.cyan('messages')}     Read channel or DM messages
+            #{output.cyan('unread')}       View and clear unread messages
+            #{output.cyan('preset')}       Manage and apply status presets
+            #{output.cyan('workspaces')}   Manage Slack workspaces
+            #{output.cyan('cache')}        Manage user/channel cache
+            #{output.cyan('emoji')}        Download workspace custom emoji
+            #{output.cyan('config')}       Configuration and setup
 
-          #{output.bold("GLOBAL OPTIONS:")}
+          #{output.bold('GLOBAL OPTIONS:')}
             -w, --workspace NAME   Use specific workspace
             --all                  Apply to all workspaces
             -v, --verbose          Show debug output
@@ -44,7 +44,7 @@ module SlackCli
             --json                 Output as JSON (where supported)
             -h, --help             Show help
 
-          #{output.bold("EXAMPLES:")}
+          #{output.bold('EXAMPLES:')}
             slk status                       Show current status
             slk status "Working" :laptop:    Set status
             slk status clear                 Clear status
@@ -52,7 +52,7 @@ module SlackCli
             slk messages #general            Read channel messages
             slk preset meeting               Apply preset
 
-          Run #{output.cyan("slk <command> --help")} for command-specific help.
+          Run #{output.cyan('slk <command> --help')} for command-specific help.
         HELP
       end
 
@@ -63,12 +63,12 @@ module SlackCli
           # Create instance just to get help text
           # Call --help directly since help_text is protected
           runner_stub = Runner.new(output: output)
-          cmd = command_class.new(["--help"], runner: runner_stub)
+          cmd = command_class.new(['--help'], runner: runner_stub)
           cmd.execute
         else
           error("Unknown command: #{topic}")
           puts
-          puts "Available commands: #{CLI::COMMANDS.keys.join(", ")}"
+          puts "Available commands: #{CLI::COMMANDS.keys.join(', ')}"
         end
       end
     end

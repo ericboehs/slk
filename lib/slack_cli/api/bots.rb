@@ -13,8 +13,8 @@ module SlackCli
       # @param bot_id [String] Bot ID starting with "B"
       # @return [Hash, nil] Bot info hash or nil if not found
       def info(bot_id)
-        response = @api.post_form(@workspace, "bots.info", { bot: bot_id })
-        response["bot"] if response["ok"]
+        response = @api.post_form(@workspace, 'bots.info', { bot: bot_id })
+        response['bot'] if response['ok']
       rescue ApiError => e
         @on_debug&.call("Bot lookup failed for #{bot_id}: #{e.message}")
         nil
@@ -25,7 +25,7 @@ module SlackCli
       # @return [String, nil] Bot name or nil if not found
       def get_name(bot_id)
         bot = info(bot_id)
-        bot&.dig("name")
+        bot&.dig('name')
       end
     end
   end

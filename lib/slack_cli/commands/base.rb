@@ -12,7 +12,7 @@ module SlackCli
       end
 
       def execute
-        raise NotImplementedError, "Subclass must implement #execute"
+        raise NotImplementedError, 'Subclass must implement #execute'
       end
 
       protected
@@ -50,22 +50,22 @@ module SlackCli
           arg = args.shift
 
           case arg
-          when "-w", "--workspace"
+          when '-w', '--workspace'
             @options[:workspace] = args.shift
-          when "--width"
+          when '--width'
             value = args.shift
             @options[:width] = value == '0' ? nil : value.to_i
-          when "--no-wrap"
+          when '--no-wrap'
             @options[:width] = nil
-          when "--all"
+          when '--all'
             @options[:all] = true
-          when "-v", "--verbose"
+          when '-v', '--verbose'
             @options[:verbose] = true
-          when "-q", "--quiet"
+          when '-q', '--quiet'
             @options[:quiet] = true
-          when "--json"
+          when '--json'
             @options[:json] = true
-          when "-h", "--help"
+          when '-h', '--help'
             @options[:help] = true
           when /^-/
             # Let subclass handle unknown options
@@ -80,7 +80,7 @@ module SlackCli
 
       # Override in subclass to handle command-specific options
       # Return true if option was handled, false to raise unknown option error
-      def handle_option(arg, args, remaining)
+      def handle_option(arg, _args, _remaining)
         # By default, unknown options are errors
         # Subclasses can override and return true to accept the option,
         # or call super to get this error behavior
@@ -94,13 +94,13 @@ module SlackCli
         return nil if @unknown_options.nil? || @unknown_options.empty?
 
         error("Unknown option: #{@unknown_options.first}")
-        error("Run with --help for available options.")
+        error('Run with --help for available options.')
         1
       end
 
       # Returns true if there are unknown options
       def has_unknown_options?
-        @unknown_options && @unknown_options.any?
+        @unknown_options&.any?
       end
 
       # Get workspaces to operate on based on options
@@ -134,7 +134,7 @@ module SlackCli
       end
 
       def help_text
-        "No help available for this command."
+        'No help available for this command.'
       end
 
       # Output helpers
@@ -159,7 +159,7 @@ module SlackCli
         output.debug(message) if @options[:verbose]
       end
 
-      def puts(message = "")
+      def puts(message = '')
         output.puts(message) unless @options[:quiet]
       end
 

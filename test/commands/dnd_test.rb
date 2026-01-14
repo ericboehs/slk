@@ -44,10 +44,10 @@ class DndCommandTest < Minitest::Test
 
   def test_get_status_shows_dnd_off
     @mock_client.stub('dnd.info', {
-      'ok' => true,
-      'snooze_enabled' => false,
-      'dnd_enabled' => false
-    })
+                        'ok' => true,
+                        'snooze_enabled' => false,
+                        'dnd_enabled' => false
+                      })
 
     runner = create_runner
     command = SlackCli::Commands::Dnd.new([], runner: runner)
@@ -60,11 +60,11 @@ class DndCommandTest < Minitest::Test
 
   def test_get_status_shows_snoozing
     @mock_client.stub('dnd.info', {
-      'ok' => true,
-      'snooze_enabled' => true,
-      'snooze_remaining' => 1800,
-      'dnd_enabled' => false
-    })
+                        'ok' => true,
+                        'snooze_enabled' => true,
+                        'snooze_remaining' => 1800,
+                        'dnd_enabled' => false
+                      })
 
     runner = create_runner
     command = SlackCli::Commands::Dnd.new(['status'], runner: runner)
@@ -106,7 +106,7 @@ class DndCommandTest < Minitest::Test
     @mock_client.stub('dnd.setSnooze', { 'ok' => true, 'snooze_enabled' => true })
 
     runner = create_runner
-    command = SlackCli::Commands::Dnd.new(['on', '30m'], runner: runner)
+    command = SlackCli::Commands::Dnd.new(%w[on 30m], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -146,7 +146,7 @@ class DndCommandTest < Minitest::Test
     @mock_client.stub('dnd.setSnooze', { 'ok' => true, 'snooze_enabled' => true })
 
     runner = create_runner
-    command = SlackCli::Commands::Dnd.new(['snooze', '2h'], runner: runner)
+    command = SlackCli::Commands::Dnd.new(%w[snooze 2h], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -167,7 +167,7 @@ class DndCommandTest < Minitest::Test
 
   def test_invalid_duration_returns_error
     runner = create_runner
-    command = SlackCli::Commands::Dnd.new(['on', 'badformat'], runner: runner)
+    command = SlackCli::Commands::Dnd.new(%w[on badformat], runner: runner)
     result = command.execute
 
     assert_equal 1, result
@@ -205,10 +205,10 @@ class DndCommandTest < Minitest::Test
 
   def test_info_alias_for_status
     @mock_client.stub('dnd.info', {
-      'ok' => true,
-      'snooze_enabled' => false,
-      'dnd_enabled' => false
-    })
+                        'ok' => true,
+                        'snooze_enabled' => false,
+                        'dnd_enabled' => false
+                      })
 
     runner = create_runner
     command = SlackCli::Commands::Dnd.new(['info'], runner: runner)

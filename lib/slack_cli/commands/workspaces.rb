@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../support/help_formatter"
+require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
@@ -10,15 +10,15 @@ module SlackCli
         return result if result
 
         case positional_args
-        in ["list"] | []
+        in ['list'] | []
           list_workspaces
-        in ["add"]
+        in ['add']
           add_workspace
-        in ["remove", name]
+        in ['remove', name]
           remove_workspace(name)
-        in ["primary"]
+        in ['primary']
           show_primary
-        in ["primary", name]
+        in ['primary', name]
           set_primary(name)
         else
           error("Unknown action: #{positional_args.first}")
@@ -29,19 +29,19 @@ module SlackCli
       protected
 
       def help_text
-        help = Support::HelpFormatter.new("slk workspaces <action> [name]")
-        help.description("Manage Slack workspaces.")
+        help = Support::HelpFormatter.new('slk workspaces <action> [name]')
+        help.description('Manage Slack workspaces.')
 
-        help.section("ACTIONS") do |s|
-          s.action("list", "List configured workspaces")
-          s.action("add", "Add a new workspace (interactive)")
-          s.action("remove <name>", "Remove a workspace")
-          s.action("primary", "Show primary workspace")
-          s.action("primary <name>", "Set primary workspace")
+        help.section('ACTIONS') do |s|
+          s.action('list', 'List configured workspaces')
+          s.action('add', 'Add a new workspace (interactive)')
+          s.action('remove <name>', 'Remove a workspace')
+          s.action('primary', 'Show primary workspace')
+          s.action('primary <name>', 'Set primary workspace')
         end
 
-        help.section("OPTIONS") do |s|
-          s.option("-q, --quiet", "Suppress output")
+        help.section('OPTIONS') do |s|
+          s.option('-q, --quiet', 'Suppress output')
         end
 
         help.render
@@ -54,14 +54,14 @@ module SlackCli
         primary = config.primary_workspace
 
         if names.empty?
-          puts "No workspaces configured."
+          puts 'No workspaces configured.'
           puts "Run 'slack workspaces add' to add one."
           return 0
         end
 
-        puts "Workspaces:"
+        puts 'Workspaces:'
         names.each do |name|
-          marker = name == primary ? output.green("*") : " "
+          marker = name == primary ? output.green('*') : ' '
           puts "  #{marker} #{name}"
         end
 
@@ -69,21 +69,19 @@ module SlackCli
       end
 
       def add_workspace
-        print "Workspace name: "
+        print 'Workspace name: '
         name = $stdin.gets&.chomp
-        return error("Name is required") if name.nil? || name.empty?
+        return error('Name is required') if name.nil? || name.empty?
 
-        if token_store.exists?(name)
-          return error("Workspace '#{name}' already exists")
-        end
+        return error("Workspace '#{name}' already exists") if token_store.exists?(name)
 
-        print "Token (xoxb-... or xoxc-...): "
+        print 'Token (xoxb-... or xoxc-...): '
         token = $stdin.gets&.chomp
-        return error("Token is required") if token.nil? || token.empty?
+        return error('Token is required') if token.nil? || token.empty?
 
         cookie = nil
-        if token.start_with?("xoxc-")
-          print "Cookie (d=...): "
+        if token.start_with?('xoxc-')
+          print 'Cookie (d=...): '
           cookie = $stdin.gets&.chomp
         end
 
@@ -101,9 +99,7 @@ module SlackCli
       end
 
       def remove_workspace(name)
-        unless token_store.exists?(name)
-          return error("Workspace '#{name}' not found")
-        end
+        return error("Workspace '#{name}' not found") unless token_store.exists?(name)
 
         token_store.remove(name)
 
@@ -130,16 +126,14 @@ module SlackCli
         if primary
           puts "Primary workspace: #{primary}"
         else
-          puts "No primary workspace set."
+          puts 'No primary workspace set.'
         end
 
         0
       end
 
       def set_primary(name)
-        unless token_store.exists?(name)
-          return error("Workspace '#{name}' not found")
-        end
+        return error("Workspace '#{name}' not found") unless token_store.exists?(name)
 
         config.primary_workspace = name
         success("Primary workspace set to '#{name}'")

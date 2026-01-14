@@ -138,10 +138,10 @@ module SlackCli
 
         puts "#{output.blue(timestamp)} #{output.bold(username)} reacted #{emoji} in #{channel}"
 
-        if @options[:show_messages]
-          message = fetch_message(workspace, channel_id, message_data['ts'])
-          display_message_preview(message, workspace)
-        end
+        return unless @options[:show_messages]
+
+        message = fetch_message(workspace, channel_id, message_data['ts'])
+        display_message_preview(message, workspace)
       end
 
       def display_mention_activity(item, workspace, timestamp)
@@ -158,10 +158,10 @@ module SlackCli
 
         puts "#{output.blue(timestamp)} #{output.bold(username)} mentioned you in #{channel}"
 
-        if @options[:show_messages]
-          message = fetch_message(workspace, channel_id, message_data['ts'])
-          display_message_preview(message, workspace)
-        end
+        return unless @options[:show_messages]
+
+        message = fetch_message(workspace, channel_id, message_data['ts'])
+        display_message_preview(message, workspace)
       end
 
       def display_thread_v2_activity(item, workspace, timestamp)
@@ -176,11 +176,11 @@ module SlackCli
 
         puts "#{output.blue(timestamp)} Thread activity in #{channel}"
 
-        if @options[:show_messages] && thread_entry['thread_ts']
-          # Fetch the thread parent message
-          message = fetch_message(workspace, channel_id, thread_entry['thread_ts'])
-          display_message_preview(message, workspace)
-        end
+        return unless @options[:show_messages] && thread_entry['thread_ts']
+
+        # Fetch the thread parent message
+        message = fetch_message(workspace, channel_id, thread_entry['thread_ts'])
+        display_message_preview(message, workspace)
       end
 
       def display_bot_dm_activity(item, workspace, timestamp)
@@ -197,10 +197,10 @@ module SlackCli
         puts "#{output.blue(timestamp)} Bot message in #{channel}"
 
         # Always try to fetch and show the message content (or when --show-messages is enabled)
-        if @options[:show_messages]
-          message = fetch_message(workspace, channel_id, message_ts)
-          display_message_preview(message, workspace) if message
-        end
+        return unless @options[:show_messages]
+
+        message = fetch_message(workspace, channel_id, message_ts)
+        display_message_preview(message, workspace) if message
       end
 
       def resolve_user(workspace, user_id)
@@ -286,19 +286,19 @@ module SlackCli
         puts "  └─ #{username}: #{first_line}"
 
         # Show additional lines if any
-        if lines.length > 1
-          remaining = lines[1..2].map(&:strip).reject(&:empty?)
-          remaining.each do |line|
-            line = "#{line[0..100]}..." if line.length > 100
-            puts "     #{line}"
-          end
-          puts "     [#{lines.length - 3} more lines...]" if lines.length > 3
+        return unless lines.length > 1
+
+        remaining = lines[1..2].map(&:strip).reject(&:empty?)
+        remaining.each do |line|
+          line = "#{line[0..100]}..." if line.length > 100
+          puts "     #{line}"
         end
+        puts "     [#{lines.length - 3} more lines...]" if lines.length > 3
       end
 
       def format_activity_time(slack_timestamp)
         time = Time.at(slack_timestamp.to_f)
-        time.strftime('%b %d %-I:%M %p')  # e.g., "Jan 13 2:45 PM"
+        time.strftime('%b %d %-I:%M %p') # e.g., "Jan 13 2:45 PM"
       end
 
       # Enrich activity items with resolved user/channel names for JSON output
@@ -329,7 +329,7 @@ module SlackCli
         reaction_data = item.dig('item', 'reaction')
         message_data = item.dig('item', 'message')
         unless reaction_data && message_data
-          debug("Could not enrich reaction item - missing reaction or message data")
+          debug('Could not enrich reaction item - missing reaction or message data')
           return
         end
 
@@ -343,7 +343,7 @@ module SlackCli
       def enrich_mention_item(item, workspace)
         message_data = item.dig('item', 'message')
         unless message_data
-          debug("Could not enrich mention item - missing message data")
+          debug('Could not enrich mention item - missing message data')
           return
         end
 
@@ -357,29 +357,29 @@ module SlackCli
       def enrich_thread_item(item, workspace)
         thread_entry = item.dig('item', 'bundle_info', 'payload', 'thread_entry')
         unless thread_entry
-          debug("Could not enrich thread item - missing thread_entry data")
+          debug('Could not enrich thread item - missing thread_entry data')
           return
         end
 
         channel_id = thread_entry['channel_id']
-        if channel_id
-          item['item']['bundle_info']['payload']['thread_entry']['channel_name'] =
-            resolve_channel_name_only(workspace, channel_id)
-        end
+        return unless channel_id
+
+        item['item']['bundle_info']['payload']['thread_entry']['channel_name'] =
+          resolve_channel_name_only(workspace, channel_id)
       end
 
       def enrich_bot_dm_item(item, workspace)
         message_data = item.dig('item', 'bundle_info', 'payload', 'message')
         unless message_data
-          debug("Could not enrich bot DM item - missing message data")
+          debug('Could not enrich bot DM item - missing message data')
           return
         end
 
         channel_id = message_data['channel']
-        if channel_id
-          item['item']['bundle_info']['payload']['message']['channel_name'] =
-            resolve_channel_name_only(workspace, channel_id)
-        end
+        return unless channel_id
+
+        item['item']['bundle_info']['payload']['message']['channel_name'] =
+          resolve_channel_name_only(workspace, channel_id)
       end
 
       # Resolve channel to just the name (without # prefix) for JSON output

@@ -1,24 +1,25 @@
 # frozen_string_literal: true
 
-require_relative "../support/inline_images"
-require_relative "../support/help_formatter"
+require_relative '../support/inline_images'
+require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
     class Preset < Base
       include Support::InlineImages
+
       def execute
         result = validate_options
         return result if result
 
         case positional_args
-        in ["list" | "ls"] | []
+        in ['list' | 'ls'] | []
           list_presets
-        in ["add"]
+        in ['add']
           add_preset
-        in ["edit", name]
+        in ['edit', name]
           edit_preset(name)
-        in ["delete" | "rm", name]
+        in ['delete' | 'rm', name]
           delete_preset(name)
         in [name, *]
           apply_preset(name)
@@ -28,27 +29,27 @@ module SlackCli
       protected
 
       def help_text
-        help = Support::HelpFormatter.new("slk preset <action|name> [options]")
-        help.description("Manage and apply status presets.")
+        help = Support::HelpFormatter.new('slk preset <action|name> [options]')
+        help.description('Manage and apply status presets.')
 
-        help.section("ACTIONS") do |s|
-          s.action("list", "List all presets")
-          s.action("add", "Add a new preset (interactive)")
-          s.action("edit <name>", "Edit an existing preset")
-          s.action("delete <name>", "Delete a preset")
-          s.action("<name>", "Apply a preset")
+        help.section('ACTIONS') do |s|
+          s.action('list', 'List all presets')
+          s.action('add', 'Add a new preset (interactive)')
+          s.action('edit <name>', 'Edit an existing preset')
+          s.action('delete <name>', 'Delete a preset')
+          s.action('<name>', 'Apply a preset')
         end
 
-        help.section("EXAMPLES") do |s|
-          s.example("slk preset list")
-          s.example("slk preset meeting")
-          s.example("slk preset add")
+        help.section('EXAMPLES') do |s|
+          s.example('slk preset list')
+          s.example('slk preset meeting')
+          s.example('slk preset add')
         end
 
-        help.section("OPTIONS") do |s|
-          s.option("-w, --workspace", "Specify workspace")
-          s.option("--all", "Apply to all workspaces")
-          s.option("-q, --quiet", "Suppress output")
+        help.section('OPTIONS') do |s|
+          s.option('-w, --workspace', 'Specify workspace')
+          s.option('--all', 'Apply to all workspaces')
+          s.option('-q, --quiet', 'Suppress output')
         end
 
         help.render
@@ -60,15 +61,15 @@ module SlackCli
         presets = preset_store.all
 
         if presets.empty?
-          puts "No presets configured."
+          puts 'No presets configured.'
           return 0
         end
 
-        puts "Presets:"
+        puts 'Presets:'
         presets.each do |preset|
           puts "  #{output.bold(preset.name)}"
           display_preset_status(preset) unless preset.text.empty? && preset.emoji.empty?
-          puts "    Duration: #{preset.duration}" unless preset.duration == "0"
+          puts "    Duration: #{preset.duration}" unless preset.duration == '0'
           puts "    Presence: #{preset.presence}" if preset.sets_presence?
           puts "    DND: #{preset.dnd}" if preset.sets_dnd?
         end
@@ -77,7 +78,7 @@ module SlackCli
       end
 
       def display_preset_status(preset)
-        emoji_name = preset.emoji.delete_prefix(":").delete_suffix(":")
+        emoji_name = preset.emoji.delete_prefix(':').delete_suffix(':')
         emoji_path = find_workspace_emoji_any(emoji_name)
 
         if emoji_path && inline_images_supported?
@@ -107,24 +108,24 @@ module SlackCli
       end
 
       def add_preset
-        print "Preset name: "
+        print 'Preset name: '
         name = $stdin.gets&.chomp
-        return error("Name is required") if name.nil? || name.empty?
+        return error('Name is required') if name.nil? || name.empty?
 
-        print "Status text: "
-        text = $stdin.gets&.chomp || ""
+        print 'Status text: '
+        text = $stdin.gets&.chomp || ''
 
-        print "Emoji (e.g., :calendar:): "
-        emoji = $stdin.gets&.chomp || ""
+        print 'Emoji (e.g., :calendar:): '
+        emoji = $stdin.gets&.chomp || ''
 
-        print "Duration (e.g., 1h, 30m, or 0 for none): "
-        duration = $stdin.gets&.chomp || "0"
+        print 'Duration (e.g., 1h, 30m, or 0 for none): '
+        duration = $stdin.gets&.chomp || '0'
 
-        print "Presence (away/auto or blank): "
-        presence = $stdin.gets&.chomp || ""
+        print 'Presence (away/auto or blank): '
+        presence = $stdin.gets&.chomp || ''
 
-        print "DND (e.g., 1h, off, or blank): "
-        dnd = $stdin.gets&.chomp || ""
+        print 'DND (e.g., 1h, off, or blank): '
+        dnd = $stdin.gets&.chomp || ''
 
         preset = Models::Preset.new(
           name: name,
@@ -183,9 +184,7 @@ module SlackCli
       end
 
       def delete_preset(name)
-        unless preset_store.exists?(name)
-          return error("Preset '#{name}' not found")
-        end
+        return error("Preset '#{name}' not found") unless preset_store.exists?(name)
 
         preset_store.remove(name)
         success("Preset '#{name}' deleted")
@@ -199,26 +198,24 @@ module SlackCli
 
         target_workspaces.each do |workspace|
           # Set status
-          unless preset.clears_status?
+          if preset.clears_status?
+            runner.users_api(workspace.name).clear_status
+          else
             duration = preset.duration_value
             runner.users_api(workspace.name).set_status(
               text: preset.text,
               emoji: preset.emoji,
               duration: duration
             )
-          else
-            runner.users_api(workspace.name).clear_status
           end
 
           # Set presence
-          if preset.sets_presence?
-            runner.users_api(workspace.name).set_presence(preset.presence)
-          end
+          runner.users_api(workspace.name).set_presence(preset.presence) if preset.sets_presence?
 
           # Set DND
           if preset.sets_dnd?
             dnd_api = runner.dnd_api(workspace.name)
-            if preset.dnd == "off"
+            if preset.dnd == 'off'
               dnd_api.end_snooze
             else
               duration = Models::Duration.parse(preset.dnd)

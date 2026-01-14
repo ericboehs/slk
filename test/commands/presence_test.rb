@@ -44,10 +44,10 @@ class PresenceCommandTest < Minitest::Test
 
   def test_get_presence_shows_status
     @mock_client.stub('users.getPresence', {
-      'ok' => true,
-      'presence' => 'active',
-      'manual_away' => false
-    })
+                        'ok' => true,
+                        'presence' => 'active',
+                        'manual_away' => false
+                      })
 
     runner = create_runner
     command = SlackCli::Commands::Presence.new([], runner: runner)
@@ -60,10 +60,10 @@ class PresenceCommandTest < Minitest::Test
 
   def test_get_presence_shows_away
     @mock_client.stub('users.getPresence', {
-      'ok' => true,
-      'presence' => 'away',
-      'manual_away' => true
-    })
+                        'ok' => true,
+                        'presence' => 'away',
+                        'manual_away' => true
+                      })
 
     runner = create_runner
     command = SlackCli::Commands::Presence.new([], runner: runner)
@@ -161,10 +161,10 @@ class PresenceCommandTest < Minitest::Test
     ]
 
     @mock_client.stub('users.getPresence', {
-      'ok' => true,
-      'presence' => 'active',
-      'manual_away' => false
-    })
+                        'ok' => true,
+                        'presence' => 'active',
+                        'manual_away' => false
+                      })
 
     runner = create_runner(workspaces: workspaces)
     command = SlackCli::Commands::Presence.new([], runner: runner)

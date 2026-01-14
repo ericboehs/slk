@@ -24,7 +24,7 @@ module SlackCli
 
       private
 
-      def fetch_reaction_activity(channel_id, message_timestamps)
+      def fetch_reaction_activity(_channel_id, message_timestamps)
         # Fetch first page of recent reactions (max 50 per API limit)
         # Note: This may not cover all historical reactions, but that's acceptable
         # for performance reasons. Older reactions simply won't have timestamps.

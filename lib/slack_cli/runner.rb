@@ -26,7 +26,7 @@ module SlackCli
     # Workspace helpers
     def workspace(name = nil)
       name ||= @config.primary_workspace
-      raise ConfigError, "No workspace specified and no primary workspace configured" unless name
+      raise ConfigError, 'No workspace specified and no primary workspace configured' unless name
 
       @token_store.workspace(name)
     end

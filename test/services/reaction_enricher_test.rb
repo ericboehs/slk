@@ -12,8 +12,8 @@ class ReactionEnricherTest < Minitest::Test
       @responses = []
     end
 
-    def feed(params)
-      @responses.shift || {'ok' => false}
+    def feed(_params)
+      @responses.shift || { 'ok' => false }
     end
 
     def expect_feed(response)
@@ -21,7 +21,7 @@ class ReactionEnricherTest < Minitest::Test
     end
 
     def verify
-      test_context.assert_equal 0, @responses.length, "Expected all mocked responses to be consumed"
+      test_context.assert_equal 0, @responses.length, 'Expected all mocked responses to be consumed'
     end
   end
 
@@ -45,7 +45,7 @@ class ReactionEnricherTest < Minitest::Test
     )
 
     # Activity API should be called
-    @activity_api.expect_feed({'ok' => true, 'items' => []})
+    @activity_api.expect_feed({ 'ok' => true, 'items' => [] })
 
     result = @enricher.enrich_messages([message], 'C123')
 
@@ -316,7 +316,7 @@ class ReactionEnricherTest < Minitest::Test
     )
 
     # API returns error
-    @activity_api.expect_feed({'ok' => false, 'error' => 'some_error'})
+    @activity_api.expect_feed({ 'ok' => false, 'error' => 'some_error' })
 
     result = @enricher.enrich_messages([message], 'C123')
 
@@ -344,7 +344,7 @@ class ReactionEnricherTest < Minitest::Test
     )
 
     # Activity has no matching reactions
-    @activity_api.expect_feed({'ok' => true, 'items' => []})
+    @activity_api.expect_feed({ 'ok' => true, 'items' => [] })
 
     result = @enricher.enrich_messages([message], 'C123')
 

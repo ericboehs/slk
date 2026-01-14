@@ -3,20 +3,20 @@
 module SlackCli
   class CLI
     COMMANDS = {
-      "status" => Commands::Status,
-      "presence" => Commands::Presence,
-      "dnd" => Commands::Dnd,
-      "messages" => Commands::Messages,
-      "thread" => Commands::Thread,
-      "unread" => Commands::Unread,
-      "catchup" => Commands::Catchup,
-      "activity" => Commands::Activity,
-      "preset" => Commands::Preset,
-      "workspaces" => Commands::Workspaces,
-      "cache" => Commands::Cache,
-      "emoji" => Commands::Emoji,
-      "config" => Commands::Config,
-      "help" => Commands::Help
+      'status' => Commands::Status,
+      'presence' => Commands::Presence,
+      'dnd' => Commands::Dnd,
+      'messages' => Commands::Messages,
+      'thread' => Commands::Thread,
+      'unread' => Commands::Unread,
+      'catchup' => Commands::Catchup,
+      'activity' => Commands::Activity,
+      'preset' => Commands::Preset,
+      'workspaces' => Commands::Workspaces,
+      'cache' => Commands::Cache,
+      'emoji' => Commands::Emoji,
+      'config' => Commands::Config,
+      'help' => Commands::Help
     }.freeze
 
     def initialize(argv, output: nil)
@@ -28,21 +28,19 @@ module SlackCli
       command_name, *args = @argv
 
       # Handle version flags
-      if command_name.nil? || command_name == "--help" || command_name == "-h"
-        return run_command("help", [])
-      end
+      return run_command('help', []) if command_name.nil? || command_name == '--help' || command_name == '-h'
 
-      if command_name == "--version" || command_name == "-V" || command_name == "version"
+      if ['--version', '-V', 'version'].include?(command_name)
         @output.puts "slk v#{VERSION}"
         return 0
       end
 
       # Look up command
-      if (command_class = COMMANDS[command_name])
+      if COMMANDS[command_name]
         run_command(command_name, args)
       elsif preset_exists?(command_name)
         # Treat as preset shortcut
-        run_command("preset", [command_name] + args)
+        run_command('preset', [command_name] + args)
       else
         @output.error("Unknown command: #{command_name}")
         @output.puts
@@ -63,7 +61,7 @@ module SlackCli
       1
     rescue Interrupt
       @output.puts
-      @output.puts "Interrupted."
+      @output.puts 'Interrupted.'
       130
     rescue StandardError => e
       @output.error("Unexpected error: #{e.message}")
@@ -78,7 +76,7 @@ module SlackCli
       command_class = COMMANDS[name]
       return 1 unless command_class
 
-      verbose = args.include?("-v") || args.include?("--verbose")
+      verbose = args.include?('-v') || args.include?('--verbose')
 
       # Create output with verbose flag
       output = Formatters::Output.new(verbose: verbose)
@@ -86,7 +84,7 @@ module SlackCli
 
       # Set up API call logging if verbose
       if verbose
-        runner.api_client.on_request = ->(method, count) {
+        runner.api_client.on_request = lambda { |method, count|
           output.debug("[API ##{count}] #{method}")
         }
       end
@@ -95,7 +93,7 @@ module SlackCli
       result = command.execute
 
       # Show API call count if verbose
-      if verbose && runner.api_client.call_count > 0
+      if verbose && runner.api_client.call_count.positive?
         output.debug("Total API calls: #{runner.api_client.call_count}")
       end
 

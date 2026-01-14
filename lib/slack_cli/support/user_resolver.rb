@@ -18,9 +18,9 @@ module SlackCli
       # @return [String] User name or channel ID if not found
       def resolve_dm_user_name(workspace, channel_id, conversations)
         info = conversations.info(channel: channel_id)
-        return channel_id unless info["ok"] && info["channel"]
+        return channel_id unless info['ok'] && info['channel']
 
-        user_id = info["channel"]["user"]
+        user_id = info['channel']['user']
         return channel_id unless user_id
 
         # Try cache first
@@ -31,11 +31,11 @@ module SlackCli
         begin
           users_api = runner.users_api(workspace.name)
           user_info = users_api.info(user_id)
-          if user_info["ok"] && user_info["user"]
-            profile = user_info["user"]["profile"] || {}
-            name = profile["display_name"]
-            name = profile["real_name"] if name.to_s.empty?
-            name = user_info["user"]["name"] if name.to_s.empty?
+          if user_info['ok'] && user_info['user']
+            profile = user_info['user']['profile'] || {}
+            name = profile['display_name']
+            name = profile['real_name'] if name.to_s.empty?
+            name = user_info['user']['name'] if name.to_s.empty?
             if name && !name.empty?
               cache_store.set_user(workspace.name, user_id, name, persist: true)
               return name
@@ -57,7 +57,7 @@ module SlackCli
       # @return [String] Formatted label like "@username" or "#channel"
       def resolve_conversation_label(workspace, channel_id)
         # DM channels start with D
-        if channel_id.start_with?("D")
+        if channel_id.start_with?('D')
           conversations = runner.conversations_api(workspace.name)
           user_name = resolve_dm_user_name(workspace, channel_id, conversations)
           return "@#{user_name}"
@@ -71,8 +71,8 @@ module SlackCli
         begin
           conversations = runner.conversations_api(workspace.name)
           response = conversations.info(channel: channel_id)
-          if response["ok"] && response["channel"]
-            name = response["channel"]["name"]
+          if response['ok'] && response['channel']
+            name = response['channel']['name']
             if name
               cache_store.set_channel(workspace.name, name, channel_id)
               return "##{name}"
@@ -91,23 +91,23 @@ module SlackCli
       # @return [String] User name, user_id as fallback, or "unknown" if neither found
       def extract_user_from_message(msg, workspace)
         # Try user_profile embedded in message
-        if msg["user_profile"]
-          name = msg["user_profile"]["display_name"]
-          name = msg["user_profile"]["real_name"] if name.to_s.empty?
+        if msg['user_profile']
+          name = msg['user_profile']['display_name']
+          name = msg['user_profile']['real_name'] if name.to_s.empty?
           return name unless name.to_s.empty?
         end
 
         # Try username field
-        return msg["username"] unless msg["username"].to_s.empty?
+        return msg['username'] unless msg['username'].to_s.empty?
 
         # Try cache
-        user_id = msg["user"] || msg["bot_id"]
+        user_id = msg['user'] || msg['bot_id']
         if user_id
           cached = cache_store.get_user(workspace.name, user_id)
           return cached if cached
         end
 
-        user_id || "unknown"
+        user_id || 'unknown'
       end
     end
   end

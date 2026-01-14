@@ -80,7 +80,7 @@ class CacheCommandTest < Minitest::Test
 
   def test_clear_specific_workspace
     runner = create_runner
-    command = SlackCli::Commands::Cache.new(['clear', 'myworkspace'], runner: runner)
+    command = SlackCli::Commands::Cache.new(%w[clear myworkspace], runner: runner)
     result = command.execute
 
     assert_equal 0, result

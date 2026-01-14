@@ -9,12 +9,12 @@ module SlackCli
       end
 
       def list
-        @api.post(@workspace, "emoji.list")
+        @api.post(@workspace, 'emoji.list')
       end
 
       def custom_emoji
         response = list
-        response["emoji"] || {}
+        response['emoji'] || {}
       end
     end
   end

@@ -5,12 +5,12 @@ module SlackCli
     Channel = Data.define(:id, :name, :is_private, :is_im, :is_mpim, :is_archived) do
       def self.from_api(data)
         new(
-          id: data["id"],
-          name: data["name"] || data["name_normalized"],
-          is_private: data["is_private"] || false,
-          is_im: data["is_im"] || false,
-          is_mpim: data["is_mpim"] || false,
-          is_archived: data["is_archived"] || false
+          id: data['id'],
+          name: data['name'] || data['name_normalized'],
+          is_private: data['is_private'] || false,
+          is_im: data['is_im'] || false,
+          is_mpim: data['is_mpim'] || false,
+          is_archived: data['is_archived'] || false
         )
       end
 
@@ -37,9 +37,9 @@ module SlackCli
         return name if name
 
         case id[0]
-        when "C" then "#channel"
-        when "G" then "#private"
-        when "D" then "DM"
+        when 'C' then '#channel'
+        when 'G' then '#private'
+        when 'D' then 'DM'
         else id
         end
       end

@@ -10,13 +10,13 @@ class BotsApiTest < Minitest::Test
 
   def test_info_calls_api
     @mock_client.stub('bots.info', {
-      'ok' => true,
-      'bot' => {
-        'id' => 'B123',
-        'name' => 'TestBot',
-        'deleted' => false
-      }
-    })
+                        'ok' => true,
+                        'bot' => {
+                          'id' => 'B123',
+                          'name' => 'TestBot',
+                          'deleted' => false
+                        }
+                      })
 
     api = SlackCli::Api::Bots.new(@mock_client, @workspace)
     result = api.info('B123')
@@ -30,9 +30,9 @@ class BotsApiTest < Minitest::Test
 
   def test_info_returns_nil_when_not_ok
     @mock_client.stub('bots.info', {
-      'ok' => false,
-      'error' => 'bot_not_found'
-    })
+                        'ok' => false,
+                        'error' => 'bot_not_found'
+                      })
 
     api = SlackCli::Api::Bots.new(@mock_client, @workspace)
     result = api.info('B999')
@@ -42,12 +42,12 @@ class BotsApiTest < Minitest::Test
 
   def test_get_name_returns_bot_name
     @mock_client.stub('bots.info', {
-      'ok' => true,
-      'bot' => {
-        'id' => 'B123',
-        'name' => 'TestBot'
-      }
-    })
+                        'ok' => true,
+                        'bot' => {
+                          'id' => 'B123',
+                          'name' => 'TestBot'
+                        }
+                      })
 
     api = SlackCli::Api::Bots.new(@mock_client, @workspace)
     name = api.get_name('B123')
@@ -57,9 +57,9 @@ class BotsApiTest < Minitest::Test
 
   def test_get_name_returns_nil_when_bot_not_found
     @mock_client.stub('bots.info', {
-      'ok' => false,
-      'error' => 'bot_not_found'
-    })
+                        'ok' => false,
+                        'error' => 'bot_not_found'
+                      })
 
     api = SlackCli::Api::Bots.new(@mock_client, @workspace)
     name = api.get_name('B999')

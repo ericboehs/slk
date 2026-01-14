@@ -9,17 +9,16 @@ module SlackCli
       def inline_images_supported?
         # iTerm2, WezTerm, Mintty support inline images
         # LC_TERMINAL persists through tmux/ssh
-        ENV["TERM_PROGRAM"] == "iTerm.app" ||
-          ENV["TERM_PROGRAM"] == "WezTerm" ||
-          ENV["LC_TERMINAL"] == "iTerm2" ||
-          ENV["LC_TERMINAL"] == "WezTerm" ||
-          ENV["TERM"] == "mintty"
+        ['iTerm.app', 'WezTerm'].include?(ENV.fetch('TERM_PROGRAM', nil)) ||
+          ENV['LC_TERMINAL'] == 'iTerm2' ||
+          ENV['LC_TERMINAL'] == 'WezTerm' ||
+          ENV['TERM'] == 'mintty'
       end
 
       # Check if running inside tmux
       def in_tmux?
         # tmux sets TERM to screen-* or tmux-*
-        ENV["TERM"]&.include?("screen") || ENV["TERM"]&.start_with?("tmux")
+        ENV['TERM']&.include?('screen') || ENV['TERM']&.start_with?('tmux')
       end
 
       # Print an inline image using iTerm2 protocol
@@ -33,7 +32,7 @@ module SlackCli
           # File exists but can't be read - skip silently
           return
         end
-        encoded = [data].pack("m0") # Base64 encode
+        encoded = [data].pack('m0') # Base64 encode
 
         if in_tmux?
           # tmux passthrough: \n + space required for image to render

@@ -5,15 +5,15 @@ module SlackCli
     class XdgPaths
       def config_dir
         @config_dir ||= File.join(
-          ENV.fetch("XDG_CONFIG_HOME", File.join(Dir.home, ".config")),
-          "slk"
+          ENV.fetch('XDG_CONFIG_HOME', File.join(Dir.home, '.config')),
+          'slk'
         )
       end
 
       def cache_dir
         @cache_dir ||= File.join(
-          ENV.fetch("XDG_CACHE_HOME", File.join(Dir.home, ".cache")),
-          "slk"
+          ENV.fetch('XDG_CACHE_HOME', File.join(Dir.home, '.cache')),
+          'slk'
         )
       end
 

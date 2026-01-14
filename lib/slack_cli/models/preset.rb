@@ -6,21 +6,21 @@ module SlackCli
       def self.from_hash(name, data)
         new(
           name: name,
-          text: data["text"] || "",
-          emoji: data["emoji"] || "",
-          duration: data["duration"] || "0",
-          presence: data["presence"] || "",
-          dnd: data["dnd"] || ""
+          text: data['text'] || '',
+          emoji: data['emoji'] || '',
+          duration: data['duration'] || '0',
+          presence: data['presence'] || '',
+          dnd: data['dnd'] || ''
         )
       end
 
-      def initialize(name:, text: "", emoji: "", duration: "0", presence: "", dnd: "")
+      def initialize(name:, text: '', emoji: '', duration: '0', presence: '', dnd: '')
         name_str = name.to_s.strip
-        raise ArgumentError, "preset name cannot be empty" if name_str.empty?
+        raise ArgumentError, 'preset name cannot be empty' if name_str.empty?
 
         duration_str = duration.to_s
         # Validate duration at construction time (will raise ArgumentError if invalid)
-        Duration.parse(duration_str) unless duration_str.empty? || duration_str == "0"
+        Duration.parse(duration_str) unless duration_str.empty? || duration_str == '0'
 
         super(
           name: name_str.freeze,
@@ -34,11 +34,11 @@ module SlackCli
 
       def to_h
         {
-          "text" => text,
-          "emoji" => emoji,
-          "duration" => duration,
-          "presence" => presence,
-          "dnd" => dnd
+          'text' => text,
+          'emoji' => emoji,
+          'duration' => duration,
+          'presence' => presence,
+          'dnd' => dnd
         }
       end
 
@@ -62,11 +62,11 @@ module SlackCli
         parts = []
         parts << emoji unless emoji.empty?
         parts << "\"#{text}\"" unless text.empty?
-        parts << "(#{duration})" unless duration == "0" || duration.empty?
+        parts << "(#{duration})" unless duration == '0' || duration.empty?
         parts << "[#{presence}]" if sets_presence?
         parts << "{dnd: #{dnd}}" if sets_dnd?
 
-        "#{name}: #{parts.join(" ")}"
+        "#{name}: #{parts.join(' ')}"
       end
     end
   end

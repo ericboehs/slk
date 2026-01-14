@@ -57,7 +57,7 @@ module SlackCli
         timestamp = format_timestamp(message.timestamp)
         text = process_text(message.text, workspace, options)
 
-        reaction_text = ""
+        reaction_text = ''
         unless options[:no_reactions] || message.reactions.empty?
           reaction_text = format_reaction_inline(message, options)
         end
@@ -70,7 +70,7 @@ module SlackCli
           emoji = options[:no_emoji] ? r.emoji_code : (@emoji.lookup_emoji(r.name) || r.emoji_code)
           "#{r.count} #{emoji}"
         end
-        " [#{parts.join(", ")}]"
+        " [#{parts.join(', ')}]"
       end
 
       def format_json(message, workspace: nil, options: {})
@@ -152,7 +152,7 @@ module SlackCli
         return cached if cached
 
         # For bot IDs (start with B), try bots.info API
-        if message.user_id.start_with?("B") && @api_client
+        if message.user_id.start_with?('B') && @api_client
           bot_name = lookup_bot_name(workspace, message.user_id)
           return bot_name if bot_name
         end
@@ -172,7 +172,7 @@ module SlackCli
       end
 
       def format_timestamp(time)
-        time.strftime("%Y-%m-%d %H:%M")
+        time.strftime('%Y-%m-%d %H:%M')
       end
 
       def process_text(text, workspace, options)
@@ -185,9 +185,7 @@ module SlackCli
         result = @mentions.replace(result, workspace)
 
         # Replace emoji (unless disabled)
-        unless options[:no_emoji]
-          result = @emoji.replace(result, workspace)
-        end
+        result = @emoji.replace(result, workspace) unless options[:no_emoji]
 
         result
       end
@@ -256,15 +254,13 @@ module SlackCli
         parts << @output.blue("[#{timestamp}]")
         parts << @output.bold(username)
 
-        if message.is_reply? && !options[:in_thread]
-          parts << @output.cyan("(reply)")
-        end
+        parts << @output.cyan('(reply)') if message.is_reply? && !options[:in_thread]
 
-        parts.join(" ")
+        parts.join(' ')
       end
 
       def indent(text, spaces: 4)
-        prefix = " " * spaces
+        prefix = ' ' * spaces
         text.lines.map { |line| "#{prefix}#{line.chomp}" }.join("\n")
       end
 
@@ -294,9 +290,7 @@ module SlackCli
 
             # Wrap attachment text if width is specified (account for "> " prefix)
             width = options[:width]
-            if width && width > 2
-              processed_text = wrap_text(processed_text, width - 2, width - 2)
-            end
+            processed_text = wrap_text(processed_text, width - 2, width - 2) if width && width > 2
 
             # Prefix each line with > to show it's quoted/attachment content
             processed_text.each_line do |line|
@@ -305,11 +299,11 @@ module SlackCli
           end
 
           # Show image info if present
-          if image_url
-            # Extract filename from URL or use title
-            filename = title || extract_filename_from_url(image_url)
-            lines << "> [Image: #{filename}]"
-          end
+          next unless image_url
+
+          # Extract filename from URL or use title
+          filename = title || extract_filename_from_url(image_url)
+          lines << "> [Image: #{filename}]"
         end
       end
 
@@ -337,9 +331,7 @@ module SlackCli
 
           # Wrap if width specified (account for "> " prefix)
           width = options[:width]
-          if width && width > 2
-            processed = wrap_text(processed, width - 2, width - 2)
-          end
+          processed = wrap_text(processed, width - 2, width - 2) if width && width > 2
 
           # Prefix each line with >
           processed.each_line do |line|
@@ -390,7 +382,7 @@ module SlackCli
           reaction_text = message.reactions.map do |r|
             emoji = options[:no_emoji] ? r.emoji_code : (@emoji.lookup_emoji(r.name) || r.emoji_code)
             "#{r.count} #{emoji}"
-          end.join("  ")
+          end.join('  ')
 
           lines << @output.yellow("[#{reaction_text}]")
         end
@@ -434,7 +426,7 @@ module SlackCli
 
       def format_reaction_time(slack_timestamp)
         time = Time.at(slack_timestamp.to_f)
-        time.strftime("%-I:%M %p")  # e.g., "2:45 PM"
+        time.strftime('%-I:%M %p') # e.g., "2:45 PM"
       end
 
       def format_thread_indicator(message, lines, options)
@@ -442,7 +434,7 @@ module SlackCli
         return if options[:in_thread]
         return if options[:no_threads]
 
-        reply_text = message.reply_count == 1 ? "1 reply" : "#{message.reply_count} replies"
+        reply_text = message.reply_count == 1 ? '1 reply' : "#{message.reply_count} replies"
         lines << @output.cyan("[#{reply_text}]")
       end
     end

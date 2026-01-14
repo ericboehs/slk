@@ -82,7 +82,7 @@ class WorkspacesCommandTest < Minitest::Test
     @token_store.workspaces = { 'newprimary' => mock_workspace('newprimary') }
 
     runner = create_runner
-    command = SlackCli::Commands::Workspaces.new(['primary', 'newprimary'], runner: runner)
+    command = SlackCli::Commands::Workspaces.new(%w[primary newprimary], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -92,8 +92,8 @@ class WorkspacesCommandTest < Minitest::Test
 
   def test_set_primary_not_found
     runner = create_runner
-    command = SlackCli::Commands::Workspaces.new(['primary', 'nonexistent'], runner: runner)
-    result = command.execute
+    command = SlackCli::Commands::Workspaces.new(%w[primary nonexistent], runner: runner)
+    command.execute
 
     assert_includes @err.string, 'not found'
   end
@@ -102,7 +102,7 @@ class WorkspacesCommandTest < Minitest::Test
     @token_store.workspaces = { 'toremove' => mock_workspace('toremove') }
 
     runner = create_runner
-    command = SlackCli::Commands::Workspaces.new(['remove', 'toremove'], runner: runner)
+    command = SlackCli::Commands::Workspaces.new(%w[remove toremove], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -112,8 +112,8 @@ class WorkspacesCommandTest < Minitest::Test
 
   def test_remove_workspace_not_found
     runner = create_runner
-    command = SlackCli::Commands::Workspaces.new(['remove', 'nonexistent'], runner: runner)
-    result = command.execute
+    command = SlackCli::Commands::Workspaces.new(%w[remove nonexistent], runner: runner)
+    command.execute
 
     assert_includes @err.string, 'not found'
   end

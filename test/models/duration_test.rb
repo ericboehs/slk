@@ -1,30 +1,30 @@
 # frozen_string_literal: true
 
-require "test_helper"
+require 'test_helper'
 
 class DurationTest < Minitest::Test
   def test_parse_hours
-    duration = SlackCli::Models::Duration.parse("2h")
+    duration = SlackCli::Models::Duration.parse('2h')
     assert_equal 7200, duration.seconds
   end
 
   def test_parse_minutes
-    duration = SlackCli::Models::Duration.parse("30m")
+    duration = SlackCli::Models::Duration.parse('30m')
     assert_equal 1800, duration.seconds
   end
 
   def test_parse_seconds
-    duration = SlackCli::Models::Duration.parse("45s")
+    duration = SlackCli::Models::Duration.parse('45s')
     assert_equal 45, duration.seconds
   end
 
   def test_parse_combined
-    duration = SlackCli::Models::Duration.parse("1h30m")
+    duration = SlackCli::Models::Duration.parse('1h30m')
     assert_equal 5400, duration.seconds
   end
 
   def test_parse_raw_seconds
-    duration = SlackCli::Models::Duration.parse("3600")
+    duration = SlackCli::Models::Duration.parse('3600')
     assert_equal 3600, duration.seconds
   end
 
@@ -34,7 +34,7 @@ class DurationTest < Minitest::Test
   end
 
   def test_parse_empty
-    duration = SlackCli::Models::Duration.parse("")
+    duration = SlackCli::Models::Duration.parse('')
     assert_equal 0, duration.seconds
   end
 
@@ -45,27 +45,27 @@ class DurationTest < Minitest::Test
   end
 
   def test_to_minutes
-    duration = SlackCli::Models::Duration.parse("90s")
+    duration = SlackCli::Models::Duration.parse('90s')
     assert_equal 2, duration.to_minutes
   end
 
   def test_to_s_hours
     duration = SlackCli::Models::Duration.new(seconds: 7200)
-    assert_equal "2h", duration.to_s
+    assert_equal '2h', duration.to_s
   end
 
   def test_to_s_combined
     duration = SlackCli::Models::Duration.new(seconds: 5400)
-    assert_equal "1h30m", duration.to_s
+    assert_equal '1h30m', duration.to_s
   end
 
   def test_to_s_zero
     duration = SlackCli::Models::Duration.zero
-    assert_equal "", duration.to_s
+    assert_equal '', duration.to_s
   end
 
   def test_to_expiration_returns_future_timestamp
-    duration = SlackCli::Models::Duration.parse("1h")
+    duration = SlackCli::Models::Duration.parse('1h')
     expiration = duration.to_expiration
 
     assert_in_delta Time.now.to_i + 3600, expiration, 2
@@ -77,16 +77,16 @@ class DurationTest < Minitest::Test
   end
 
   def test_addition
-    a = SlackCli::Models::Duration.parse("1h")
-    b = SlackCli::Models::Duration.parse("30m")
+    a = SlackCli::Models::Duration.parse('1h')
+    b = SlackCli::Models::Duration.parse('30m')
     result = a + b
 
     assert_equal 5400, result.seconds
   end
 
   def test_subtraction
-    a = SlackCli::Models::Duration.parse("1h")
-    b = SlackCli::Models::Duration.parse("30m")
+    a = SlackCli::Models::Duration.parse('1h')
+    b = SlackCli::Models::Duration.parse('30m')
     result = a - b
 
     assert_equal 1800, result.seconds
@@ -100,28 +100,28 @@ class DurationTest < Minitest::Test
   # Duplicate unit validation tests
   def test_parse_rejects_duplicate_hours
     error = assert_raises(ArgumentError) do
-      SlackCli::Models::Duration.parse("1h2h")
+      SlackCli::Models::Duration.parse('1h2h')
     end
     assert_match(/Duplicate 'h' unit/, error.message)
   end
 
   def test_parse_rejects_duplicate_minutes
     error = assert_raises(ArgumentError) do
-      SlackCli::Models::Duration.parse("30m15m")
+      SlackCli::Models::Duration.parse('30m15m')
     end
     assert_match(/Duplicate 'm' unit/, error.message)
   end
 
   def test_parse_rejects_duplicate_seconds
     error = assert_raises(ArgumentError) do
-      SlackCli::Models::Duration.parse("10s20s")
+      SlackCli::Models::Duration.parse('10s20s')
     end
     assert_match(/Duplicate 's' unit/, error.message)
   end
 
   def test_parse_accepts_mixed_units
     # This should still work - different units are fine
-    duration = SlackCli::Models::Duration.parse("1h30m45s")
+    duration = SlackCli::Models::Duration.parse('1h30m45s')
     assert_equal 5445, duration.seconds
   end
 end

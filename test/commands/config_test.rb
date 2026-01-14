@@ -64,7 +64,7 @@ class ConfigCommandTest < Minitest::Test
     @config.data['emoji_dir'] = '/custom/emoji'
 
     runner = create_runner
-    command = SlackCli::Commands::Config.new(['get', 'emoji_dir'], runner: runner)
+    command = SlackCli::Commands::Config.new(%w[get emoji_dir], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -73,7 +73,7 @@ class ConfigCommandTest < Minitest::Test
 
   def test_get_value_not_set
     runner = create_runner
-    command = SlackCli::Commands::Config.new(['get', 'nonexistent'], runner: runner)
+    command = SlackCli::Commands::Config.new(%w[get nonexistent], runner: runner)
     result = command.execute
 
     assert_equal 0, result

@@ -57,7 +57,8 @@ class PresetCommandTest < Minitest::Test
 
   def test_list_presets_shows_presets
     @preset_store.presets = {
-      'meeting' => { 'text' => 'In a meeting', 'emoji' => ':calendar:', 'duration' => '1h', 'presence' => '', 'dnd' => '' }
+      'meeting' => { 'text' => 'In a meeting', 'emoji' => ':calendar:', 'duration' => '1h', 'presence' => '',
+                     'dnd' => '' }
     }
     runner = create_runner
     command = SlackCli::Commands::Preset.new(['list'], runner: runner)
@@ -106,7 +107,7 @@ class PresetCommandTest < Minitest::Test
     @preset_store.presets = {}
     runner = create_runner
     command = SlackCli::Commands::Preset.new(['nonexistent'], runner: runner)
-    result = command.execute
+    command.execute
 
     assert_includes @err.string, 'not found'
   end
@@ -114,7 +115,7 @@ class PresetCommandTest < Minitest::Test
   def test_delete_preset
     @preset_store.presets = { 'lunch' => {} }
     runner = create_runner
-    command = SlackCli::Commands::Preset.new(['delete', 'lunch'], runner: runner)
+    command = SlackCli::Commands::Preset.new(%w[delete lunch], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -124,7 +125,7 @@ class PresetCommandTest < Minitest::Test
   def test_delete_preset_rm_alias
     @preset_store.presets = { 'lunch' => {} }
     runner = create_runner
-    command = SlackCli::Commands::Preset.new(['rm', 'lunch'], runner: runner)
+    command = SlackCli::Commands::Preset.new(%w[rm lunch], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -134,8 +135,8 @@ class PresetCommandTest < Minitest::Test
   def test_delete_preset_not_found
     @preset_store.presets = {}
     runner = create_runner
-    command = SlackCli::Commands::Preset.new(['delete', 'nonexistent'], runner: runner)
-    result = command.execute
+    command = SlackCli::Commands::Preset.new(%w[delete nonexistent], runner: runner)
+    command.execute
 
     assert_includes @err.string, 'not found'
   end

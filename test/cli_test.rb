@@ -85,41 +85,41 @@ class CLITest < Minitest::Test
 
     # Stub the run_command method to raise ConfigError
     cli.define_singleton_method(:run_command) do |_name, _args|
-      raise SlackCli::ConfigError, "Test config error"
+      raise SlackCli::ConfigError, 'Test config error'
     end
 
     result = cli.run
 
     assert_equal 1, result
-    assert_includes @output.stderr, "Test config error"
+    assert_includes @output.stderr, 'Test config error'
   end
 
   def test_encryption_error_handling
     cli = SlackCli::CLI.new(['help'], output: @output)
 
     cli.define_singleton_method(:run_command) do |_name, _args|
-      raise SlackCli::EncryptionError, "Test encryption error"
+      raise SlackCli::EncryptionError, 'Test encryption error'
     end
 
     result = cli.run
 
     assert_equal 1, result
-    assert_includes @output.stderr, "Encryption error"
-    assert_includes @output.stderr, "Test encryption error"
+    assert_includes @output.stderr, 'Encryption error'
+    assert_includes @output.stderr, 'Test encryption error'
   end
 
   def test_api_error_handling
     cli = SlackCli::CLI.new(['help'], output: @output)
 
     cli.define_singleton_method(:run_command) do |_name, _args|
-      raise SlackCli::ApiError, "rate_limited"
+      raise SlackCli::ApiError, 'rate_limited'
     end
 
     result = cli.run
 
     assert_equal 1, result
-    assert_includes @output.stderr, "API error"
-    assert_includes @output.stderr, "rate_limited"
+    assert_includes @output.stderr, 'API error'
+    assert_includes @output.stderr, 'rate_limited'
   end
 
   def test_interrupt_handling
@@ -132,21 +132,21 @@ class CLITest < Minitest::Test
     result = cli.run
 
     assert_equal 130, result
-    assert_includes @output.stdout, "Interrupted"
+    assert_includes @output.stdout, 'Interrupted'
   end
 
   def test_standard_error_handling
     cli = SlackCli::CLI.new(['help'], output: @output)
 
     cli.define_singleton_method(:run_command) do |_name, _args|
-      raise StandardError, "Something unexpected"
+      raise StandardError, 'Something unexpected'
     end
 
     result = cli.run
 
     assert_equal 1, result
-    assert_includes @output.stderr, "Unexpected error"
-    assert_includes @output.stderr, "Something unexpected"
+    assert_includes @output.stderr, 'Unexpected error'
+    assert_includes @output.stderr, 'Something unexpected'
   end
 
   # Mock output class for testing

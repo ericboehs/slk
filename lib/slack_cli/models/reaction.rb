@@ -5,10 +5,10 @@ module SlackCli
     Reaction = Data.define(:name, :count, :users, :timestamps) do
       def self.from_api(data)
         new(
-          name: data["name"],
-          count: data["count"] || 0,
-          users: data["users"] || [],
-          timestamps: nil  # Will be populated by ReactionEnricher
+          name: data['name'],
+          count: data['count'] || 0,
+          users: data['users'] || [],
+          timestamps: nil # Will be populated by ReactionEnricher
         )
       end
 

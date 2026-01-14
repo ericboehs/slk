@@ -19,8 +19,8 @@ module SlackCli
 
         Models::Workspace.new(
           name: name,
-          token: data["token"],
-          cookie: data["cookie"]
+          token: data['token'],
+          cookie: data['cookie']
         )
       end
 
@@ -28,8 +28,8 @@ module SlackCli
         load_tokens.map do |name, data|
           Models::Workspace.new(
             name: name,
-            token: data["token"],
-            cookie: data["cookie"]
+            token: data['token'],
+            cookie: data['cookie']
           )
         end
       end
@@ -47,7 +47,7 @@ module SlackCli
         Models::Workspace.new(name: name, token: token, cookie: cookie)
 
         tokens = load_tokens
-        tokens[name] = { "token" => token, "cookie" => cookie }.compact
+        tokens[name] = { 'token' => token, 'cookie' => cookie }.compact
         save_tokens(tokens)
       end
 
@@ -82,7 +82,7 @@ module SlackCli
         if @config.ssh_key
           # When encryption is configured, always use it - don't silently fall back
           @encryption.encrypt(JSON.generate(tokens), @config.ssh_key, encrypted_tokens_file)
-          File.delete(plain_tokens_file) if File.exist?(plain_tokens_file)
+          FileUtils.rm_f(plain_tokens_file)
         else
           # Plain text storage (no encryption configured)
           File.write(plain_tokens_file, JSON.pretty_generate(tokens))
@@ -106,11 +106,11 @@ module SlackCli
       end
 
       def encrypted_tokens_file
-        @paths.config_file("tokens.age")
+        @paths.config_file('tokens.age')
       end
 
       def plain_tokens_file
-        @paths.config_file("tokens.json")
+        @paths.config_file('tokens.json')
       end
     end
   end

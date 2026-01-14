@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../support/help_formatter"
+require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
@@ -10,12 +10,12 @@ module SlackCli
         return result if result
 
         case positional_args
-        in ["status" | "info"]
+        in ['status' | 'info']
           get_status
-        in ["on" | "snooze", *rest]
-          duration = rest.first ? Models::Duration.parse(rest.first) : Models::Duration.parse("1h")
+        in ['on' | 'snooze', *rest]
+          duration = Models::Duration.parse(rest.first || '1h')
           set_snooze(duration)
-        in ["off" | "end"]
+        in ['off' | 'end']
           end_snooze
         in [duration_str] if duration_str.match?(/^\d+[hms]?$/)
           duration = Models::Duration.parse(duration_str)
@@ -24,7 +24,7 @@ module SlackCli
           get_status
         else
           error("Unknown action: #{positional_args.first}")
-          error("Valid actions: status, on, off, or a duration (e.g., 1h)")
+          error('Valid actions: status, on, off, or a duration (e.g., 1h)')
           1
         end
       rescue ArgumentError => e
@@ -38,28 +38,28 @@ module SlackCli
       protected
 
       def help_text
-        help = Support::HelpFormatter.new("slk dnd [action] [duration]")
-        help.description("Manage Do Not Disturb (snooze) settings.")
-        help.note("GET shows all workspaces by default. SET applies to primary only.")
+        help = Support::HelpFormatter.new('slk dnd [action] [duration]')
+        help.description('Manage Do Not Disturb (snooze) settings.')
+        help.note('GET shows all workspaces by default. SET applies to primary only.')
 
-        help.section("ACTIONS") do |s|
-          s.action("(none)", "Show current DND status (all workspaces)")
-          s.action("status", "Show current DND status")
-          s.action("on [duration]", "Enable snooze (default: 1h)")
-          s.action("off", "Disable snooze")
-          s.action("<duration>", "Enable snooze for specified duration")
+        help.section('ACTIONS') do |s|
+          s.action('(none)', 'Show current DND status (all workspaces)')
+          s.action('status', 'Show current DND status')
+          s.action('on [duration]', 'Enable snooze (default: 1h)')
+          s.action('off', 'Disable snooze')
+          s.action('<duration>', 'Enable snooze for specified duration')
         end
 
-        help.section("DURATION FORMAT") do |s|
-          s.item("1h", "1 hour")
-          s.item("30m", "30 minutes")
-          s.item("1h30m", "1 hour 30 minutes")
+        help.section('DURATION FORMAT') do |s|
+          s.item('1h', '1 hour')
+          s.item('30m', '30 minutes')
+          s.item('1h30m', '1 hour 30 minutes')
         end
 
-        help.section("OPTIONS") do |s|
-          s.option("-w, --workspace", "Limit to specific workspace")
-          s.option("--all", "Set across all workspaces")
-          s.option("-q, --quiet", "Suppress output")
+        help.section('OPTIONS') do |s|
+          s.option('-w, --workspace', 'Limit to specific workspace')
+          s.option('--all', 'Set across all workspaces')
+          s.option('-q, --quiet', 'Suppress output')
         end
 
         help.render
@@ -75,31 +75,29 @@ module SlackCli
           api = runner.dnd_api(workspace.name)
           data = api.info
 
-          if workspaces.size > 1
-            puts output.bold(workspace.name)
-          end
+          puts output.bold(workspace.name) if workspaces.size > 1
 
-          if data["snooze_enabled"]
+          if data['snooze_enabled']
             remaining = api.snooze_remaining
             if remaining
-              puts "  DND: #{output.yellow("snoozing")} (#{remaining} remaining)"
+              puts "  DND: #{output.yellow('snoozing')} (#{remaining} remaining)"
             else
-              puts "  DND: #{output.yellow("snoozing")} (expired)"
+              puts "  DND: #{output.yellow('snoozing')} (expired)"
             end
           else
-            puts "  DND: #{output.green("off")}"
+            puts "  DND: #{output.green('off')}"
           end
 
           # Show scheduled DND if present
-          if data["dnd_enabled"]
-            start_time = data["next_dnd_start_ts"]
-            end_time = data["next_dnd_end_ts"]
-            if start_time && end_time
-              start_str = Time.at(start_time).strftime("%H:%M")
-              end_str = Time.at(end_time).strftime("%H:%M")
-              puts "  Schedule: #{start_str} - #{end_str}"
-            end
-          end
+          next unless data['dnd_enabled']
+
+          start_time = data['next_dnd_start_ts']
+          end_time = data['next_dnd_end_ts']
+          next unless start_time && end_time
+
+          start_str = Time.at(start_time).strftime('%H:%M')
+          end_str = Time.at(end_time).strftime('%H:%M')
+          puts "  Schedule: #{start_str} - #{end_str}"
         end
 
         0
@@ -136,7 +134,7 @@ module SlackCli
         return if @options[:all] || @options[:workspace]
         return if runner.all_workspaces.size <= 1
 
-        info("Tip: Use --all to set across all workspaces")
+        info('Tip: Use --all to set across all workspaces')
       end
     end
   end

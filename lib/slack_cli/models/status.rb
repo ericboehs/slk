@@ -3,7 +3,7 @@
 module SlackCli
   module Models
     Status = Data.define(:text, :emoji, :expiration) do
-      def initialize(text: "", emoji: "", expiration: 0)
+      def initialize(text: '', emoji: '', expiration: 0)
         exp_val = expiration.to_i
         exp_val = 0 if exp_val.negative? # Normalize invalid negative expirations
 
@@ -19,7 +19,7 @@ module SlackCli
       end
 
       def expires?
-        expiration > 0
+        expiration.positive?
       end
 
       def expired?
@@ -30,7 +30,7 @@ module SlackCli
         return nil unless expires?
 
         remaining = expiration - Time.now.to_i
-        remaining > 0 ? Duration.new(seconds: remaining) : nil
+        remaining.positive? ? Duration.new(seconds: remaining) : nil
       end
 
       def expiration_time
@@ -40,7 +40,7 @@ module SlackCli
       end
 
       def to_s
-        return "(no status)" if empty?
+        return '(no status)' if empty?
 
         parts = []
         parts << emoji unless emoji.empty?
@@ -50,7 +50,7 @@ module SlackCli
           parts << "(#{remaining})"
         end
 
-        parts.join(" ")
+        parts.join(' ')
       end
     end
   end

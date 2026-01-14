@@ -12,7 +12,7 @@ module SlackCli
       # @param limit [Integer] Max threads to return
       # @return [Hash] Response with threads and total_unread_replies
       def get_view(limit: 20)
-        @api.post(@workspace, "subscriptions.thread.getView", { limit: limit })
+        @api.post(@workspace, 'subscriptions.thread.getView', { limit: limit })
       end
 
       # Mark a thread as read
@@ -20,24 +20,24 @@ module SlackCli
       # @param thread_ts [String] Thread timestamp
       # @param ts [String] Latest reply timestamp to mark as read
       def mark(channel:, thread_ts:, ts:)
-        @api.post_form(@workspace, "subscriptions.thread.mark", {
-          channel: channel,
-          thread_ts: thread_ts,
-          ts: ts
-        })
+        @api.post_form(@workspace, 'subscriptions.thread.mark', {
+                         channel: channel,
+                         thread_ts: thread_ts,
+                         ts: ts
+                       })
       end
 
       # Get unread thread count
       # @return [Integer] Number of unread thread replies
       def unread_count
         response = get_view(limit: 1)
-        response["total_unread_replies"] || 0
+        response['total_unread_replies'] || 0
       end
 
       # Check if there are unread threads
       # @return [Boolean]
       def has_unreads?
-        unread_count > 0
+        unread_count.positive?
       end
     end
   end

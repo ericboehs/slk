@@ -1,25 +1,23 @@
 # frozen_string_literal: true
 
-require "open3"
+require 'open3'
 
 module SlackCli
   module Services
     class Encryption
       def available?
-        system("which age > /dev/null 2>&1")
+        system('which age > /dev/null 2>&1')
       end
 
       def encrypt(content, ssh_key_path, output_file)
-        raise EncryptionError, "age encryption tool not available" unless available?
+        raise EncryptionError, 'age encryption tool not available' unless available?
 
         public_key = "#{ssh_key_path}.pub"
         raise EncryptionError, "Public key not found: #{public_key}" unless File.exist?(public_key)
 
-        _output, error, status = Open3.capture3("age", "-R", public_key, "-o", output_file, stdin_data: content)
+        _output, error, status = Open3.capture3('age', '-R', public_key, '-o', output_file, stdin_data: content)
 
-        unless status.success?
-          raise EncryptionError, "Failed to encrypt: #{error.strip}"
-        end
+        raise EncryptionError, "Failed to encrypt: #{error.strip}" unless status.success?
 
         true
       end
@@ -33,14 +31,12 @@ module SlackCli
         # File not existing is not an error - it just means no encrypted data yet
         return nil unless File.exist?(encrypted_file)
 
-        raise EncryptionError, "age encryption tool not available" unless available?
+        raise EncryptionError, 'age encryption tool not available' unless available?
         raise EncryptionError, "SSH key not found: #{ssh_key_path}" unless File.exist?(ssh_key_path)
 
-        output, error, status = Open3.capture3("age", "-d", "-i", ssh_key_path, encrypted_file)
+        output, error, status = Open3.capture3('age', '-d', '-i', ssh_key_path, encrypted_file)
 
-        unless status.success?
-          raise EncryptionError, "Failed to decrypt #{encrypted_file}: #{error.strip}"
-        end
+        raise EncryptionError, "Failed to decrypt #{encrypted_file}: #{error.strip}" unless status.success?
 
         output
       rescue Errno::ENOENT => e

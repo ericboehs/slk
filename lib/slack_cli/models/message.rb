@@ -25,8 +25,8 @@ module SlackCli
       BLOCK_TEXT_THRESHOLD = 20
 
       def self.from_api(data, channel_id: nil)
-        text = data["text"] || ""
-        blocks = data["blocks"] || []
+        text = data['text'] || ''
+        blocks = data['blocks'] || []
 
         # Extract text from Block Kit blocks if text is empty or minimal
         if text.length < BLOCK_TEXT_THRESHOLD
@@ -35,44 +35,44 @@ module SlackCli
         end
 
         new(
-          ts: data["ts"],
-          user_id: data["user"] || data["bot_id"] || data["username"],
+          ts: data['ts'],
+          user_id: data['user'] || data['bot_id'] || data['username'],
           text: text,
-          reactions: (data["reactions"] || []).map { |r| Reaction.from_api(r) },
-          reply_count: data["reply_count"] || 0,
-          thread_ts: data["thread_ts"],
-          files: data["files"] || [],
-          attachments: data["attachments"] || [],
+          reactions: (data['reactions'] || []).map { |r| Reaction.from_api(r) },
+          reply_count: data['reply_count'] || 0,
+          thread_ts: data['thread_ts'],
+          files: data['files'] || [],
+          attachments: data['attachments'] || [],
           blocks: blocks,
-          user_profile: data["user_profile"],
-          bot_profile: data["bot_profile"],
-          username: data["username"],
-          subtype: data["subtype"],
+          user_profile: data['user_profile'],
+          bot_profile: data['bot_profile'],
+          username: data['username'],
+          subtype: data['subtype'],
           channel_id: channel_id
         )
       end
 
       def self.extract_block_text(blocks)
-        return "" unless blocks.is_a?(Array)
+        return '' unless blocks.is_a?(Array)
 
         blocks.filter_map do |block|
-          case block["type"]
-          when "section"
-            block.dig("text", "text")
-          when "rich_text"
-            extract_rich_text_content(block["elements"])
+          case block['type']
+          when 'section'
+            block.dig('text', 'text')
+          when 'rich_text'
+            extract_rich_text_content(block['elements'])
           end
         end.join("\n")
       end
 
       def self.extract_rich_text_content(elements)
-        return "" unless elements.is_a?(Array)
+        return '' unless elements.is_a?(Array)
 
         elements.filter_map do |element|
-          next unless element["elements"].is_a?(Array)
+          next unless element['elements'].is_a?(Array)
 
-          element["elements"].filter_map do |item|
-            item["text"] if item["type"] == "text"
+          element['elements'].filter_map do |item|
+            item['text'] if item['type'] == 'text'
           end.join
         end.join
       end
@@ -80,7 +80,7 @@ module SlackCli
       def initialize(
         ts:,
         user_id:,
-        text: "",
+        text: '',
         reactions: [],
         reply_count: 0,
         thread_ts: nil,
@@ -96,8 +96,8 @@ module SlackCli
         ts_str = ts.to_s.strip
         user_id_str = user_id.to_s.strip
 
-        raise ArgumentError, "ts cannot be empty" if ts_str.empty?
-        raise ArgumentError, "user_id cannot be empty" if user_id_str.empty?
+        raise ArgumentError, 'ts cannot be empty' if ts_str.empty?
+        raise ArgumentError, 'user_id cannot be empty' if user_id_str.empty?
 
         super(
           ts: ts_str.freeze,
@@ -144,7 +144,7 @@ module SlackCli
       end
 
       def has_thread?
-        reply_count > 0
+        reply_count.positive?
       end
 
       def is_reply?
@@ -166,8 +166,8 @@ module SlackCli
       def embedded_username
         # Try user_profile first (regular users)
         if user_profile
-          display = user_profile["display_name"]
-          real = user_profile["real_name"]
+          display = user_profile['display_name']
+          real = user_profile['real_name']
 
           return display unless display.to_s.empty?
           return real unless real.to_s.empty?
@@ -175,7 +175,7 @@ module SlackCli
 
         # Try bot_profile (bot messages)
         if bot_profile
-          name = bot_profile["name"]
+          name = bot_profile['name']
           return name unless name.to_s.empty?
         end
 
@@ -186,7 +186,7 @@ module SlackCli
       end
 
       def bot?
-        user_id.start_with?("B") || subtype == "bot_message"
+        user_id.start_with?('B') || subtype == 'bot_message'
       end
 
       def system_message?

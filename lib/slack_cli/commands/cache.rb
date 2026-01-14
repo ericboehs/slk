@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../support/help_formatter"
+require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
@@ -10,11 +10,11 @@ module SlackCli
         return result if result
 
         case positional_args
-        in ["status" | "info"] | []
+        in ['status' | 'info'] | []
           show_status
-        in ["clear", *rest]
+        in ['clear', *rest]
           clear_cache(rest.first)
-        in ["populate" | "refresh", *rest]
+        in ['populate' | 'refresh', *rest]
           populate_cache(rest.first)
         else
           error("Unknown action: #{positional_args.first}")
@@ -28,18 +28,18 @@ module SlackCli
       protected
 
       def help_text
-        help = Support::HelpFormatter.new("slk cache <action> [workspace]")
-        help.description("Manage user and channel cache.")
+        help = Support::HelpFormatter.new('slk cache <action> [workspace]')
+        help.description('Manage user and channel cache.')
 
-        help.section("ACTIONS") do |s|
-          s.action("status", "Show cache status")
-          s.action("clear [ws]", "Clear cache (all or specific workspace)")
-          s.action("populate [ws]", "Populate user cache from API")
+        help.section('ACTIONS') do |s|
+          s.action('status', 'Show cache status')
+          s.action('clear [ws]', 'Clear cache (all or specific workspace)')
+          s.action('populate [ws]', 'Populate user cache from API')
         end
 
-        help.section("OPTIONS") do |s|
-          s.option("-w, --workspace", "Specify workspace")
-          s.option("-q, --quiet", "Suppress output")
+        help.section('OPTIONS') do |s|
+          s.option('-w, --workspace', 'Specify workspace')
+          s.option('-q, --quiet', 'Suppress output')
         end
 
         help.render
@@ -49,9 +49,7 @@ module SlackCli
 
       def show_status
         target_workspaces.each do |workspace|
-          if target_workspaces.size > 1
-            puts output.bold(workspace.name)
-          end
+          puts output.bold(workspace.name) if target_workspaces.size > 1
 
           user_count = cache_store.user_cache_size(workspace.name)
           channel_count = cache_store.channel_cache_size(workspace.name)
@@ -60,9 +58,9 @@ module SlackCli
           puts "  Channels cached: #{channel_count}"
 
           if cache_store.user_cache_file_exists?(workspace.name)
-            puts "  User cache: #{output.green("present")}"
+            puts "  User cache: #{output.green('present')}"
           else
-            puts "  User cache: #{output.yellow("not populated")}"
+            puts "  User cache: #{output.yellow('not populated')}"
           end
         end
 
@@ -77,7 +75,7 @@ module SlackCli
         else
           cache_store.clear_user_cache
           cache_store.clear_channel_cache
-          success("Cleared all caches")
+          success('Cleared all caches')
         end
 
         0
@@ -95,13 +93,13 @@ module SlackCli
 
           loop do
             response = api.list(cursor: cursor)
-            members = response["members"] || []
+            members = response['members'] || []
             all_users.concat(members.map { |m| Models::User.from_api(m) })
 
-            cursor = response.dig("response_metadata", "next_cursor")
+            cursor = response.dig('response_metadata', 'next_cursor')
             break if cursor.nil? || cursor.empty?
 
-            print "."
+            print '.'
           end
 
           count = cache_store.populate_user_cache(workspace.name, all_users)

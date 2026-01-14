@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require_relative "../support/help_formatter"
-require_relative "../support/inline_images"
+require_relative '../support/help_formatter'
+require_relative '../support/inline_images'
 
 module SlackCli
   module Commands
@@ -14,7 +14,7 @@ module SlackCli
 
         target = positional_args.first
         unless target
-          error("Usage: slk messages <channel|@user|url>")
+          error('Usage: slk messages <channel|@user|url>')
           return 1
         end
 
@@ -37,7 +37,9 @@ module SlackCli
             reaction_timestamps: @options[:reaction_timestamps],
             channel_id: channel_id
           }
-          output_json(messages.map { |m| runner.message_formatter.format_json(m, workspace: workspace, options: format_options) })
+          output_json(messages.map do |m|
+            runner.message_formatter.format_json(m, workspace: workspace, options: format_options)
+          end)
         else
           display_messages(messages, workspace, channel_id)
         end
@@ -66,22 +68,22 @@ module SlackCli
 
       def handle_option(arg, args, remaining)
         case arg
-        when "-n", "--limit"
+        when '-n', '--limit'
           @options[:limit] = args.shift.to_i
           @options[:limit_set] = true
-        when "--threads"
+        when '--threads'
           @options[:threads] = true
-        when "--no-emoji"
+        when '--no-emoji'
           @options[:no_emoji] = true
-        when "--no-reactions"
+        when '--no-reactions'
           @options[:no_reactions] = true
-        when "--no-names"
+        when '--no-names'
           @options[:no_names] = true
-        when "--workspace-emoji"
+        when '--workspace-emoji'
           @options[:workspace_emoji] = true
-        when "--reaction-names"
+        when '--reaction-names'
           @options[:reaction_names] = true
-        when "--reaction-timestamps"
+        when '--reaction-timestamps'
           @options[:reaction_timestamps] = true
         else
           super
@@ -89,32 +91,32 @@ module SlackCli
       end
 
       def help_text
-        help = Support::HelpFormatter.new("slk messages <target> [options]")
-        help.description("Read messages from a channel, DM, or thread.")
+        help = Support::HelpFormatter.new('slk messages <target> [options]')
+        help.description('Read messages from a channel, DM, or thread.')
 
-        help.section("TARGET") do |s|
-          s.item("#channel", "Channel by name")
-          s.item("channel", "Channel by name (without #)")
-          s.item("@user", "Direct message with user")
-          s.item("C123ABC", "Channel by ID")
-          s.item("<slack_url>", "Slack message URL (returns message + subsequent)")
+        help.section('TARGET') do |s|
+          s.item('#channel', 'Channel by name')
+          s.item('channel', 'Channel by name (without #)')
+          s.item('@user', 'Direct message with user')
+          s.item('C123ABC', 'Channel by ID')
+          s.item('<slack_url>', 'Slack message URL (returns message + subsequent)')
         end
 
-        help.section("OPTIONS") do |s|
-          s.option("-n, --limit N", "Number of messages (default: 500, or 50 for message URLs)")
-          s.option("--threads", "Show thread replies inline")
-          s.option("--no-emoji", "Show :emoji: codes instead of unicode")
-          s.option("--no-reactions", "Hide reactions")
-          s.option("--no-names", "Skip user name lookups (faster)")
-          s.option("--workspace-emoji", "Show workspace emoji as inline images (experimental)")
-          s.option("--reaction-names", "Show reactions with user names")
-          s.option("--reaction-timestamps", "Show when each person reacted")
-          s.option("--width N", "Wrap text at N columns (default: 72 on TTY, no wrap otherwise)")
-          s.option("--no-wrap", "Disable text wrapping")
-          s.option("--json", "Output as JSON")
-          s.option("-w, --workspace", "Specify workspace")
-          s.option("-v, --verbose", "Show debug information")
-          s.option("-q, --quiet", "Suppress output")
+        help.section('OPTIONS') do |s|
+          s.option('-n, --limit N', 'Number of messages (default: 500, or 50 for message URLs)')
+          s.option('--threads', 'Show thread replies inline')
+          s.option('--no-emoji', 'Show :emoji: codes instead of unicode')
+          s.option('--no-reactions', 'Hide reactions')
+          s.option('--no-names', 'Skip user name lookups (faster)')
+          s.option('--workspace-emoji', 'Show workspace emoji as inline images (experimental)')
+          s.option('--reaction-names', 'Show reactions with user names')
+          s.option('--reaction-timestamps', 'Show when each person reacted')
+          s.option('--width N', 'Wrap text at N columns (default: 72 on TTY, no wrap otherwise)')
+          s.option('--no-wrap', 'Disable text wrapping')
+          s.option('--json', 'Output as JSON')
+          s.option('-w, --workspace', 'Specify workspace')
+          s.option('-v, --verbose', 'Show debug information')
+          s.option('-q, --quiet', 'Suppress output')
         end
 
         help.render
@@ -131,31 +133,28 @@ module SlackCli
           if result
             ws = runner.workspace(result.workspace)
             # thread_ts means it's a thread, msg_ts means start from that message
-            if result.thread?
-              return [ws, result.channel_id, result.thread_ts, nil]
-            else
-              return [ws, result.channel_id, nil, result.msg_ts]
-            end
+            return [ws, result.channel_id, result.thread_ts, nil] if result.thread?
+
+            return [ws, result.channel_id, nil, result.msg_ts]
+
           end
         end
 
         workspace = target_workspaces.first
 
         # Direct channel ID
-        if target.match?(/^[CDG][A-Z0-9]+$/)
-          return [workspace, target, nil, nil]
-        end
+        return [workspace, target, nil, nil] if target.match?(/^[CDG][A-Z0-9]+$/)
 
         # Channel by name
-        if target.start_with?("#") || !target.start_with?("@")
-          channel_name = target.delete_prefix("#")
+        if target.start_with?('#') || !target.start_with?('@')
+          channel_name = target.delete_prefix('#')
           channel_id = resolve_channel(workspace, channel_name)
           return [workspace, channel_id, nil, nil]
         end
 
         # DM by username
-        if target.start_with?("@")
-          username = target.delete_prefix("@")
+        if target.start_with?('@')
+          username = target.delete_prefix('@')
           channel_id = resolve_dm(workspace, username)
           return [workspace, channel_id, nil, nil]
         end
@@ -172,12 +171,12 @@ module SlackCli
         api = runner.conversations_api(workspace.name)
         response = api.list
 
-        channels = response["channels"] || []
-        channel = channels.find { |c| c["name"] == name }
+        channels = response['channels'] || []
+        channel = channels.find { |c| c['name'] == name }
 
         if channel
-          cache_store.set_channel(workspace.name, name, channel["id"])
-          return channel["id"]
+          cache_store.set_channel(workspace.name, name, channel['id'])
+          return channel['id']
         end
 
         raise ConfigError, "Channel not found: ##{name}"
@@ -191,7 +190,7 @@ module SlackCli
         # Open DM
         api = runner.conversations_api(workspace.name)
         response = api.open(users: user_id)
-        response.dig("channel", "id")
+        response.dig('channel', 'id')
       end
 
       def find_user_id(workspace, username)
@@ -202,14 +201,14 @@ module SlackCli
         api = runner.users_api(workspace.name)
         response = api.list
 
-        users = response["members"] || []
+        users = response['members'] || []
         user = users.find do |u|
-          u["name"] == username ||
-            u.dig("profile", "display_name") == username ||
-            u.dig("profile", "real_name") == username
+          u['name'] == username ||
+            u.dig('profile', 'display_name') == username ||
+            u.dig('profile', 'real_name') == username
         end
 
-        user&.dig("id")
+        user&.dig('id')
       end
 
       # Apply default limit based on target type (50 for message URLs, 500 otherwise)
@@ -227,7 +226,7 @@ module SlackCli
           messages = fetch_all_thread_replies(api, channel_id, thread_ts)
 
           # Apply limit (keep parent + last N-1 replies)
-          if @options[:limit] > 0 && messages.length > @options[:limit]
+          if @options[:limit].positive? && messages.length > @options[:limit]
             messages = [messages.first] + messages.last(@options[:limit] - 1)
           end
         else
@@ -235,7 +234,7 @@ module SlackCli
           # Slack API oldest is exclusive - decrement slightly to include the target message
           oldest_adjusted = oldest ? adjust_timestamp(oldest, -0.000001) : nil
           response = api.history(channel: channel_id, limit: @options[:limit], oldest: oldest_adjusted)
-          messages = response["messages"] || []
+          messages = response['messages'] || []
         end
 
         # Convert to model objects
@@ -257,19 +256,19 @@ module SlackCli
 
         loop do
           response = api.replies(channel: channel_id, ts: thread_ts, limit: 200, cursor: cursor)
-          page_messages = response["messages"] || []
+          page_messages = response['messages'] || []
           all_messages.concat(page_messages)
 
           debug("Fetched #{page_messages.length} messages, total: #{all_messages.length}")
 
-          cursor = response.dig("response_metadata", "next_cursor")
-          break if cursor.nil? || cursor.empty? || !response["has_more"]
+          cursor = response.dig('response_metadata', 'next_cursor')
+          break if cursor.nil? || cursor.empty? || !response['has_more']
         end
 
         # Deduplicate and sort by timestamp
         all_messages
-          .uniq { |m| m["ts"] }
-          .sort_by { |m| m["ts"].to_f }
+          .uniq { |m| m['ts'] }
+          .sort_by { |m| m['ts'].to_f }
       end
 
       def display_messages(messages, workspace, channel_id)
@@ -339,7 +338,7 @@ module SlackCli
             emoji_path = find_workspace_emoji(workspace.name, part)
             if emoji_path
               print_inline_image(emoji_path, height: 1)
-              print " " unless in_tmux?
+              print ' ' unless in_tmux?
             else
               # Not a workspace emoji, print as-is
               print ":#{part}:"

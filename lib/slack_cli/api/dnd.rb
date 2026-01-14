@@ -9,31 +9,31 @@ module SlackCli
       end
 
       def info
-        @api.post(@workspace, "dnd.info")
+        @api.post(@workspace, 'dnd.info')
       end
 
       def set_snooze(duration)
         minutes = duration.to_minutes
-        @api.post(@workspace, "dnd.setSnooze", { num_minutes: minutes })
+        @api.post(@workspace, 'dnd.setSnooze', { num_minutes: minutes })
       end
 
       def end_snooze
-        @api.post(@workspace, "dnd.endSnooze")
+        @api.post(@workspace, 'dnd.endSnooze')
       end
 
       def snoozing?
-        info["snooze_enabled"] == true
+        info['snooze_enabled'] == true
       end
 
       def snooze_remaining
         data = info
-        return nil unless data["snooze_enabled"]
+        return nil unless data['snooze_enabled']
 
-        endtime = data["snooze_endtime"]
+        endtime = data['snooze_endtime']
         return nil unless endtime
 
         remaining = endtime - Time.now.to_i
-        remaining > 0 ? Models::Duration.new(seconds: remaining) : nil
+        remaining.positive? ? Models::Duration.new(seconds: remaining) : nil
       end
     end
   end

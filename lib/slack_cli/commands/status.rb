@@ -1,18 +1,19 @@
 # frozen_string_literal: true
 
-require_relative "../support/inline_images"
-require_relative "../support/help_formatter"
+require_relative '../support/inline_images'
+require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
     class Status < Base
       include Support::InlineImages
+
       def execute
         result = validate_options
         return result if result
 
         case positional_args
-        in ["clear", *]
+        in ['clear', *]
           clear_status
         in [text, *rest]
           set_status(text, rest)
@@ -32,9 +33,9 @@ module SlackCli
 
       def handle_option(arg, args, remaining)
         case arg
-        when "-p", "--presence"
+        when '-p', '--presence'
           @options[:presence] = args.shift
-        when "-d", "--dnd"
+        when '-d', '--dnd'
           @options[:dnd] = args.shift
         else
           super
@@ -42,25 +43,25 @@ module SlackCli
       end
 
       def help_text
-        help = Support::HelpFormatter.new("slk status [text] [emoji] [duration] [options]")
-        help.description("Get or set your Slack status.")
-        help.note("GET shows all workspaces by default. SET applies to primary only.")
+        help = Support::HelpFormatter.new('slk status [text] [emoji] [duration] [options]')
+        help.description('Get or set your Slack status.')
+        help.note('GET shows all workspaces by default. SET applies to primary only.')
 
-        help.section("EXAMPLES") do |s|
-          s.example("slk status", "Show status (all workspaces)")
-          s.example("slk status clear", "Clear status")
-          s.example("slk status \"Working\" :laptop:", "Set status with emoji")
-          s.example("slk status \"Meeting\" :calendar: 1h", "Set status for 1 hour")
-          s.example("slk status \"Focus\" :headphones: 2h -p away -d 2h")
+        help.section('EXAMPLES') do |s|
+          s.example('slk status', 'Show status (all workspaces)')
+          s.example('slk status clear', 'Clear status')
+          s.example('slk status "Working" :laptop:', 'Set status with emoji')
+          s.example('slk status "Meeting" :calendar: 1h', 'Set status for 1 hour')
+          s.example('slk status "Focus" :headphones: 2h -p away -d 2h')
         end
 
-        help.section("OPTIONS") do |s|
-          s.option("-p, --presence VALUE", "Also set presence (away/auto/active)")
-          s.option("-d, --dnd DURATION", "Also set DND (or 'off')")
-          s.option("-w, --workspace", "Limit to specific workspace")
-          s.option("--all", "Set across all workspaces")
-          s.option("-v, --verbose", "Show debug information")
-          s.option("-q, --quiet", "Suppress output")
+        help.section('OPTIONS') do |s|
+          s.option('-p, --presence VALUE', 'Also set presence (away/auto/active)')
+          s.option('-d, --dnd DURATION', "Also set DND (or 'off')")
+          s.option('-w, --workspace', 'Limit to specific workspace')
+          s.option('--all', 'Set across all workspaces')
+          s.option('-v, --verbose', 'Show debug information')
+          s.option('-q, --quiet', 'Suppress output')
         end
 
         help.render
@@ -75,12 +76,10 @@ module SlackCli
         workspaces.each do |workspace|
           status = runner.users_api(workspace.name).get_status
 
-          if workspaces.size > 1
-            puts output.bold(workspace.name)
-          end
+          puts output.bold(workspace.name) if workspaces.size > 1
 
           if status.empty?
-            puts "  (no status set)"
+            puts '  (no status set)'
           else
             display_status(workspace, status)
           end
@@ -91,7 +90,7 @@ module SlackCli
 
       def display_status(workspace, status)
         # Check if emoji is a custom workspace emoji with an image
-        emoji_name = status.emoji.delete_prefix(":").delete_suffix(":")
+        emoji_name = status.emoji.delete_prefix(':').delete_suffix(':')
         emoji_path = find_workspace_emoji(workspace.name, emoji_name)
 
         if emoji_path && inline_images_supported?
@@ -101,7 +100,7 @@ module SlackCli
           if (remaining = status.time_remaining)
             parts << "(#{remaining})"
           end
-          text = "  #{parts.join(" ")}"
+          text = "  #{parts.join(' ')}"
 
           print_inline_image_with_text(emoji_path, text)
         else
@@ -123,7 +122,7 @@ module SlackCli
 
       def set_status(text, rest)
         # Parse emoji and duration from rest
-        emoji = rest.find { |arg| arg.start_with?(":") && arg.end_with?(":") } || ":speech_balloon:"
+        emoji = rest.find { |arg| arg.start_with?(':') && arg.end_with?(':') } || ':speech_balloon:'
         duration_str = rest.find { |arg| arg.match?(/^\d+[hms]?$/) }
         duration = duration_str ? Models::Duration.parse(duration_str) : Models::Duration.zero
 
@@ -148,7 +147,7 @@ module SlackCli
 
       def apply_presence(workspace)
         value = @options[:presence]
-        value = "auto" if value == "active"
+        value = 'auto' if value == 'active'
 
         api = runner.users_api(workspace.name)
         api.set_presence(value)
@@ -159,7 +158,7 @@ module SlackCli
         value = @options[:dnd]
         dnd_api = runner.dnd_api(workspace.name)
 
-        if value == "off"
+        if value == 'off'
           dnd_api.end_snooze
           success("DND disabled on #{workspace.name}")
         else
@@ -187,7 +186,7 @@ module SlackCli
         return if @options[:all] || @options[:workspace]
         return if runner.all_workspaces.size <= 1
 
-        info("Tip: Use --all to set across all workspaces")
+        info('Tip: Use --all to set across all workspaces')
       end
     end
   end

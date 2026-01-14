@@ -25,7 +25,7 @@ module SlackCli
         @quiet = quiet
       end
 
-      def puts(message = "")
+      def puts(message = '')
         @io.puts(message) unless @quiet
       end
 
@@ -34,15 +34,15 @@ module SlackCli
       end
 
       def error(message)
-        @err.puts(colorize("#{red("Error:")} #{message}"))
+        @err.puts(colorize("#{red('Error:')} #{message}"))
       end
 
       def warn(message)
-        @err.puts(colorize("#{yellow("Warning:")} #{message}")) unless @quiet
+        @err.puts(colorize("#{yellow('Warning:')} #{message}")) unless @quiet
       end
 
       def success(message)
-        puts(colorize("#{green("✓")} #{message}"))
+        puts(colorize("#{green('✓')} #{message}"))
       end
 
       def info(message)
@@ -52,7 +52,7 @@ module SlackCli
       def debug(message)
         return unless @verbose
 
-        @err.puts(colorize("#{gray("[debug]")} #{message}"))
+        @err.puts(colorize("#{gray('[debug]')} #{message}"))
       end
 
       # Color helpers

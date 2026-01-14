@@ -6,11 +6,11 @@ module SlackCli
       USER_MENTION_REGEX = /<@([UW][A-Z0-9]+)(?:\|([^>]+))?>/
       CHANNEL_MENTION_REGEX = /<#([A-Z0-9]+)(?:\|([^>]*))?>/
       SUBTEAM_MENTION_REGEX = /<!subteam\^([A-Z0-9]+)(?:\|@?([^>]+))?>/
-      LINK_REGEX = /<(https?:\/\/[^|>]+)(?:\|([^>]+))?>/
+      LINK_REGEX = %r{<(https?://[^|>]+)(?:\|([^>]+))?>}
       SPECIAL_MENTIONS = {
-        "<!here>" => "@here",
-        "<!channel>" => "@channel",
-        "<!everyone>" => "@everyone"
+        '<!here>' => '@here',
+        '<!channel>' => '@channel',
+        '<!everyone>' => '@everyone'
       }.freeze
 
       def initialize(cache_store:, api_client: nil, on_debug: nil)
@@ -89,11 +89,11 @@ module SlackCli
         begin
           users_api = Api::Users.new(@api, workspace)
           response = users_api.info(user_id)
-          if response["ok"] && response["user"]
-            profile = response["user"]["profile"] || {}
-            name = profile["display_name"]
-            name = profile["real_name"] if name.to_s.empty?
-            name = response["user"]["name"] if name.to_s.empty?
+          if response['ok'] && response['user']
+            profile = response['user']['profile'] || {}
+            name = profile['display_name']
+            name = profile['real_name'] if name.to_s.empty?
+            name = response['user']['name'] if name.to_s.empty?
             # Cache for future lookups
             @cache.set_user(workspace.name, user_id, name, persist: true) if name && !name.empty?
             return name unless name.to_s.empty?
@@ -116,8 +116,8 @@ module SlackCli
         begin
           conversations_api = Api::Conversations.new(@api, workspace)
           response = conversations_api.info(channel: channel_id)
-          if response["ok"] && response["channel"]
-            name = response["channel"]["name"]
+          if response['ok'] && response['channel']
+            name = response['channel']['name']
             # Cache for future lookups
             @cache.set_channel(workspace.name, name, channel_id) if name
             return name

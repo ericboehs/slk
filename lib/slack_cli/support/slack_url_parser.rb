@@ -30,7 +30,7 @@ module SlackCli
       end
 
       def parse(input)
-        return nil unless input.to_s.include?("slack.com")
+        return nil unless input.to_s.include?('slack.com')
 
         URL_PATTERNS.each do |pattern|
           match = input.match(pattern)
@@ -53,7 +53,7 @@ module SlackCli
       end
 
       def slack_url?(input)
-        input.to_s.include?("slack.com/archives")
+        input.to_s.include?('slack.com/archives')
       end
 
       private
@@ -64,7 +64,7 @@ module SlackCli
         return nil unless url_ts
 
         # Remove 'p' prefix if present
-        ts = url_ts.sub(/^p/, "")
+        ts = url_ts.sub(/^p/, '')
 
         # Insert decimal point
         if ts.length > 6

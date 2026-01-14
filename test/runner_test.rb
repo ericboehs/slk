@@ -185,7 +185,7 @@ class RunnerTest < Minitest::Test
     def error(msg); end
     def warn(msg); end
     def debug(msg); end
-    def verbose?; false; end
+    def verbose? = false
   end
 
   class MockConfig

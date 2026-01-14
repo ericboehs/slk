@@ -95,7 +95,7 @@ class InlineImagesTest < Minitest::Test
   def with_env(env_vars)
     old_values = {}
     env_vars.each do |key, value|
-      old_values[key] = ENV[key]
+      old_values[key] = ENV.fetch(key, nil)
       if value.nil?
         ENV.delete(key)
       else

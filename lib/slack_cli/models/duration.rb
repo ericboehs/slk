@@ -49,7 +49,7 @@ module SlackCli
       end
 
       def to_s
-        return "" if zero?
+        return '' if zero?
 
         parts = []
         remaining = seconds
@@ -66,9 +66,7 @@ module SlackCli
           remaining %= 60
         end
 
-        if remaining > 0 && parts.empty?
-          parts << "#{remaining}s"
-        end
+        parts << "#{remaining}s" if remaining.positive? && parts.empty?
 
         parts.join
       end
