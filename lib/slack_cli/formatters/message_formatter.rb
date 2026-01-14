@@ -105,9 +105,9 @@ module SlackCli
           reaction_hash
         end
 
-        {
+        result = {
           ts: message.ts,
-          user: message.user_id,
+          user_id: message.user_id,
           text: message.text,
           reactions: reactions_json,
           reply_count: message.reply_count,
@@ -115,6 +115,27 @@ module SlackCli
           attachments: message.attachments,
           files: message.files
         }
+
+        # Add resolved user name if available
+        unless options[:no_names]
+          workspace_name = workspace&.name
+          if workspace_name
+            user_name = @cache.get_user(workspace_name, message.user_id)
+            result[:user_name] = user_name if user_name
+          end
+        end
+
+        # Add channel info if available
+        if options[:channel_id]
+          result[:channel_id] = options[:channel_id]
+          workspace_name = workspace&.name
+          if workspace_name
+            channel_name = @cache.get_channel_name(workspace_name, options[:channel_id])
+            result[:channel_name] = channel_name if channel_name
+          end
+        end
+
+        result
       end
 
       private

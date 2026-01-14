@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `--workspace-emoji` flag for messages command to display custom workspace emoji as inline images (experimental, requires iTerm2/WezTerm/Mintty)
+- JSON output now includes resolved user and channel names for `messages`, `activity`, and `unread` commands
 
 ### Changed
 

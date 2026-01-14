@@ -34,7 +34,8 @@ module SlackCli
         if @options[:json]
           format_options = {
             no_names: @options[:no_names],
-            reaction_timestamps: @options[:reaction_timestamps]
+            reaction_timestamps: @options[:reaction_timestamps],
+            channel_id: channel_id
           }
           output_json(messages.map { |m| runner.message_formatter.format_json(m, workspace: workspace, options: format_options) })
         else

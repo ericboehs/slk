@@ -22,7 +22,7 @@ module SlackCli
         items = response['items'] || []
 
         if @options[:json]
-          output_json(items)
+          output_json(enrich_activity_items(items, workspace))
         else
           display_activity(items, workspace)
         end
@@ -286,6 +286,102 @@ module SlackCli
       def format_activity_time(slack_timestamp)
         time = Time.at(slack_timestamp.to_f)
         time.strftime('%b %d %-I:%M %p')  # e.g., "Jan 13 2:45 PM"
+      end
+
+      # Enrich activity items with resolved user/channel names for JSON output
+      def enrich_activity_items(items, workspace)
+        items.map do |item|
+          enriched = item.dup
+          enrich_activity_item(enriched, workspace)
+          enriched
+        end
+      end
+
+      def enrich_activity_item(item, workspace)
+        type = item.dig('item', 'type')
+
+        case type
+        when 'message_reaction'
+          enrich_reaction_item(item, workspace)
+        when 'at_user', 'at_user_group', 'at_channel', 'at_everyone'
+          enrich_mention_item(item, workspace)
+        when 'thread_v2'
+          enrich_thread_item(item, workspace)
+        when 'bot_dm_bundle'
+          enrich_bot_dm_item(item, workspace)
+        end
+      end
+
+      def enrich_reaction_item(item, workspace)
+        reaction_data = item.dig('item', 'reaction')
+        message_data = item.dig('item', 'message')
+        return unless reaction_data && message_data
+
+        user_id = reaction_data['user']
+        item['item']['reaction']['user_name'] = resolve_user(workspace, user_id) if user_id
+
+        channel_id = message_data['channel']
+        if channel_id
+          item['item']['message']['channel_name'] = resolve_channel_name_only(workspace, channel_id)
+        end
+      end
+
+      def enrich_mention_item(item, workspace)
+        message_data = item.dig('item', 'message')
+        return unless message_data
+
+        user_id = message_data['author_user_id'] || message_data['user']
+        item['item']['message']['user_name'] = resolve_user(workspace, user_id) if user_id
+
+        channel_id = message_data['channel']
+        if channel_id
+          item['item']['message']['channel_name'] = resolve_channel_name_only(workspace, channel_id)
+        end
+      end
+
+      def enrich_thread_item(item, workspace)
+        thread_entry = item.dig('item', 'bundle_info', 'payload', 'thread_entry')
+        return unless thread_entry
+
+        channel_id = thread_entry['channel_id']
+        if channel_id
+          item['item']['bundle_info']['payload']['thread_entry']['channel_name'] =
+            resolve_channel_name_only(workspace, channel_id)
+        end
+      end
+
+      def enrich_bot_dm_item(item, workspace)
+        message_data = item.dig('item', 'bundle_info', 'payload', 'message')
+        return unless message_data
+
+        channel_id = message_data['channel']
+        if channel_id
+          item['item']['bundle_info']['payload']['message']['channel_name'] =
+            resolve_channel_name_only(workspace, channel_id)
+        end
+      end
+
+      # Resolve channel to just the name (without # prefix) for JSON output
+      def resolve_channel_name_only(workspace, channel_id)
+        return 'DM' if channel_id.start_with?('D')
+        return 'Group DM' if channel_id.start_with?('G')
+
+        cached = cache_store.get_channel_name(workspace.name, channel_id)
+        return cached if cached
+
+        begin
+          api = runner.conversations_api(workspace.name)
+          response = api.info(channel: channel_id)
+          if response['ok'] && response['channel']
+            name = response['channel']['name']
+            cache_store.set_channel(workspace.name, name, channel_id)
+            return name
+          end
+        rescue ApiError
+          # Fall back to channel ID
+        end
+
+        channel_id
       end
     end
   end

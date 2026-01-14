@@ -121,8 +121,22 @@ module SlackCli
 
           if @options[:json]
             output_json({
-              channels: unreads.map { |c| { id: c["id"], mentions: c["mention_count"] } },
-              dms: unread_ims.map { |i| { id: i["id"], mentions: i["mention_count"] } }
+              channels: unreads.map { |c|
+                channel_hash = { id: c["id"], mentions: c["mention_count"] }
+                channel_name = cache_store.get_channel_name(workspace.name, c["id"])
+                channel_hash[:name] = channel_name if channel_name
+                channel_hash
+              },
+              dms: unread_ims.map { |i|
+                dm_hash = { id: i["id"], mentions: i["mention_count"] }
+                # Try to resolve DM user name
+                user_id = i["user_id"] || i["user"]
+                if user_id
+                  user_name = cache_store.get_user(workspace.name, user_id)
+                  dm_hash[:user_name] = user_name if user_name
+                end
+                dm_hash
+              }
             })
           else
             if unreads.empty? && unread_ims.empty?
