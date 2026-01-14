@@ -259,9 +259,10 @@ module SlackCli
                      'Unknown'
                    end
 
-        # Get text
+        # Get text and replace mentions
         text = message['text'] || ''
         text = '[No text]' if text.empty?
+        text = runner.mention_replacer.replace(text, workspace) unless text == '[No text]'
 
         # Format as indented preview
         lines = text.lines
