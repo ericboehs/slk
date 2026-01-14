@@ -62,6 +62,25 @@ slk messages #general -n 50     # Show 50 messages
 slk messages #general --json    # Output as JSON
 ```
 
+### Activity
+
+```bash
+slk activity              # Show recent activity feed
+slk activity -n 50        # Show 50 items
+slk activity -m           # Show message previews
+slk activity --reactions  # Filter: reactions only
+slk activity --mentions   # Filter: mentions only
+slk activity --threads    # Filter: thread replies only
+```
+
+Displays your recent activity feed including:
+- Reactions to your messages
+- Mentions (@user, @channel, @here, etc.)
+- Thread replies
+- Bot messages (reminders, notifications)
+
+Use `--show-messages` (or `-m`) to preview the actual message content for each activity.
+
 ### Unread
 
 ```bash
