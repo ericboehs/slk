@@ -37,7 +37,8 @@ module SlackCli
       def default_options
         super.merge(
           limit: 20,
-          filter: :all
+          filter: :all,
+          show_messages: false
         )
       end
 
@@ -51,6 +52,8 @@ module SlackCli
           @options[:filter] = :mentions
         when '--threads'
           @options[:filter] = :threads
+        when '--show-messages', '-m'
+          @options[:show_messages] = true
         else
           remaining << arg
         end
@@ -65,6 +68,7 @@ module SlackCli
           s.option('--reactions', 'Show only reaction activity')
           s.option('--mentions', 'Show only mentions')
           s.option('--threads', 'Show only thread replies')
+          s.option('-m, --show-messages', 'Show the message content for each activity')
           s.option('--json', 'Output as JSON')
           s.option('-w, --workspace', 'Specify workspace')
           s.option('-v, --verbose', 'Show debug information')
@@ -129,6 +133,11 @@ module SlackCli
         channel = resolve_channel(workspace, channel_id)
 
         puts "#{output.blue(timestamp)} #{output.bold(username)} reacted #{emoji} in #{channel}"
+
+        if @options[:show_messages]
+          message = fetch_message(workspace, channel_id, message_data['ts'])
+          display_message_preview(message, workspace)
+        end
       end
 
       def display_mention_activity(item, workspace, timestamp)
@@ -141,6 +150,11 @@ module SlackCli
         channel = resolve_channel(workspace, channel_id)
 
         puts "#{output.blue(timestamp)} #{output.bold(username)} mentioned you in #{channel}"
+
+        if @options[:show_messages]
+          message = fetch_message(workspace, channel_id, message_data['ts'])
+          display_message_preview(message, workspace)
+        end
       end
 
       def display_thread_v2_activity(item, workspace, timestamp)
@@ -151,6 +165,12 @@ module SlackCli
         channel = resolve_channel(workspace, channel_id)
 
         puts "#{output.blue(timestamp)} Thread activity in #{channel}"
+
+        if @options[:show_messages] && thread_entry['thread_ts']
+          # Fetch the thread parent message
+          message = fetch_message(workspace, channel_id, thread_entry['thread_ts'])
+          display_message_preview(message, workspace)
+        end
       end
 
       def display_bot_dm_activity(item, workspace, timestamp)
@@ -236,6 +256,62 @@ module SlackCli
 
         # Fall back to channel ID
         channel_id
+      end
+
+      def fetch_message(workspace, channel_id, message_ts)
+        api = runner.conversations_api(workspace.name)
+        # Fetch a window of messages around the target timestamp
+        # Use oldest (exclusive) and latest (inclusive) to create a window
+        oldest_ts = (message_ts.to_f - 1).to_s # 1 second before
+        latest_ts = (message_ts.to_f + 1).to_s # 1 second after
+
+        response = api.history(
+          channel: channel_id,
+          limit: 10,
+          oldest: oldest_ts,
+          latest: latest_ts
+        )
+
+        return nil unless response['ok'] && response['messages']&.any?
+
+        # Find the exact message by timestamp
+        response['messages'].find { |msg| msg['ts'] == message_ts }
+      rescue ApiError
+        nil
+      end
+
+      def display_message_preview(message, workspace)
+        return unless message
+
+        # Get username
+        username = if message['user']
+                     resolve_user(workspace, message['user'])
+                   elsif message['bot_id']
+                     'Bot'
+                   else
+                     'Unknown'
+                   end
+
+        # Get text
+        text = message['text'] || ''
+        text = '[No text]' if text.empty?
+
+        # Format as indented preview
+        lines = text.lines
+        first_line = lines.first&.strip || text
+        first_line = "#{first_line[0..100]}..." if first_line.length > 100
+
+        puts "  └─ #{username}: #{first_line}"
+
+        # Show additional lines if any
+        if lines.length > 1
+          remaining = lines[1..2].map(&:strip).reject(&:empty?)
+          remaining.each do |line|
+            line = "#{line[0..100]}..." if line.length > 100
+            puts "     #{line}"
+          end
+          puts "     [#{lines.length - 3} more lines...]" if lines.length > 3
+        end
       end
 
       def format_activity_time(slack_timestamp)
