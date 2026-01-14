@@ -1,10 +1,13 @@
 # frozen_string_literal: true
 
 require_relative "../support/help_formatter"
+require_relative "../support/inline_images"
 
 module SlackCli
   module Commands
     class Messages < Base
+      include Support::InlineImages
+
       def execute
         result = validate_options
         return result if result
@@ -54,7 +57,7 @@ module SlackCli
           no_emoji: false,
           no_reactions: false,
           no_names: false,
-          workspace_emoji: true, # Default to showing workspace emoji as images
+          workspace_emoji: false,
           reaction_names: false,
           reaction_timestamps: false
         )
@@ -73,8 +76,8 @@ module SlackCli
           @options[:no_reactions] = true
         when "--no-names"
           @options[:no_names] = true
-        when "--no-workspace-emoji"
-          @options[:workspace_emoji] = false
+        when "--workspace-emoji"
+          @options[:workspace_emoji] = true
         when "--reaction-names"
           @options[:reaction_names] = true
         when "--reaction-timestamps"
@@ -102,7 +105,7 @@ module SlackCli
           s.option("--no-emoji", "Show :emoji: codes instead of unicode")
           s.option("--no-reactions", "Hide reactions")
           s.option("--no-names", "Skip user name lookups (faster)")
-          s.option("--no-workspace-emoji", "Disable workspace emoji images")
+          s.option("--workspace-emoji", "Show workspace emoji as inline images (experimental)")
           s.option("--reaction-names", "Show reactions with user names")
           s.option("--reaction-timestamps", "Show when each person reacted")
           s.option("--width N", "Wrap text at N columns (default: 72 on TTY, no wrap otherwise)")
@@ -274,14 +277,13 @@ module SlackCli
           no_emoji: @options[:no_emoji],
           no_reactions: @options[:no_reactions],
           no_names: @options[:no_names],
-          workspace_emoji: @options[:workspace_emoji],
           reaction_names: @options[:reaction_names],
           width: @options[:width]
         }
 
         messages.each_with_index do |message, index|
           formatted = formatter.format(message, workspace: workspace, options: format_options)
-          puts formatted
+          print_with_workspace_emoji(formatted, workspace)
           puts if index < messages.length - 1
 
           # Show thread replies if requested
@@ -308,9 +310,57 @@ module SlackCli
           first_line = "  └ #{lines.first}"
           continuation_lines = lines[1..].map { |line| "    #{line}" }
 
-          puts first_line
-          continuation_lines.each { |line| puts line }
+          print_with_workspace_emoji(first_line, workspace)
+          continuation_lines.each { |line| print_with_workspace_emoji(line, workspace) }
         end
+      end
+
+      # Print text, replacing workspace emoji codes with inline images when enabled
+      def print_with_workspace_emoji(text, workspace)
+        if @options[:workspace_emoji] && inline_images_supported?
+          print_line_with_emoji_images(text, workspace)
+        else
+          puts text
+        end
+      end
+
+      # Print a line, inserting inline images for workspace emoji
+      def print_line_with_emoji_images(text, workspace)
+        # Find all :emoji: codes that weren't replaced (workspace custom emoji)
+        emoji_pattern = /:([a-zA-Z0-9_+-]+):/
+
+        # Split text into parts, preserving emoji codes
+        parts = text.split(emoji_pattern)
+
+        parts.each_with_index do |part, i|
+          if i.odd?
+            # This is an emoji name (captured group)
+            emoji_path = find_workspace_emoji(workspace.name, part)
+            if emoji_path
+              print_inline_image(emoji_path, height: 1)
+              print " " unless in_tmux?
+            else
+              # Not a workspace emoji, print as-is
+              print ":#{part}:"
+            end
+          else
+            # Regular text
+            print part
+          end
+        end
+        puts
+      end
+
+      def find_workspace_emoji(workspace_name, emoji_name)
+        return nil if emoji_name.empty?
+
+        paths = Support::XdgPaths.new
+        emoji_dir = config.emoji_dir || paths.cache_dir
+        workspace_dir = File.join(emoji_dir, workspace_name)
+        return nil unless Dir.exist?(workspace_dir)
+
+        # Look for emoji file with any extension
+        Dir.glob(File.join(workspace_dir, "#{emoji_name}.*")).first
       end
     end
   end

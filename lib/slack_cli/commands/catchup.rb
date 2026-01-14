@@ -31,7 +31,6 @@ module SlackCli
           limit: 5,
           no_emoji: false,
           no_reactions: false,
-          workspace_emoji: true, # Default to showing workspace emoji as images
           reaction_names: false,
           reaction_timestamps: false
         )
@@ -49,8 +48,6 @@ module SlackCli
           @options[:no_emoji] = true
         when "--no-reactions"
           @options[:no_reactions] = true
-        when "--no-workspace-emoji"
-          @options[:workspace_emoji] = false
         when "--reaction-names"
           @options[:reaction_names] = true
         when "--reaction-timestamps"
@@ -70,7 +67,6 @@ module SlackCli
           s.option("-n, --limit N", "Messages per channel (default: 5)")
           s.option("--no-emoji", "Show :emoji: codes instead of unicode")
           s.option("--no-reactions", "Hide reactions")
-          s.option("--no-workspace-emoji", "Disable workspace emoji images")
           s.option("--reaction-names", "Show reactions with user names")
           s.option("--reaction-timestamps", "Show when each person reacted")
           s.option("-w, --workspace", "Limit to specific workspace")
@@ -261,7 +257,6 @@ module SlackCli
         format_options = {
           no_emoji: @options[:no_emoji],
           no_reactions: @options[:no_reactions],
-          workspace_emoji: @options[:workspace_emoji],
           reaction_names: @options[:reaction_names],
           reaction_timestamps: @options[:reaction_timestamps]
         }
@@ -314,7 +309,6 @@ module SlackCli
         format_options = {
           no_emoji: @options[:no_emoji],
           no_reactions: @options[:no_reactions],
-          workspace_emoji: @options[:workspace_emoji],
           reaction_names: @options[:reaction_names],
           reaction_timestamps: @options[:reaction_timestamps]
         }

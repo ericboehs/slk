@@ -9,10 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- TODO: Remove post_install_message from slk.gemspec before releasing 0.3.0 -->
 
+### Added
+
+- `--workspace-emoji` flag for messages command to display custom workspace emoji as inline images (experimental, requires iTerm2/WezTerm/Mintty)
+
 ### Changed
 
 - Config/cache directories renamed from `slack-cli` to `slk`
 - Repository renamed from `slack-cli` to `slk`
+
+### Fixed
+
+- `error()` helper now returns exit code 1 for proper shell exit status
 
 ## [0.1.0] - 2025-01-14
 
