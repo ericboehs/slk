@@ -27,7 +27,12 @@ module SlackCli
       def print_inline_image(path, height: 1)
         return unless File.exist?(path)
 
-        data = File.binread(path)
+        begin
+          data = File.binread(path)
+        rescue IOError, SystemCallError
+          # File exists but can't be read - skip silently
+          return
+        end
         encoded = [data].pack("m0") # Base64 encode
 
         if in_tmux?

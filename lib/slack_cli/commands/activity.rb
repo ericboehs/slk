@@ -117,7 +117,7 @@ module SlackCli
         when 'bot_dm_bundle'
           display_bot_dm_activity(item, workspace, timestamp)
         else
-          # Unknown activity type - skip silently
+          debug("Unknown activity type '#{type}' - skipping") if type
         end
       end
 
@@ -218,8 +218,8 @@ module SlackCli
             cache_store.set_channel(workspace.name, name, channel_id)
             return "##{name}"
           end
-        rescue ApiError
-          # Fall back to channel ID if API call fails
+        rescue ApiError => e
+          debug("Could not resolve channel #{channel_id}: #{e.message}")
         end
 
         # Fall back to channel ID
@@ -315,33 +315,38 @@ module SlackCli
       def enrich_reaction_item(item, workspace)
         reaction_data = item.dig('item', 'reaction')
         message_data = item.dig('item', 'message')
-        return unless reaction_data && message_data
+        unless reaction_data && message_data
+          debug("Could not enrich reaction item - missing reaction or message data")
+          return
+        end
 
         user_id = reaction_data['user']
         item['item']['reaction']['user_name'] = resolve_user(workspace, user_id) if user_id
 
         channel_id = message_data['channel']
-        if channel_id
-          item['item']['message']['channel_name'] = resolve_channel_name_only(workspace, channel_id)
-        end
+        item['item']['message']['channel_name'] = resolve_channel_name_only(workspace, channel_id) if channel_id
       end
 
       def enrich_mention_item(item, workspace)
         message_data = item.dig('item', 'message')
-        return unless message_data
+        unless message_data
+          debug("Could not enrich mention item - missing message data")
+          return
+        end
 
         user_id = message_data['author_user_id'] || message_data['user']
         item['item']['message']['user_name'] = resolve_user(workspace, user_id) if user_id
 
         channel_id = message_data['channel']
-        if channel_id
-          item['item']['message']['channel_name'] = resolve_channel_name_only(workspace, channel_id)
-        end
+        item['item']['message']['channel_name'] = resolve_channel_name_only(workspace, channel_id) if channel_id
       end
 
       def enrich_thread_item(item, workspace)
         thread_entry = item.dig('item', 'bundle_info', 'payload', 'thread_entry')
-        return unless thread_entry
+        unless thread_entry
+          debug("Could not enrich thread item - missing thread_entry data")
+          return
+        end
 
         channel_id = thread_entry['channel_id']
         if channel_id
@@ -352,7 +357,10 @@ module SlackCli
 
       def enrich_bot_dm_item(item, workspace)
         message_data = item.dig('item', 'bundle_info', 'payload', 'message')
-        return unless message_data
+        unless message_data
+          debug("Could not enrich bot DM item - missing message data")
+          return
+        end
 
         channel_id = message_data['channel']
         if channel_id
@@ -377,8 +385,8 @@ module SlackCli
             cache_store.set_channel(workspace.name, name, channel_id)
             return name
           end
-        rescue ApiError
-          # Fall back to channel ID
+        rescue ApiError => e
+          debug("Could not resolve channel #{channel_id}: #{e.message}")
         end
 
         channel_id
