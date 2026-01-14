@@ -179,48 +179,15 @@ module SlackCli
 
         channel_id = message_data['channel']
         message_ts = message_data['ts']
-
-        # Fetch the specific message using a narrow time window
-        api = runner.conversations_api(workspace.name)
-        # Use both oldest (exclusive) and latest (inclusive) to create a precise window
-        oldest_adjusted = (message_ts.to_f - 0.000001).to_s
-        latest_adjusted = (message_ts.to_f + 0.000001).to_s
-        response = api.history(
-          channel: channel_id,
-          limit: 1,
-          oldest: oldest_adjusted,
-          latest: latest_adjusted
-        )
-
-        debug("Bot DM fetch: channel=#{channel_id}, ts=#{message_ts}, " \
-              "ok=#{response['ok']}, messages=#{response['messages']&.length || 0}")
-
-        if response['ok'] && response['messages']&.any?
-          message = response['messages'].first
-
-          # Get the username from the message (should be the bot name)
-          username = if message['user']
-                       resolve_user(workspace, message['user'])
-                     elsif message['bot_id']
-                       'Slackbot'
-                     else
-                       'Bot'
-                     end
-
-          text = message['text']
-          text = '[No text]' if text.nil? || text.empty?
-          # Truncate long messages
-          text = "#{text[0..80]}..." if text.length > 80
-
-          puts "#{output.blue(timestamp)} #{output.bold(username)}: #{text}"
-        else
-          channel = resolve_channel(workspace, channel_id)
-          puts "#{output.blue(timestamp)} Bot message in #{channel}"
-        end
-      rescue ApiError
-        # Fall back to simple display if API call fails
         channel = resolve_channel(workspace, channel_id)
+
         puts "#{output.blue(timestamp)} Bot message in #{channel}"
+
+        # Always try to fetch and show the message content (or when --show-messages is enabled)
+        if @options[:show_messages]
+          message = fetch_message(workspace, channel_id, message_ts)
+          display_message_preview(message, workspace) if message
+        end
       end
 
       def resolve_user(workspace, user_id)
