@@ -16,7 +16,7 @@ Gem::Specification.new do |spec|
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "https://github.com/ericboehs/slack-cli"
-  spec.metadata["changelog_uri"] = "https://github.com/ericboehs/slack-cli/blob/main/CHANGELOG.md"
+  spec.metadata["changelog_uri"] = "https://github.com/ericboehs/slack-cli/blob/master/CHANGELOG.md"
 
   # Specify which files should be added to the gem
   spec.files = Dir.chdir(__dir__) do
