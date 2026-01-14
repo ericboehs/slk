@@ -3,6 +3,10 @@
 module SlackCli
   module Support
     module ErrorLogger
+      # Log an error to the error log file
+      # @param error [Exception] The error to log
+      # @param paths [XdgPaths] Path helper (for testing)
+      # @return [String, nil] Path to the log file, or nil if logging failed
       def self.log(error, paths: XdgPaths.new)
         paths.ensure_cache_dir
 
@@ -12,6 +16,12 @@ module SlackCli
           f.puts error.backtrace.first(10).map { |line| "  #{line}" }.join("\n") if error.backtrace
           f.puts
         end
+
+        log_file
+      rescue SystemCallError, IOError
+        # If we can't write to the log, fail silently rather than crashing
+        # The user will still see the error message in the console
+        nil
       end
     end
   end

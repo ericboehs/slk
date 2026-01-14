@@ -92,4 +92,15 @@ class StatusTest < Minitest::Test
     assert status.empty?
     assert_equal 0, status.expiration
   end
+
+  def test_negative_expiration_normalized_to_zero
+    status = SlackCli::Models::Status.new(text: "test", expiration: -100)
+    assert_equal 0, status.expiration
+    refute status.expires?
+  end
+
+  def test_negative_expiration_not_considered_expired
+    status = SlackCli::Models::Status.new(text: "test", expiration: -100)
+    refute status.expired?
+  end
 end

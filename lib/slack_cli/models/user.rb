@@ -15,9 +15,20 @@ module SlackCli
         )
       end
 
+      # Slack user IDs start with U or W (enterprise grid)
+      USER_ID_PATTERN = /\A[UW][A-Z0-9]+\z/
+
       def initialize(id:, name: nil, real_name: nil, display_name: nil, is_bot: false)
+        id_str = id.to_s.strip
+        raise ArgumentError, "user id cannot be empty" if id_str.empty?
+
+        # Validate user ID format (starts with U or W followed by alphanumeric)
+        unless id_str.match?(USER_ID_PATTERN)
+          raise ArgumentError, "invalid user id format: #{id_str} (expected U or W prefix)"
+        end
+
         super(
-          id: id.to_s.freeze,
+          id: id_str.freeze,
           name: name&.freeze,
           real_name: real_name&.freeze,
           display_name: display_name&.freeze,

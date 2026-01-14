@@ -3,9 +3,10 @@
 module SlackCli
   module Api
     class Users
-      def initialize(api_client, workspace)
+      def initialize(api_client, workspace, on_debug: nil)
         @api = api_client
         @workspace = workspace
+        @on_debug = on_debug
       end
 
       def get_profile
@@ -82,8 +83,8 @@ module SlackCli
             parsed = JSON.parse(notifications_prefs)
             channels = parsed["channels"] || {}
             return channels.select { |_id, opts| opts["muted"] == true }.keys
-          rescue JSON::ParserError
-            # Fall through to empty array
+          rescue JSON::ParserError => e
+            @on_debug&.call("Failed to parse notification prefs: #{e.message}")
           end
         end
 

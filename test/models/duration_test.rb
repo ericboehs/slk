@@ -96,4 +96,32 @@ class DurationTest < Minitest::Test
     duration = SlackCli::Models::Duration.from_minutes(60)
     assert_equal 3600, duration.seconds
   end
+
+  # Duplicate unit validation tests
+  def test_parse_rejects_duplicate_hours
+    error = assert_raises(ArgumentError) do
+      SlackCli::Models::Duration.parse("1h2h")
+    end
+    assert_match(/Duplicate 'h' unit/, error.message)
+  end
+
+  def test_parse_rejects_duplicate_minutes
+    error = assert_raises(ArgumentError) do
+      SlackCli::Models::Duration.parse("30m15m")
+    end
+    assert_match(/Duplicate 'm' unit/, error.message)
+  end
+
+  def test_parse_rejects_duplicate_seconds
+    error = assert_raises(ArgumentError) do
+      SlackCli::Models::Duration.parse("10s20s")
+    end
+    assert_match(/Duplicate 's' unit/, error.message)
+  end
+
+  def test_parse_accepts_mixed_units
+    # This should still work - different units are fine
+    duration = SlackCli::Models::Duration.parse("1h30m45s")
+    assert_equal 5445, duration.seconds
+  end
 end

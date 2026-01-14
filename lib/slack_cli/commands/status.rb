@@ -8,7 +8,8 @@ module SlackCli
     class Status < Base
       include Support::InlineImages
       def execute
-        return show_help if show_help?
+        result = validate_options
+        return result if result
 
         case positional_args
         in ["clear", *]
@@ -36,7 +37,7 @@ module SlackCli
         when "-d", "--dnd"
           @options[:dnd] = args.shift
         else
-          remaining << arg
+          super
         end
       end
 

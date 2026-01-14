@@ -11,6 +11,11 @@ module SlackCli
           total = 0
           str = input.to_s.downcase
 
+          # Check for duplicate units (e.g., "1h1h" is invalid)
+          raise ArgumentError, "Duplicate 'h' unit in duration: #{input}" if str.scan(/\d+h/).length > 1
+          raise ArgumentError, "Duplicate 'm' unit in duration: #{input}" if str.scan(/\d+m/).length > 1
+          raise ArgumentError, "Duplicate 's' unit in duration: #{input}" if str.scan(/\d+s/).length > 1
+
           if (match = str.match(/(\d+)h/))
             total += match[1].to_i * 3600
           end

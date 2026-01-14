@@ -44,6 +44,7 @@ module SlackCli
       def parse_options(args)
         remaining = []
         args = args.dup
+        @unknown_options = []
 
         while args.any?
           arg = args.shift
@@ -78,8 +79,28 @@ module SlackCli
       end
 
       # Override in subclass to handle command-specific options
+      # Return true if option was handled, false to raise unknown option error
       def handle_option(arg, args, remaining)
-        remaining << arg
+        # By default, unknown options are errors
+        # Subclasses can override and return true to accept the option,
+        # or call super to get this error behavior
+        @unknown_options ||= []
+        @unknown_options << arg
+        false
+      end
+
+      # Check for unknown options and return error code if any were passed
+      def check_unknown_options
+        return nil if @unknown_options.nil? || @unknown_options.empty?
+
+        error("Unknown option: #{@unknown_options.first}")
+        error("Run with --help for available options.")
+        1
+      end
+
+      # Returns true if there are unknown options
+      def has_unknown_options?
+        @unknown_options && @unknown_options.any?
       end
 
       # Get workspaces to operate on based on options
@@ -101,6 +122,15 @@ module SlackCli
       def show_help
         output.puts help_text
         0
+      end
+
+      # Call at start of execute to check for help flag and unknown options
+      # Returns exit code if should return early, nil otherwise
+      def validate_options
+        return show_help if show_help?
+        return check_unknown_options if has_unknown_options?
+
+        nil
       end
 
       def help_text

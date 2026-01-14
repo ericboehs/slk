@@ -43,6 +43,9 @@ module SlackCli
       end
 
       def add(name, token, cookie = nil)
+        # Validate by constructing a Workspace (will raise ArgumentError if invalid)
+        Models::Workspace.new(name: name, token: token, cookie: cookie)
+
         tokens = load_tokens
         tokens[name] = { "token" => token, "cookie" => cookie }.compact
         save_tokens(tokens)
@@ -70,37 +73,28 @@ module SlackCli
           {}
         end
       rescue JSON::ParserError => e
-        @on_warning&.call("Tokens file #{plain_tokens_file} is corrupted (#{e.message}). Using empty token store.")
-        {}
+        raise TokenStoreError, "Tokens file #{plain_tokens_file} is corrupted: #{e.message}"
       end
 
       def save_tokens(tokens)
         @paths.ensure_config_dir
 
         if @config.ssh_key
-          begin
-            @encryption.encrypt(JSON.generate(tokens), @config.ssh_key, encrypted_tokens_file)
-            File.delete(plain_tokens_file) if File.exist?(plain_tokens_file)
-            return
-          rescue EncryptionError => e
-            @on_warning&.call("Encryption failed (#{e.message}). Falling back to plain text storage.")
-          end
+          # When encryption is configured, always use it - don't silently fall back
+          @encryption.encrypt(JSON.generate(tokens), @config.ssh_key, encrypted_tokens_file)
+          File.delete(plain_tokens_file) if File.exist?(plain_tokens_file)
+        else
+          # Plain text storage (no encryption configured)
+          File.write(plain_tokens_file, JSON.pretty_generate(tokens))
+          File.chmod(0o600, plain_tokens_file)
         end
-
-        # Fallback to plain text
-        File.write(plain_tokens_file, JSON.pretty_generate(tokens))
-        File.chmod(0o600, plain_tokens_file)
       end
 
       def decrypt_tokens
         content = @encryption.decrypt(encrypted_tokens_file, @config.ssh_key)
         content ? JSON.parse(content) : {}
-      rescue EncryptionError => e
-        @on_warning&.call("Token decryption failed: #{e.message}")
-        {}
       rescue JSON::ParserError => e
-        @on_warning&.call("Tokens file corrupted (#{e.message}). Using empty token store.")
-        {}
+        raise TokenStoreError, "Encrypted tokens file is corrupted: #{e.message}"
       end
 
       def encrypted_file_exists?

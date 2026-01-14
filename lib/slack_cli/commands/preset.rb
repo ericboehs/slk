@@ -8,7 +8,8 @@ module SlackCli
     class Preset < Base
       include Support::InlineImages
       def execute
-        return show_help if show_help?
+        result = validate_options
+        return result if result
 
         case positional_args
         in ["list" | "ls"] | []

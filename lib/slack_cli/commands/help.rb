@@ -61,9 +61,10 @@ module SlackCli
 
         if command_class
           # Create instance just to get help text
+          # Call --help directly since help_text is protected
           runner_stub = Runner.new(output: output)
           cmd = command_class.new(["--help"], runner: runner_stub)
-          puts cmd.help_text
+          cmd.execute
         else
           error("Unknown command: #{topic}")
           puts

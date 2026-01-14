@@ -24,9 +24,16 @@ module SlackCli
         true
       end
 
+      # Decrypt an age-encrypted file using an SSH key
+      # @param encrypted_file [String] Path to the encrypted file
+      # @param ssh_key_path [String] Path to the SSH private key
+      # @return [String, nil] Decrypted content, or nil if file doesn't exist
+      # @raise [EncryptionError] If age tool not available, key not found, or decryption fails
       def decrypt(encrypted_file, ssh_key_path)
-        return nil unless available?
+        # File not existing is not an error - it just means no encrypted data yet
         return nil unless File.exist?(encrypted_file)
+
+        raise EncryptionError, "age encryption tool not available" unless available?
         raise EncryptionError, "SSH key not found: #{ssh_key_path}" unless File.exist?(ssh_key_path)
 
         output, error, status = Open3.capture3("age", "-d", "-i", ssh_key_path, encrypted_file)

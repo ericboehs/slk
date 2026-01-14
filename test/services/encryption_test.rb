@@ -1,0 +1,120 @@
+# frozen_string_literal: true
+
+require 'test_helper'
+
+class EncryptionTest < Minitest::Test
+  def setup
+    @encryption = SlackCli::Services::Encryption.new
+  end
+
+  # available? tests
+  def test_available_returns_boolean
+    result = @encryption.available?
+    assert [true, false].include?(result)
+  end
+
+  # encrypt tests
+  def test_encrypt_raises_when_age_not_available
+    encryption = SlackCli::Services::Encryption.new
+
+    # Stub available? to return false
+    encryption.define_singleton_method(:available?) { false }
+
+    error = assert_raises(SlackCli::EncryptionError) do
+      encryption.encrypt('test content', '/path/to/key', '/path/to/output')
+    end
+
+    assert_equal 'age encryption tool not available', error.message
+  end
+
+  def test_encrypt_raises_when_public_key_not_found
+    skip unless @encryption.available?
+
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/nonexistent"
+      output_path = "#{dir}/output.age"
+
+      error = assert_raises(SlackCli::EncryptionError) do
+        @encryption.encrypt('test content', key_path, output_path)
+      end
+
+      assert_match(/Public key not found/, error.message)
+    end
+  end
+
+  # decrypt tests
+  def test_decrypt_raises_when_age_not_available_but_file_exists
+    Dir.mktmpdir do |dir|
+      encrypted_path = "#{dir}/tokens.age"
+      File.write(encrypted_path, 'encrypted content')
+      key_path = "#{dir}/key"
+      File.write(key_path, 'dummy key')
+
+      encryption = SlackCli::Services::Encryption.new
+      encryption.define_singleton_method(:available?) { false }
+
+      error = assert_raises(SlackCli::EncryptionError) do
+        encryption.decrypt(encrypted_path, key_path)
+      end
+
+      assert_equal 'age encryption tool not available', error.message
+    end
+  end
+
+  def test_decrypt_returns_nil_when_encrypted_file_not_found
+    Dir.mktmpdir do |dir|
+      encrypted_path = "#{dir}/nonexistent.age"
+      key_path = "#{dir}/key"
+      File.write(key_path, 'dummy key')
+
+      result = @encryption.decrypt(encrypted_path, key_path)
+
+      assert_nil result
+    end
+  end
+
+  def test_decrypt_raises_when_ssh_key_not_found
+    skip unless @encryption.available?
+
+    Dir.mktmpdir do |dir|
+      encrypted_path = "#{dir}/tokens.age"
+      File.write(encrypted_path, 'dummy encrypted content')
+      key_path = "#{dir}/nonexistent_key"
+
+      error = assert_raises(SlackCli::EncryptionError) do
+        @encryption.decrypt(encrypted_path, key_path)
+      end
+
+      assert_match(/SSH key not found/, error.message)
+    end
+  end
+
+  # Integration test (only runs if age is available and test SSH keys exist)
+  def test_encrypt_and_decrypt_roundtrip
+    skip unless @encryption.available?
+    skip unless can_create_test_ssh_key?
+
+    Dir.mktmpdir do |dir|
+      # Create a test SSH key pair using ssh-keygen
+      key_path = "#{dir}/test_key"
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+
+      encrypted_path = "#{dir}/test.age"
+      original_content = 'Hello, World! This is secret content.'
+
+      @encryption.encrypt(original_content, key_path, encrypted_path)
+
+      assert File.exist?(encrypted_path), 'Encrypted file should be created'
+
+      decrypted = @encryption.decrypt(encrypted_path, key_path)
+
+      assert_equal original_content, decrypted
+    end
+  end
+
+  private
+
+  def can_create_test_ssh_key?
+    system('which ssh-keygen > /dev/null 2>&1')
+  end
+end

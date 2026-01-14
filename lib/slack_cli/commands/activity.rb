@@ -6,7 +6,8 @@ module SlackCli
   module Commands
     class Activity < Base
       def execute
-        return show_help if show_help?
+        result = validate_options
+        return result if result
 
         workspace = target_workspaces.first
         api = runner.activity_api(workspace.name)
@@ -55,7 +56,7 @@ module SlackCli
         when '--show-messages', '-m'
           @options[:show_messages] = true
         else
-          remaining << arg
+          super
         end
       end
 

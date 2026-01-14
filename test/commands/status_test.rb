@@ -198,4 +198,27 @@ class StatusCommandTest < Minitest::Test
     dnd_call = @mock_client.calls.find { |c| c[:method] == "dnd.endSnooze" }
     assert dnd_call
   end
+
+  def test_unknown_option_returns_error
+    runner = create_runner
+    command = SlackCli::Commands::Status.new(["--invalid-option"], runner: runner)
+    result = command.execute
+
+    assert_equal 1, result
+    assert_includes @err.string, "Unknown option"
+    assert_includes @err.string, "--invalid-option"
+  end
+
+  def test_known_options_are_accepted
+    @mock_client.stub("users.profile.set", { "ok" => true })
+    @mock_client.stub("users.setPresence", { "ok" => true })
+
+    runner = create_runner
+    # Test valid options -p and -d
+    command = SlackCli::Commands::Status.new(["Working", "-p", "away"], runner: runner)
+    result = command.execute
+
+    assert_equal 0, result
+    refute_includes @err.string, "Unknown option"
+  end
 end

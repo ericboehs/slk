@@ -21,8 +21,9 @@ module SlackCli
           !thread_ts.nil?
         end
 
-        # For backward compatibility - returns thread_ts if present, otherwise nil
-        # This is what you use when you want to fetch replies
+        # Returns the thread parent timestamp if this URL points to a threaded message.
+        # Use this when fetching thread replies - pass this as the thread_ts parameter.
+        # Returns nil if the URL does not contain a thread_ts query parameter.
         def ts
           thread_ts
         end

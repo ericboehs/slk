@@ -8,7 +8,8 @@ module SlackCli
       include Support::UserResolver
 
       def execute
-        return show_help if show_help?
+        result = validate_options
+        return result if result
 
         if @options[:batch]
           batch_catchup
@@ -55,7 +56,7 @@ module SlackCli
         when "--reaction-timestamps"
           @options[:reaction_timestamps] = true
         else
-          remaining << arg
+          super
         end
       end
 

@@ -154,4 +154,48 @@ class PresetTest < Minitest::Test
     refute_nil duration
     assert_kind_of SlackCli::Models::Duration, duration
   end
+
+  # Validation tests
+  def test_raises_when_name_empty
+    error = assert_raises(ArgumentError) do
+      SlackCli::Models::Preset.new(name: "")
+    end
+    assert_equal "preset name cannot be empty", error.message
+  end
+
+  def test_raises_when_name_whitespace_only
+    error = assert_raises(ArgumentError) do
+      SlackCli::Models::Preset.new(name: "   ")
+    end
+    assert_equal "preset name cannot be empty", error.message
+  end
+
+  def test_strips_whitespace_from_name
+    preset = SlackCli::Models::Preset.new(name: "  lunch  ")
+    assert_equal "lunch", preset.name
+  end
+
+  def test_raises_when_duration_invalid
+    error = assert_raises(ArgumentError) do
+      SlackCli::Models::Preset.new(name: "test", duration: "invalid")
+    end
+    assert_match(/invalid duration/i, error.message)
+  end
+
+  def test_raises_when_duration_has_duplicate_units
+    error = assert_raises(ArgumentError) do
+      SlackCli::Models::Preset.new(name: "test", duration: "1h1h")
+    end
+    assert_match(/duplicate/i, error.message)
+  end
+
+  def test_allows_zero_duration
+    preset = SlackCli::Models::Preset.new(name: "test", duration: "0")
+    assert_equal "0", preset.duration
+  end
+
+  def test_allows_empty_duration
+    preset = SlackCli::Models::Preset.new(name: "test", duration: "")
+    assert_equal "", preset.duration
+  end
 end

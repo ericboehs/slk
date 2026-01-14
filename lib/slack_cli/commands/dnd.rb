@@ -6,7 +6,8 @@ module SlackCli
   module Commands
     class Dnd < Base
       def execute
-        return show_help if show_help?
+        result = validate_options
+        return result if result
 
         case positional_args
         in ["status" | "info"]

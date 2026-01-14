@@ -82,8 +82,9 @@ module SlackCli
         "test_tube" => "\u{1F9EA}"
       }.freeze
 
-      def initialize(custom_emoji: {})
+      def initialize(custom_emoji: {}, on_debug: nil)
         @custom_emoji = custom_emoji
+        @on_debug = on_debug
         @gemoji_cache = load_gemoji_cache
       end
 
@@ -116,7 +117,7 @@ module SlackCli
       end
 
       def with_custom_emoji(emoji_hash)
-        self.class.new(custom_emoji: emoji_hash)
+        self.class.new(custom_emoji: emoji_hash, on_debug: @on_debug)
       end
 
       private
@@ -131,7 +132,10 @@ module SlackCli
         return nil unless File.exist?(cache_path)
 
         JSON.parse(File.read(cache_path))
-      rescue JSON::ParserError, Errno::ENOENT
+      rescue JSON::ParserError => e
+        @on_debug&.call("Failed to load gemoji cache: #{e.message}")
+        nil
+      rescue Errno::ENOENT
         nil
       end
     end

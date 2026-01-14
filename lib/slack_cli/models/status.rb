@@ -4,10 +4,13 @@ module SlackCli
   module Models
     Status = Data.define(:text, :emoji, :expiration) do
       def initialize(text: "", emoji: "", expiration: 0)
+        exp_val = expiration.to_i
+        exp_val = 0 if exp_val.negative? # Normalize invalid negative expirations
+
         super(
           text: text.to_s.freeze,
           emoji: emoji.to_s.freeze,
-          expiration: expiration.to_i
+          expiration: exp_val
         )
       end
 

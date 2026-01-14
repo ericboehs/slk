@@ -19,7 +19,8 @@ module SlackCli
       ].freeze
 
       def execute
-        return show_help if show_help?
+        result = validate_options
+        return result if result
 
         case positional_args
         in ["status" | "list"] | []
@@ -55,7 +56,7 @@ module SlackCli
         when "-f", "--force"
           @options[:force] = true
         else
-          remaining << arg
+          super
         end
       end
 
@@ -89,8 +90,13 @@ module SlackCli
 
         # Show standard emoji status
         if File.exist?(gemoji_path)
-          gemoji = JSON.parse(File.read(gemoji_path))
-          puts "Standard emoji database: #{gemoji.size} emojis"
+          begin
+            gemoji = JSON.parse(File.read(gemoji_path))
+            puts "Standard emoji database: #{gemoji.size} emojis"
+          rescue JSON::ParserError
+            puts "Standard emoji database: #{output.yellow("corrupted")}"
+            puts "  Run 'slk emoji sync-standard' to re-download"
+          end
         else
           puts "Standard emoji database: #{output.yellow("not downloaded")}"
           puts "  Run 'slk emoji sync-standard' to download"
@@ -105,7 +111,7 @@ module SlackCli
           if Dir.exist?(workspace_dir)
             files = Dir.glob(File.join(workspace_dir, "*"))
             count = files.count
-            size = files.sum { |f| File.size(f) rescue 0 }
+            size = files.sum { |f| safe_file_size(f) }
             size_str = format_size(size)
             puts "  #{workspace.name}: #{count} emojis (#{size_str})"
           else
@@ -126,9 +132,14 @@ module SlackCli
 
         # Search standard emoji
         if File.exist?(gemoji_path)
-          gemoji = JSON.parse(File.read(gemoji_path))
-          gemoji.each do |name, char|
-            results << { name: name, char: char, source: "standard" } if name.match?(pattern)
+          begin
+            gemoji = JSON.parse(File.read(gemoji_path))
+            gemoji.each do |name, char|
+              results << { name: name, char: char, source: "standard" } if name.match?(pattern)
+            end
+          rescue JSON::ParserError
+            # Skip standard emoji search if cache is corrupted
+            debug("Standard emoji cache corrupted, skipping")
           end
         end
 
@@ -196,6 +207,13 @@ module SlackCli
         else
           "#{bytes}B"
         end
+      end
+
+      # Get file size, returning 0 if file doesn't exist or is inaccessible
+      def safe_file_size(path)
+        File.size(path)
+      rescue Errno::ENOENT, Errno::EACCES
+        0
       end
 
       def sync_standard
@@ -315,7 +333,8 @@ module SlackCli
               else
                 failed += 1
               end
-            rescue *NETWORK_ERRORS, SystemCallError
+            rescue *NETWORK_ERRORS, SystemCallError => e
+              debug("Failed to download emoji #{name}: #{e.message}")
               failed += 1
             end
 
@@ -363,7 +382,7 @@ module SlackCli
         to_clear.each do |entry|
           files = Dir.glob(File.join(entry[:dir], "*"))
           count = files.count
-          size = files.sum { |f| File.size(f) rescue 0 }
+          size = files.sum { |f| safe_file_size(f) }
           total_count += count
           total_size += size
           puts "  #{entry[:name]}: #{count} files (#{format_size(size)})"

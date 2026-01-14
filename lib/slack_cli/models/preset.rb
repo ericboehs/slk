@@ -15,11 +15,18 @@ module SlackCli
       end
 
       def initialize(name:, text: "", emoji: "", duration: "0", presence: "", dnd: "")
+        name_str = name.to_s.strip
+        raise ArgumentError, "preset name cannot be empty" if name_str.empty?
+
+        duration_str = duration.to_s
+        # Validate duration at construction time (will raise ArgumentError if invalid)
+        Duration.parse(duration_str) unless duration_str.empty? || duration_str == "0"
+
         super(
-          name: name.to_s.freeze,
+          name: name_str.freeze,
           text: text.to_s.freeze,
           emoji: emoji.to_s.freeze,
-          duration: duration.to_s.freeze,
+          duration: duration_str.freeze,
           presence: presence.to_s.freeze,
           dnd: dnd.to_s.freeze
         )

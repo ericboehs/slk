@@ -6,7 +6,8 @@ module SlackCli
   module Commands
     class Thread < Messages
       def execute
-        return show_help if show_help?
+        result = validate_options
+        return result if result
 
         target = positional_args.first
         unless target

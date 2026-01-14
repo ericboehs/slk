@@ -6,7 +6,8 @@ module SlackCli
   module Commands
     class Messages < Base
       def execute
-        return show_help if show_help?
+        result = validate_options
+        return result if result
 
         target = positional_args.first
         unless target
@@ -79,7 +80,7 @@ module SlackCli
         when "--reaction-timestamps"
           @options[:reaction_timestamps] = true
         else
-          remaining << arg
+          super
         end
       end
 
