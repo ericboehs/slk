@@ -124,7 +124,10 @@ module SlackCli
       def display_reaction_activity(item, workspace, timestamp)
         reaction_data = item.dig('item', 'reaction')
         message_data = item.dig('item', 'message')
-        return unless reaction_data && message_data
+        unless reaction_data && message_data
+          debug('Could not display reaction activity - missing reaction or message data')
+          return
+        end
 
         user_id = reaction_data['user']
         username = resolve_user(workspace, user_id)
@@ -143,7 +146,10 @@ module SlackCli
 
       def display_mention_activity(item, workspace, timestamp)
         message_data = item.dig('item', 'message')
-        return unless message_data
+        unless message_data
+          debug('Could not display mention activity - missing message data')
+          return
+        end
 
         user_id = message_data['author_user_id'] || message_data['user']
         username = resolve_user(workspace, user_id)
@@ -160,7 +166,10 @@ module SlackCli
 
       def display_thread_v2_activity(item, workspace, timestamp)
         thread_entry = item.dig('item', 'bundle_info', 'payload', 'thread_entry')
-        return unless thread_entry
+        unless thread_entry
+          debug('Could not display thread activity - missing thread_entry data')
+          return
+        end
 
         channel_id = thread_entry['channel_id']
         channel = resolve_channel(workspace, channel_id)
@@ -176,7 +185,10 @@ module SlackCli
 
       def display_bot_dm_activity(item, workspace, timestamp)
         message_data = item.dig('item', 'bundle_info', 'payload', 'message')
-        return unless message_data
+        unless message_data
+          debug('Could not display bot DM activity - missing message data')
+          return
+        end
 
         channel_id = message_data['channel']
         message_ts = message_data['ts']
@@ -244,7 +256,8 @@ module SlackCli
 
         # Find the exact message by timestamp
         response['messages'].find { |msg| msg['ts'] == message_ts }
-      rescue ApiError
+      rescue ApiError => e
+        debug("Could not fetch message #{message_ts} from #{channel_id}: #{e.message}")
         nil
       end
 
