@@ -83,9 +83,10 @@ module SlackCli
         when :mentions
           'at_user,at_user_group,at_channel,at_everyone'
         when :threads
-          'thread_broadcast'
+          'thread_v2'
         else
-          'message_reaction,at_user,at_user_group'
+          # All activity types that the Slack web UI uses
+          'thread_v2,message_reaction,bot_dm_bundle,at_user,at_user_group,at_channel,at_everyone'
         end
       end
 
@@ -104,12 +105,14 @@ module SlackCli
         case type
         when 'message_reaction'
           display_reaction_activity(item, workspace, timestamp)
-        when 'at_user'
+        when 'at_user', 'at_user_group', 'at_channel', 'at_everyone'
           display_mention_activity(item, workspace, timestamp)
-        when 'thread_message'
-          display_thread_activity(item, workspace, timestamp)
+        when 'thread_v2'
+          display_thread_v2_activity(item, workspace, timestamp)
+        when 'bot_dm_bundle'
+          display_bot_dm_activity(item, workspace, timestamp)
         else
-          # Unknown activity type - skip
+          # Unknown activity type - skip silently
         end
       end
 
@@ -138,15 +141,22 @@ module SlackCli
         puts "#{output.blue(timestamp)} #{output.bold(username)} mentioned you in #{channel}"
       end
 
-      def display_thread_activity(item, workspace, timestamp)
-        message_data = item.dig('item', 'message')
+      def display_thread_v2_activity(item, workspace, timestamp)
+        thread_entry = item.dig('item', 'bundle_info', 'payload', 'thread_entry')
+        return unless thread_entry
+
+        channel_id = thread_entry['channel_id']
+
+        puts "#{output.blue(timestamp)} Thread activity in #{channel_id}"
+      end
+
+      def display_bot_dm_activity(item, workspace, timestamp)
+        message_data = item.dig('item', 'bundle_info', 'payload', 'message')
         return unless message_data
 
-        user_id = message_data['user']
-        username = resolve_user(workspace, user_id)
         channel = message_data['channel']
 
-        puts "#{output.blue(timestamp)} #{output.bold(username)} replied in thread in #{channel}"
+        puts "#{output.blue(timestamp)} Slackbot reminder in #{channel}"
       end
 
       def resolve_user(workspace, user_id)

@@ -29,8 +29,7 @@ class ActivityApiTest < Minitest::Test
 
     call = @mock_client.calls.last
     assert_equal 'activity.feed', call[:method]
-    assert_equal 'chrono_reads_and_unreads', call[:params][:mode]
-    assert_equal 'message_reaction', call[:params][:types]
+    assert_equal 'priority_reads_and_unreads_v1', call[:params][:mode]
   end
 
   def test_feed_with_limit

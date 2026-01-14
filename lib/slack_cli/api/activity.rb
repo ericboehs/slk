@@ -8,17 +8,17 @@ module SlackCli
         @workspace = workspace
       end
 
-      def feed(limit: 50, types: 'message_reaction', cursor: nil)
+      def feed(limit: 50, types: nil, cursor: nil, mode: 'priority_reads_and_unreads_v1')
         params = {
-          mode: 'chrono_reads_and_unreads',
+          mode: mode,
           limit: limit.to_s,
-          types: types,
           archive_only: 'false',
           snooze_only: 'false',
           unread_only: 'false',
           priority_only: 'false',
           is_activity_inbox: 'false'
         }
+        params[:types] = types if types
         params[:cursor] = cursor if cursor
 
         @api.post_form(@workspace, 'activity.feed', params)
