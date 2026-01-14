@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module SlackCli
+  # Dependency injection container providing services to commands
   class Runner
     attr_reader :output, :config, :token_store, :api_client, :cache_store, :preset_store
 

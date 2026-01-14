@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module SlackCli
+  # Command-line interface entry point that dispatches to commands
   class CLI
     COMMANDS = {
       'status' => Commands::Status,

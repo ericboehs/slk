@@ -2,6 +2,7 @@
 
 module SlackCli
   module Formatters
+    # Formats Slack messages for terminal display or JSON output
     class MessageFormatter
       def initialize(output:, mention_replacer:, emoji_replacer:, cache_store:, api_client: nil, on_debug: nil)
         @output = output

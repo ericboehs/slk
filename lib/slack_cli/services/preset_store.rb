@@ -2,6 +2,7 @@
 
 module SlackCli
   module Services
+    # Manages saved status presets in JSON format
     class PresetStore
       DEFAULT_PRESETS = {
         'meeting' => {

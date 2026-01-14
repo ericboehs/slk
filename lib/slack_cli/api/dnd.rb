@@ -2,6 +2,7 @@
 
 module SlackCli
   module Api
+    # Wrapper for Slack dnd.* (Do Not Disturb) API endpoints
     class Dnd
       def initialize(api_client, workspace)
         @api = api_client

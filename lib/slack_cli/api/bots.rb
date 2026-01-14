@@ -2,6 +2,7 @@
 
 module SlackCli
   module Api
+    # Wrapper for Slack bots.info API endpoint
     class Bots
       def initialize(api_client, workspace, on_debug: nil)
         @api = api_client

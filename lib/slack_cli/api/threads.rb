@@ -2,6 +2,7 @@
 
 module SlackCli
   module Api
+    # Wrapper for Slack thread subscription API endpoints
     class Threads
       def initialize(api_client, workspace)
         @api = api_client

@@ -2,6 +2,7 @@
 
 module SlackCli
   module Services
+    # Manages CLI configuration stored in XDG config directory
     class Configuration
       attr_accessor :on_warning
 

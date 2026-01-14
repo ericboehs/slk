@@ -2,6 +2,7 @@
 
 module SlackCli
   module Services
+    # HTTP client for Slack API with connection pooling
     class ApiClient
       BASE_URL = ENV.fetch('SLACK_API_BASE', 'https://slack.com/api')
 

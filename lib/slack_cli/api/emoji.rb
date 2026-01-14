@@ -2,6 +2,7 @@
 
 module SlackCli
   module Api
+    # Wrapper for Slack emoji.list API endpoint
     class Emoji
       def initialize(api_client, workspace)
         @api = api_client

@@ -2,6 +2,7 @@
 
 module SlackCli
   module Support
+    # Parses Slack message URLs into workspace, channel, and timestamp
     class SlackUrlParser
       # Patterns for Slack URLs
       # Channel IDs: C=channel, G=group DM, D=direct message

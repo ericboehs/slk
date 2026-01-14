@@ -4,6 +4,7 @@ require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
+    # Views and manages unread messages across workspaces
     class Unread < Base
       include Support::UserResolver
 

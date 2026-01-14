@@ -5,6 +5,7 @@ require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
+    # Downloads and manages workspace custom emoji
     class Emoji < Base
       include Support::InlineImages
 

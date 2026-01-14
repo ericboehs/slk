@@ -4,6 +4,7 @@ require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
+    # Gets or sets user presence (away/active)
     class Presence < Base
       def execute
         result = validate_options

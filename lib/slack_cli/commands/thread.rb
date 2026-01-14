@@ -4,6 +4,7 @@ require_relative 'messages'
 
 module SlackCli
   module Commands
+    # Views a message thread from a Slack URL
     class Thread < Messages
       def execute
         result = validate_options

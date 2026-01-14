@@ -2,6 +2,7 @@
 
 module SlackCli
   module Support
+    # XDG-compliant paths for config and cache directories
     class XdgPaths
       def config_dir
         @config_dir ||= File.join(

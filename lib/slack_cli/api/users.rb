@@ -2,6 +2,7 @@
 
 module SlackCli
   module Api
+    # Wrapper for Slack users.* API endpoints
     class Users
       def initialize(api_client, workspace, on_debug: nil)
         @api = api_client

@@ -4,6 +4,7 @@ require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
+    # Displays recent activity feed items (reactions, mentions, threads)
     class Activity < Base
       def execute
         result = validate_options

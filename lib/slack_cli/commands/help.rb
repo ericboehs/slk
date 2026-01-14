@@ -2,6 +2,7 @@
 
 module SlackCli
   module Commands
+    # Displays help information for commands
     class Help < Base
       def execute
         topic = positional_args.first

@@ -5,6 +5,7 @@ require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
+    # Manages and applies saved status presets
     class Preset < Base
       include Support::InlineImages
 

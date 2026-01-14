@@ -2,6 +2,7 @@
 
 module SlackCli
   module Support
+    # Logs errors to a file for debugging
     module ErrorLogger
       # Log an error to the error log file
       # @param error [Exception] The error to log

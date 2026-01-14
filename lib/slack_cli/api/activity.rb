@@ -2,6 +2,7 @@
 
 module SlackCli
   module Api
+    # Wrapper for the Slack activity.feed API endpoint
     class Activity
       def initialize(api_client, workspace)
         @api = api_client

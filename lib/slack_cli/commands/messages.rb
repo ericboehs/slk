@@ -5,6 +5,7 @@ require_relative '../support/inline_images'
 
 module SlackCli
   module Commands
+    # Reads messages from channels, DMs, or threads
     class Messages < Base
       include Support::InlineImages
 

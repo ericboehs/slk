@@ -4,6 +4,7 @@ require 'open3'
 
 module SlackCli
   module Services
+    # Encrypts/decrypts tokens using age with SSH keys
     class Encryption
       def available?
         system('which age > /dev/null 2>&1')

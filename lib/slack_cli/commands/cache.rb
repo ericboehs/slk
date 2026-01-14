@@ -4,6 +4,7 @@ require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
+    # Manages user and channel name cache
     class Cache < Base
       def execute
         result = validate_options

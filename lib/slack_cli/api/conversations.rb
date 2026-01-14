@@ -2,6 +2,7 @@
 
 module SlackCli
   module Api
+    # Wrapper for Slack conversations.* API endpoints
     class Conversations
       def initialize(api_client, workspace)
         @api = api_client

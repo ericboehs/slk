@@ -4,6 +4,7 @@ require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
+    # Interactive review and dismissal of unread messages
     class Catchup < Base
       include Support::UserResolver
 

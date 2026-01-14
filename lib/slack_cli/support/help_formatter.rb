@@ -71,6 +71,7 @@ module SlackCli
         lines.join("\n")
       end
 
+      # Represents a section within help output (OPTIONS, EXAMPLES, etc.)
       class Section
         attr_reader :title
 

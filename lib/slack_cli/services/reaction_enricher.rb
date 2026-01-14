@@ -2,6 +2,7 @@
 
 module SlackCli
   module Services
+    # Adds timestamps to message reactions via activity API
     class ReactionEnricher
       def initialize(activity_api:)
         @activity_api = activity_api

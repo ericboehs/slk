@@ -2,6 +2,7 @@
 
 module SlackCli
   module Api
+    # Wrapper for Slack client.counts and auth.test API endpoints
     class Client
       def initialize(api_client, workspace)
         @api = api_client

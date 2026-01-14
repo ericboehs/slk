@@ -2,6 +2,7 @@
 
 module SlackCli
   module Formatters
+    # Replaces :emoji: codes with unicode characters
     class EmojiReplacer
       EMOJI_REGEX = /:([a-zA-Z0-9_+-]+):/
       SKIN_TONE_REGEX = /::skin-tone-(\d)/

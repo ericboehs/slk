@@ -2,6 +2,7 @@
 
 module SlackCli
   module Formatters
+    # Formats Duration objects for display
     class DurationFormatter
       def format(duration)
         return '' if duration.nil? || duration.zero?

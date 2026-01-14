@@ -2,6 +2,7 @@
 
 module SlackCli
   module Formatters
+    # Terminal output with ANSI color support
     class Output
       COLORS = {
         red: "\e[0;31m",

@@ -2,6 +2,7 @@
 
 module SlackCli
   module Api
+    # Wrapper for Slack usergroups.list API endpoint
     class Usergroups
       def initialize(api_client, workspace)
         @api = api_client

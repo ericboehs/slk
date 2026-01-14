@@ -2,6 +2,7 @@
 
 module SlackCli
   module Formatters
+    # Replaces Slack mention syntax with readable @names and #channels
     class MentionReplacer
       USER_MENTION_REGEX = /<@([UW][A-Z0-9]+)(?:\|([^>]+))?>/
       CHANNEL_MENTION_REGEX = /<#([A-Z0-9]+)(?:\|([^>]*))?>/

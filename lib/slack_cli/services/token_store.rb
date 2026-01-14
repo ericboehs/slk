@@ -2,6 +2,7 @@
 
 module SlackCli
   module Services
+    # Manages workspace tokens with optional encryption
     class TokenStore
       attr_accessor :on_warning
 

@@ -8,6 +8,7 @@ require 'optparse'
 require 'time'
 require 'io/console'
 
+# Slack CLI - A command-line interface for Slack
 module SlackCli
   class Error < StandardError; end
   class ApiError < Error; end
@@ -21,6 +22,7 @@ module SlackCli
   autoload :CLI, 'slack_cli/cli'
   autoload :Runner, 'slack_cli/runner'
 
+  # Data models for Slack entities
   module Models
     autoload :Duration, 'slack_cli/models/duration'
     autoload :Workspace, 'slack_cli/models/workspace'
@@ -32,6 +34,7 @@ module SlackCli
     autoload :Preset, 'slack_cli/models/preset'
   end
 
+  # Application services for configuration, caching, and API communication
   module Services
     autoload :ApiClient, 'slack_cli/services/api_client'
     autoload :Configuration, 'slack_cli/services/configuration'
@@ -42,6 +45,7 @@ module SlackCli
     autoload :ReactionEnricher, 'slack_cli/services/reaction_enricher'
   end
 
+  # Output formatters for messages, durations, and emoji
   module Formatters
     autoload :Output, 'slack_cli/formatters/output'
     autoload :DurationFormatter, 'slack_cli/formatters/duration_formatter'
@@ -50,6 +54,7 @@ module SlackCli
     autoload :MessageFormatter, 'slack_cli/formatters/message_formatter'
   end
 
+  # CLI commands implementing user-facing functionality
   module Commands
     autoload :Base, 'slack_cli/commands/base'
     autoload :Status, 'slack_cli/commands/status'
@@ -68,6 +73,7 @@ module SlackCli
     autoload :Help, 'slack_cli/commands/help'
   end
 
+  # Thin wrappers around Slack API endpoints
   module Api
     autoload :Users, 'slack_cli/api/users'
     autoload :Conversations, 'slack_cli/api/conversations'
@@ -80,6 +86,7 @@ module SlackCli
     autoload :Activity, 'slack_cli/api/activity'
   end
 
+  # Utility classes for paths, parsing, and helpers
   module Support
     autoload :XdgPaths, 'slack_cli/support/xdg_paths'
     autoload :SlackUrlParser, 'slack_cli/support/slack_url_parser'

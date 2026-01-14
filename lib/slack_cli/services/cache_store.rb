@@ -2,6 +2,7 @@
 
 module SlackCli
   module Services
+    # Persistent cache for user names, channel names, and subteams
     class CacheStore
       attr_accessor :on_warning
 

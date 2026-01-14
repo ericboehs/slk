@@ -2,6 +2,7 @@
 
 module SlackCli
   module Commands
+    # Base class for all CLI commands with option parsing and output helpers
     class Base
       attr_reader :runner, :options, :positional_args
 

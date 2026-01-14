@@ -5,6 +5,7 @@ require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
+    # Gets or sets user status text and emoji
     class Status < Base
       include Support::InlineImages
 

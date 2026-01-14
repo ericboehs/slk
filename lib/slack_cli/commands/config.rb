@@ -4,6 +4,7 @@ require_relative '../support/help_formatter'
 
 module SlackCli
   module Commands
+    # Manages CLI configuration settings
     class Config < Base
       def execute
         result = validate_options
