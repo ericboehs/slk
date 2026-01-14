@@ -125,7 +125,8 @@ module SlackCli
         username = resolve_user(workspace, user_id)
         emoji_name = reaction_data['name']
         emoji = runner.emoji_replacer.lookup_emoji(emoji_name) || ":#{emoji_name}:"
-        channel = message_data['channel']
+        channel_id = message_data['channel']
+        channel = resolve_channel(workspace, channel_id)
 
         puts "#{output.blue(timestamp)} #{output.bold(username)} reacted #{emoji} in #{channel}"
       end
@@ -136,7 +137,8 @@ module SlackCli
 
         user_id = message_data['author_user_id'] || message_data['user']
         username = resolve_user(workspace, user_id)
-        channel = message_data['channel']
+        channel_id = message_data['channel']
+        channel = resolve_channel(workspace, channel_id)
 
         puts "#{output.blue(timestamp)} #{output.bold(username)} mentioned you in #{channel}"
       end
@@ -146,17 +148,59 @@ module SlackCli
         return unless thread_entry
 
         channel_id = thread_entry['channel_id']
+        channel = resolve_channel(workspace, channel_id)
 
-        puts "#{output.blue(timestamp)} Thread activity in #{channel_id}"
+        puts "#{output.blue(timestamp)} Thread activity in #{channel}"
       end
 
       def display_bot_dm_activity(item, workspace, timestamp)
         message_data = item.dig('item', 'bundle_info', 'payload', 'message')
         return unless message_data
 
-        channel = message_data['channel']
+        channel_id = message_data['channel']
+        message_ts = message_data['ts']
 
-        puts "#{output.blue(timestamp)} Slackbot reminder in #{channel}"
+        # Fetch the specific message using a narrow time window
+        api = runner.conversations_api(workspace.name)
+        # Use both oldest (exclusive) and latest (inclusive) to create a precise window
+        oldest_adjusted = (message_ts.to_f - 0.000001).to_s
+        latest_adjusted = (message_ts.to_f + 0.000001).to_s
+        response = api.history(
+          channel: channel_id,
+          limit: 1,
+          oldest: oldest_adjusted,
+          latest: latest_adjusted
+        )
+
+        debug("Bot DM fetch: channel=#{channel_id}, ts=#{message_ts}, " \
+              "ok=#{response['ok']}, messages=#{response['messages']&.length || 0}")
+
+        if response['ok'] && response['messages']&.any?
+          message = response['messages'].first
+
+          # Get the username from the message (should be the bot name)
+          username = if message['user']
+                       resolve_user(workspace, message['user'])
+                     elsif message['bot_id']
+                       'Slackbot'
+                     else
+                       'Bot'
+                     end
+
+          text = message['text']
+          text = '[No text]' if text.nil? || text.empty?
+          # Truncate long messages
+          text = "#{text[0..80]}..." if text.length > 80
+
+          puts "#{output.blue(timestamp)} #{output.bold(username)}: #{text}"
+        else
+          channel = resolve_channel(workspace, channel_id)
+          puts "#{output.blue(timestamp)} Bot message in #{channel}"
+        end
+      rescue ApiError
+        # Fall back to simple display if API call fails
+        channel = resolve_channel(workspace, channel_id)
+        puts "#{output.blue(timestamp)} Bot message in #{channel}"
       end
 
       def resolve_user(workspace, user_id)
@@ -166,6 +210,32 @@ module SlackCli
 
         # Fall back to user ID
         user_id
+      end
+
+      def resolve_channel(workspace, channel_id)
+        # DMs and Group DMs - don't try to resolve
+        return 'DM' if channel_id.start_with?('D')
+        return 'Group DM' if channel_id.start_with?('G')
+
+        # Try cache first
+        cached = cache_store.get_channel_name(workspace.name, channel_id)
+        return "##{cached}" if cached
+
+        # Try to fetch from API
+        begin
+          api = runner.conversations_api(workspace.name)
+          response = api.info(channel: channel_id)
+          if response['ok'] && response['channel']
+            name = response['channel']['name']
+            cache_store.set_channel(workspace.name, name, channel_id)
+            return "##{name}"
+          end
+        rescue ApiError
+          # Fall back to channel ID if API call fails
+        end
+
+        # Fall back to channel ID
+        channel_id
       end
 
       def format_activity_time(slack_timestamp)
