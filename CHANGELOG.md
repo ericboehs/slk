@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+<!-- TODO: Remove post_install_message from slk.gemspec before releasing 0.3.0 -->
+
+### Changed
+
+- Config/cache directories renamed from `slack-cli` to `slk`
+- Repository renamed from `slack-cli` to `slk`
+
 ## [0.1.0] - 2025-01-14
 
 Initial release of the Ruby rewrite. Pure Ruby, no external dependencies.
@@ -43,4 +52,4 @@ Initial release of the Ruby rewrite. Pure Ruby, no external dependencies.
   - Pure Ruby stdlib - no gem dependencies
   - Ruby 3.2+ with modern features (Data.define, pattern matching)
 
-[0.1.0]: https://github.com/ericboehs/slack-cli/releases/tag/v0.1.0
+[0.1.0]: https://github.com/ericboehs/slk/releases/tag/v0.1.0

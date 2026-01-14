@@ -12,7 +12,7 @@ class XdgPathsTest < Minitest::Test
     begin
       ENV["XDG_CONFIG_HOME"] = "/custom/config"
       paths = SlackCli::Support::XdgPaths.new
-      assert_equal "/custom/config/slack-cli", paths.config_dir
+      assert_equal "/custom/config/slk", paths.config_dir
     ensure
       ENV["XDG_CONFIG_HOME"] = original
     end
@@ -23,7 +23,7 @@ class XdgPathsTest < Minitest::Test
     begin
       ENV.delete("XDG_CONFIG_HOME")
       paths = SlackCli::Support::XdgPaths.new
-      expected = File.join(Dir.home, ".config", "slack-cli")
+      expected = File.join(Dir.home, ".config", "slk")
       assert_equal expected, paths.config_dir
     ensure
       ENV["XDG_CONFIG_HOME"] = original
@@ -35,7 +35,7 @@ class XdgPathsTest < Minitest::Test
     begin
       ENV["XDG_CACHE_HOME"] = "/custom/cache"
       paths = SlackCli::Support::XdgPaths.new
-      assert_equal "/custom/cache/slack-cli", paths.cache_dir
+      assert_equal "/custom/cache/slk", paths.cache_dir
     ensure
       ENV["XDG_CACHE_HOME"] = original
     end
@@ -46,7 +46,7 @@ class XdgPathsTest < Minitest::Test
     begin
       ENV.delete("XDG_CACHE_HOME")
       paths = SlackCli::Support::XdgPaths.new
-      expected = File.join(Dir.home, ".cache", "slack-cli")
+      expected = File.join(Dir.home, ".cache", "slk")
       assert_equal expected, paths.cache_dir
     ensure
       ENV["XDG_CACHE_HOME"] = original
@@ -55,12 +55,12 @@ class XdgPathsTest < Minitest::Test
 
   def test_config_file_joins_with_config_dir
     result = @paths.config_file("tokens.json")
-    assert result.end_with?("slack-cli/tokens.json")
+    assert result.end_with?("slk/tokens.json")
   end
 
   def test_cache_file_joins_with_cache_dir
     result = @paths.cache_file("emoji.json")
-    assert result.end_with?("slack-cli/emoji.json")
+    assert result.end_with?("slk/emoji.json")
   end
 
   def test_ensure_config_dir_creates_directory

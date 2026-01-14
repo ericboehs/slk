@@ -125,7 +125,7 @@ module SlackCli
       def load_gemoji_cache
         cache_path = File.join(
           ENV.fetch("XDG_CACHE_HOME", File.expand_path("~/.cache")),
-          "slack-cli",
+          "slk",
           "gemoji.json"
         )
 

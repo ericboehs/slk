@@ -4,7 +4,7 @@ require 'test_helper'
 
 class ConfigurationTest < Minitest::Test
   def setup
-    @tmpdir = Dir.mktmpdir('slack-cli-test')
+    @tmpdir = Dir.mktmpdir('slk-test')
     @paths = MockPaths.new(@tmpdir)
   end
 

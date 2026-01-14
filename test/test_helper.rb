@@ -28,7 +28,7 @@ module SlackCli
 
     # Create a temporary config directory
     def with_temp_config
-      Dir.mktmpdir("slack-cli-test") do |dir|
+      Dir.mktmpdir("slk-test") do |dir|
         old_config = ENV["XDG_CONFIG_HOME"]
         old_cache = ENV["XDG_CACHE_HOME"]
         ENV["XDG_CONFIG_HOME"] = dir

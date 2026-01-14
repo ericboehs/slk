@@ -152,6 +152,7 @@ module SlackCli
 
       def error(message)
         output.error(message)
+        1
       end
 
       def debug(message)

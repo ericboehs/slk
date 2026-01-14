@@ -6,14 +6,14 @@ module SlackCli
       def config_dir
         @config_dir ||= File.join(
           ENV.fetch("XDG_CONFIG_HOME", File.join(Dir.home, ".config")),
-          "slack-cli"
+          "slk"
         )
       end
 
       def cache_dir
         @cache_dir ||= File.join(
           ENV.fetch("XDG_CACHE_HOME", File.join(Dir.home, ".cache")),
-          "slack-cli"
+          "slk"
         )
       end
 

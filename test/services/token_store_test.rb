@@ -176,7 +176,7 @@ class TokenStoreTest < Minitest::Test
   # Corruption handling tests
   def test_corrupted_tokens_file_raises_error
     with_temp_config do |dir|
-      config_dir = "#{dir}/slack-cli"
+      config_dir = "#{dir}/slk"
       FileUtils.mkdir_p(config_dir)
       File.write("#{config_dir}/tokens.json", 'not valid json{')
 
@@ -203,7 +203,7 @@ class TokenStoreTest < Minitest::Test
       store = SlackCli::Services::TokenStore.new
       store.add('testws', 'xoxb-test')
 
-      config_dir = "#{dir}/slack-cli"
+      config_dir = "#{dir}/slk"
       tokens_file = "#{config_dir}/tokens.json"
 
       assert File.exist?(tokens_file)
@@ -253,7 +253,7 @@ class TokenStoreTest < Minitest::Test
   private
 
   def write_tokens_file(dir, tokens)
-    config_dir = "#{dir}/slack-cli"
+    config_dir = "#{dir}/slk"
     FileUtils.mkdir_p(config_dir)
     File.write("#{config_dir}/tokens.json", JSON.generate(tokens))
   end

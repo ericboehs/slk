@@ -173,7 +173,7 @@ class CacheStoreTest < Minitest::Test
   def test_corrupted_user_cache_triggers_warning
     with_temp_config do |dir|
       # Create a corrupted cache file
-      cache_dir = "#{dir}/cache/slack-cli"
+      cache_dir = "#{dir}/cache/slk"
       FileUtils.mkdir_p(cache_dir)
       File.write("#{cache_dir}/users-workspace1.json", "not valid json{")
 
@@ -191,7 +191,7 @@ class CacheStoreTest < Minitest::Test
 
   def test_corrupted_channel_cache_triggers_warning
     with_temp_config do |dir|
-      cache_dir = "#{dir}/cache/slack-cli"
+      cache_dir = "#{dir}/cache/slk"
       FileUtils.mkdir_p(cache_dir)
       File.write("#{cache_dir}/channels-workspace1.json", "not valid json{")
 
@@ -208,7 +208,7 @@ class CacheStoreTest < Minitest::Test
 
   def test_corrupted_subteam_cache_triggers_warning
     with_temp_config do |dir|
-      cache_dir = "#{dir}/cache/slack-cli"
+      cache_dir = "#{dir}/cache/slk"
       FileUtils.mkdir_p(cache_dir)
       File.write("#{cache_dir}/subteams-workspace1.json", "not valid json{")
 
