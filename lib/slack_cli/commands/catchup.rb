@@ -152,7 +152,8 @@ module SlackCli
             end
           end
 
-          success("Marked #{dms_marked} DMs, #{channels_marked} channels, and #{threads_marked} threads as read on #{workspace.name}")
+          success("Marked #{dms_marked} DMs, #{channels_marked} channels, " \
+                  "and #{threads_marked} threads as read on #{workspace.name}")
         end
 
         0

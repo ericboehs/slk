@@ -13,10 +13,10 @@ class WorkspacesCommandTest < Minitest::Test
 
   def create_runner
     preset_store = Object.new
-    preset_store.define_singleton_method(:on_warning=) { |_| }
+    preset_store.define_singleton_method(:on_warning=) { |_| nil }
 
     cache_store = Object.new
-    cache_store.define_singleton_method(:on_warning=) { |_| }
+    cache_store.define_singleton_method(:on_warning=) { |_| nil }
 
     SlackCli::Runner.new(
       output: @output,

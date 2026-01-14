@@ -12,19 +12,19 @@ class HelpCommandTest < Minitest::Test
   def create_runner
     config = Object.new
     config.define_singleton_method(:primary_workspace) { nil }
-    config.define_singleton_method(:on_warning=) { |_| }
+    config.define_singleton_method(:on_warning=) { |_| nil }
 
     token_store = Object.new
     token_store.define_singleton_method(:empty?) { true }
     token_store.define_singleton_method(:all_workspaces) { [] }
     token_store.define_singleton_method(:workspace_names) { [] }
-    token_store.define_singleton_method(:on_warning=) { |_| }
+    token_store.define_singleton_method(:on_warning=) { |_| nil }
 
     preset_store = Object.new
-    preset_store.define_singleton_method(:on_warning=) { |_| }
+    preset_store.define_singleton_method(:on_warning=) { |_| nil }
 
     cache_store = Object.new
-    cache_store.define_singleton_method(:on_warning=) { |_| }
+    cache_store.define_singleton_method(:on_warning=) { |_| nil }
 
     SlackCli::Runner.new(
       output: @output,

@@ -214,7 +214,7 @@ class MessageFormatterTest < Minitest::Test
       @users["#{workspace}:#{user_id}"]
     end
 
-    def set_user(workspace, user_id, name, persist: false)
+    def set_user(workspace, user_id, name, persist: false) # rubocop:disable Lint/UnusedMethodArgument
       @users["#{workspace}:#{user_id}"] = name
     end
 

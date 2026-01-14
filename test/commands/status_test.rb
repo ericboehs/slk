@@ -22,16 +22,16 @@ class StatusCommandTest < Minitest::Test
     token_store.define_singleton_method(:all_workspaces) { workspace_list }
     token_store.define_singleton_method(:workspace_names) { workspace_list.map(&:name) }
     token_store.define_singleton_method(:empty?) { workspace_list.empty? }
-    token_store.define_singleton_method(:on_warning=) { |_| }
+    token_store.define_singleton_method(:on_warning=) { |_| nil }
 
     config = Object.new
     config.define_singleton_method(:primary_workspace) { workspace_list.first&.name }
     config.define_singleton_method(:emoji_dir) { nil }
-    config.define_singleton_method(:on_warning=) { |_| }
+    config.define_singleton_method(:on_warning=) { |_| nil }
     config.define_singleton_method(:[]) { |_| nil }
 
     preset_store = Object.new
-    preset_store.define_singleton_method(:on_warning=) { |_| }
+    preset_store.define_singleton_method(:on_warning=) { |_| nil }
 
     SlackCli::Runner.new(
       output: @output,

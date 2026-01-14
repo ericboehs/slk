@@ -20,14 +20,14 @@ class ConfigCommandTest < Minitest::Test
     token_store.define_singleton_method(:all_workspaces) { workspace_list }
     token_store.define_singleton_method(:workspace_names) { workspace_list.map(&:name) }
     token_store.define_singleton_method(:empty?) { workspace_list.empty? }
-    token_store.define_singleton_method(:on_warning=) { |_| }
-    token_store.define_singleton_method(:add) { |_name, _token, _cookie| }
+    token_store.define_singleton_method(:on_warning=) { |_| nil }
+    token_store.define_singleton_method(:add) { |_name, _token, _cookie| nil }
 
     preset_store = Object.new
-    preset_store.define_singleton_method(:on_warning=) { |_| }
+    preset_store.define_singleton_method(:on_warning=) { |_| nil }
 
     cache_store = Object.new
-    cache_store.define_singleton_method(:on_warning=) { |_| }
+    cache_store.define_singleton_method(:on_warning=) { |_| nil }
 
     SlackCli::Runner.new(
       output: @output,

@@ -66,16 +66,16 @@ class BaseCommandTest < Minitest::Test
     token_store.define_singleton_method(:all_workspaces) { [workspace] }
     token_store.define_singleton_method(:workspace_names) { ['test'] }
     token_store.define_singleton_method(:empty?) { false }
-    token_store.define_singleton_method(:on_warning=) { |_| }
+    token_store.define_singleton_method(:on_warning=) { |_| nil }
 
     config = Object.new
     config.define_singleton_method(:primary_workspace) { 'test' }
     config.define_singleton_method(:emoji_dir) { nil }
-    config.define_singleton_method(:on_warning=) { |_| }
+    config.define_singleton_method(:on_warning=) { |_| nil }
     config.define_singleton_method(:[]) { |_| nil }
 
     preset_store = Object.new
-    preset_store.define_singleton_method(:on_warning=) { |_| }
+    preset_store.define_singleton_method(:on_warning=) { |_| nil }
 
     runner = SlackCli::Runner.new(
       output: @output,
