@@ -12,58 +12,45 @@ module SlackCli
       end
 
       # Wrap text to width, handling first line differently and preserving existing newlines
-      # @param text [String] Text to wrap
-      # @param first_line_width [Integer] Width for first line
-      # @param continuation_width [Integer] Width for subsequent lines
-      # @return [String] Wrapped text
       def wrap(text, first_line_width, continuation_width)
         result = []
-
         text.each_line do |paragraph|
-          paragraph = paragraph.chomp
-          if paragraph.empty?
-            result << ''
-            next
-          end
-
-          # For each paragraph, wrap to width
-          # First paragraph's first line uses first_line_width, all other lines use continuation_width
-          current_first_width = result.empty? ? first_line_width : continuation_width
-          wrapped = wrap_paragraph(paragraph, current_first_width, continuation_width)
-          result << wrapped
+          process_paragraph(paragraph.chomp, result, first_line_width, continuation_width)
         end
-
         result.join("\n")
       end
 
-      # Wrap a single paragraph (no internal newlines)
-      # @param text [String] Paragraph text
-      # @param first_width [Integer] Width for first line
-      # @param rest_width [Integer] Width for subsequent lines
-      # @return [String] Wrapped paragraph
-      def wrap_paragraph(text, first_width, rest_width)
-        words = text.split(/(\s+)/)
-        lines = []
-        current_line = ''
-        current_width = first_width
-
-        words.each do |word|
-          word_len = visible_length(word)
-
-          if current_line.empty?
-            current_line = word
-          elsif visible_length(current_line) + word_len <= current_width
-            current_line += word
-          else
-            lines << current_line
-            current_line = word.lstrip
-            current_width = rest_width
-          end
+      def process_paragraph(paragraph, result, first_line_width, continuation_width)
+        if paragraph.empty?
+          result << ''
+        else
+          current_first_width = result.empty? ? first_line_width : continuation_width
+          result << wrap_paragraph(paragraph, current_first_width, continuation_width)
         end
+      end
 
-        lines << current_line unless current_line.empty?
+      # Wrap a single paragraph (no internal newlines)
+      def wrap_paragraph(text, first_width, rest_width)
+        state = { lines: [], current_line: '', current_width: first_width, rest_width: rest_width }
+        text.split(/(\s+)/).each { |word| process_word(word, state) }
+        state[:lines] << state[:current_line] unless state[:current_line].empty?
+        state[:lines].join("\n")
+      end
 
-        lines.join("\n")
+      def process_word(word, state)
+        if state[:current_line].empty?
+          state[:current_line] = word
+        elsif visible_length(state[:current_line]) + visible_length(word) <= state[:current_width]
+          state[:current_line] += word
+        else
+          start_new_line(word, state)
+        end
+      end
+
+      def start_new_line(word, state)
+        state[:lines] << state[:current_line]
+        state[:current_line] = word.lstrip
+        state[:current_width] = state[:rest_width]
       end
     end
   end

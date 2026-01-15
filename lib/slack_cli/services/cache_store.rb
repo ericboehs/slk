@@ -3,6 +3,7 @@
 module SlackCli
   module Services
     # Persistent cache for user names, channel names, and subteams
+    # rubocop:disable Metrics/ClassLength
     class CacheStore
       attr_accessor :on_warning
 
@@ -195,5 +196,6 @@ module SlackCli
         @paths.cache_file("subteams-#{workspace_name}.json")
       end
     end
+    # rubocop:enable Metrics/ClassLength
   end
 end

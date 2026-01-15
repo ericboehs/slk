@@ -24,25 +24,29 @@ module SlackCli
       # Print an inline image using iTerm2 protocol
       # In tmux, uses passthrough sequence and cursor positioning
       def print_inline_image(path, height: 1)
-        return unless File.exist?(path)
+        data = read_image_data(path)
+        return unless data
 
-        begin
-          data = File.binread(path)
-        rescue IOError, SystemCallError
-          # File exists but can't be read - skip silently
-          return
-        end
-        encoded = [data].pack('m0') # Base64 encode
+        encoded = [data].pack('m0')
+        in_tmux? ? print_tmux_image(encoded, height) : print_iterm_image(encoded, height)
+      end
 
-        if in_tmux?
-          # tmux passthrough: \n + space required for image to render
-          fmt = "\ePtmux;\e\e]1337;File=inline=1;preserveAspectRatio=0;" \
-                "size=%<size>d;height=%<height>d:%<data>s\a\e\\\n "
-          printf fmt, size: encoded.length, height: height, data: encoded
-        else
-          # Standard iTerm2 format
-          printf "\e]1337;File=inline=1;height=%<height>d:%<data>s\a", height: height, data: encoded
-        end
+      def read_image_data(path)
+        return nil unless File.exist?(path)
+
+        File.binread(path)
+      rescue IOError, SystemCallError
+        nil
+      end
+
+      def print_tmux_image(encoded, height)
+        fmt = "\ePtmux;\e\e]1337;File=inline=1;preserveAspectRatio=0;" \
+              "size=%<size>d;height=%<height>d:%<data>s\a\e\\\n "
+        printf fmt, size: encoded.length, height: height, data: encoded
+      end
+
+      def print_iterm_image(encoded, height)
+        printf "\e]1337;File=inline=1;height=%<height>d:%<data>s\a", height: height, data: encoded
       end
 
       # Print inline image with name on same line

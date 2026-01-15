@@ -38,12 +38,13 @@ module SlackCli
 
       def total_unread_count
         response = counts
+        sum_mentions(response, 'channels') + sum_mentions(response, 'ims') + sum_mentions(response, 'mpims')
+      end
 
-        channel_count = (response['channels'] || []).sum { |c| c['mention_count'] || 0 }
-        dm_count = (response['ims'] || []).sum { |d| d['mention_count'] || 0 }
-        mpim_count = (response['mpims'] || []).sum { |m| m['mention_count'] || 0 }
+      private
 
-        channel_count + dm_count + mpim_count
+      def sum_mentions(response, key)
+        (response[key] || []).sum { |item| item['mention_count'] || 0 }
       end
     end
   end

@@ -22,16 +22,15 @@ module SlackCli
       # Enrich a single activity item based on its type
       def enrich_item(item, workspace)
         type = item.dig('item', 'type')
+        dispatch_enrich(type, item, workspace)
+      end
 
+      def dispatch_enrich(type, item, workspace)
         case type
-        when 'message_reaction'
-          enrich_reaction(item, workspace)
-        when 'at_user', 'at_user_group', 'at_channel', 'at_everyone'
-          enrich_mention(item, workspace)
-        when 'thread_v2'
-          enrich_thread(item, workspace)
-        when 'bot_dm_bundle'
-          enrich_bot_dm(item, workspace)
+        when 'message_reaction' then enrich_reaction(item, workspace)
+        when 'at_user', 'at_user_group', 'at_channel', 'at_everyone' then enrich_mention(item, workspace)
+        when 'thread_v2' then enrich_thread(item, workspace)
+        when 'bot_dm_bundle' then enrich_bot_dm(item, workspace)
         end
       end
 

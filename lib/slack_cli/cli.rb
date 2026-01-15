@@ -2,6 +2,7 @@
 
 module SlackCli
   # Command-line interface entry point that dispatches to commands
+  # rubocop:disable Metrics/ClassLength
   class CLI
     COMMANDS = {
       'status' => Commands::Status,
@@ -28,85 +29,123 @@ module SlackCli
     def run
       command_name, *args = @argv
 
-      # Handle version flags
-      return run_command('help', []) if command_name.nil? || command_name == '--help' || command_name == '-h'
+      return show_help if help_requested?(command_name)
+      return show_version if version_requested?(command_name)
 
-      if ['--version', '-V', 'version'].include?(command_name)
-        @output.puts "slk v#{VERSION}"
-        return 0
-      end
-
-      # Look up command
-      if COMMANDS[command_name]
-        run_command(command_name, args)
-      elsif preset_exists?(command_name)
-        # Treat as preset shortcut
-        run_command('preset', [command_name] + args)
-      else
-        @output.error("Unknown command: #{command_name}")
-        @output.puts
-        @output.puts "Run 'slk help' for available commands."
-        1
-      end
-    rescue ConfigError => e
-      @output.error(e.message)
-      log_error(e)
-      1
-    rescue EncryptionError => e
-      @output.error("Encryption error: #{e.message}")
-      log_error(e)
-      1
-    rescue ApiError => e
-      @output.error("API error: #{e.message}")
-      log_error(e)
-      1
+      dispatch_command(command_name, args)
     rescue Interrupt
-      @output.puts
-      @output.puts 'Interrupted.'
-      130
+      handle_interrupt
     rescue StandardError => e
-      @output.error("Unexpected error: #{e.message}")
-      log_path = log_error(e)
-      @output.puts "Details logged to: #{log_path}" if log_path
-      1
+      handle_error(e)
     end
 
     private
+
+    def help_requested?(command_name)
+      command_name.nil? || command_name == '--help' || command_name == '-h'
+    end
+
+    def version_requested?(command_name)
+      ['--version', '-V', 'version'].include?(command_name)
+    end
+
+    def show_help
+      run_command('help', [])
+    end
+
+    def show_version
+      @output.puts "slk v#{VERSION}"
+      0
+    end
+
+    def dispatch_command(command_name, args)
+      if COMMANDS[command_name]
+        run_command(command_name, args)
+      elsif preset_exists?(command_name)
+        run_command('preset', [command_name] + args)
+      else
+        show_unknown_command(command_name)
+      end
+    rescue ConfigError, EncryptionError, ApiError => e
+      handle_known_error(e)
+    end
+
+    def show_unknown_command(command_name)
+      @output.error("Unknown command: #{command_name}")
+      @output.puts
+      @output.puts "Run 'slk help' for available commands."
+      1
+    end
+
+    def handle_known_error(error)
+      label = error_label(error)
+      @output.error(label ? "#{label}: #{error.message}" : error.message)
+      log_error(error)
+      1
+    end
+
+    def error_label(error)
+      case error
+      when EncryptionError then 'Encryption error'
+      when ApiError then 'API error'
+      end
+    end
+
+    def handle_interrupt
+      @output.puts
+      @output.puts 'Interrupted.'
+      130
+    end
+
+    def handle_error(error)
+      @output.error("Unexpected error: #{error.message}")
+      log_path = log_error(error)
+      @output.puts "Details logged to: #{log_path}" if log_path
+      1
+    end
 
     def run_command(name, args)
       command_class = COMMANDS[name]
       return 1 unless command_class
 
-      verbose = args.include?('-v') || args.include?('--verbose')
-
-      # Create output with verbose flag
-      output = Formatters::Output.new(verbose: verbose)
-      runner = Runner.new(output: output)
-
-      # Set up API call logging if verbose
-      if verbose
-        runner.api_client.on_request = lambda { |method, count|
-          output.debug("[API ##{count}] #{method}")
-        }
-      end
-
-      command = command_class.new(args, runner: runner)
-      result = command.execute
-
-      # Show API call count if verbose
-      if verbose && runner.api_client.call_count.positive?
-        output.debug("Total API calls: #{runner.api_client.call_count}")
-      end
-
-      result
+      runner = build_runner(args)
+      execute_command(command_class, args, runner)
     ensure
-      # Clean up HTTP connections
       runner&.api_client&.close
     end
 
+    def build_runner(args)
+      verbose = args.include?('-v') || args.include?('--verbose')
+      output = Formatters::Output.new(verbose: verbose)
+      runner = Runner.new(output: output)
+      setup_verbose_logging(runner, output) if verbose
+      runner
+    end
+
+    def setup_verbose_logging(runner, output)
+      runner.api_client.on_request = lambda { |method, count|
+        output.debug("[API ##{count}] #{method}")
+      }
+    end
+
+    def execute_command(command_class, args, runner)
+      command = command_class.new(args, runner: runner)
+      result = command.execute
+      log_api_call_count(runner) if verbose_mode?(args)
+      result
+    end
+
+    def verbose_mode?(args)
+      args.include?('-v') || args.include?('--verbose')
+    end
+
+    def log_api_call_count(runner)
+      return unless runner.api_client.call_count.positive?
+
+      runner.output.debug("Total API calls: #{runner.api_client.call_count}")
+    end
+
     def preset_exists?(name)
-      # PresetStore handles JSON parse errors internally via on_warning callback
-      # ConfigError should propagate as it indicates a real configuration problem
       Services::PresetStore.new.exists?(name)
     end
 
@@ -114,4 +153,5 @@ module SlackCli
       Support::ErrorLogger.log(error)
     end
   end
+  # rubocop:enable Metrics/ClassLength
 end

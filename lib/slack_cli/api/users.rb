@@ -69,26 +69,31 @@ module SlackCli
 
       def muted_channels
         prefs = get_prefs
-
-        # First try the legacy muted_channels format (comma-separated string)
-        muted = prefs.dig('prefs', 'muted_channels')
-        return muted.split(',').reject(&:empty?) if muted.is_a?(String) && !muted.empty?
-
-        # New format: muted channels are in all_notifications_prefs JSON string
-        # Structure: {"channels": {"C123": {"muted": true}, ...}}
-        notifications_prefs = prefs.dig('prefs', 'all_notifications_prefs')
-        if notifications_prefs.is_a?(String) && !notifications_prefs.empty?
-          begin
-            parsed = JSON.parse(notifications_prefs)
-            channels = parsed['channels'] || {}
-            return channels.select { |_id, opts| opts['muted'] == true }.keys
-          rescue JSON::ParserError => e
-            @on_debug&.call("Failed to parse notification prefs: #{e.message}")
-          end
-        end
-
-        []
+        parse_legacy_muted_channels(prefs) || parse_new_muted_channels(prefs) || []
       end
+
+      private
+
+      def parse_legacy_muted_channels(prefs)
+        muted = prefs.dig('prefs', 'muted_channels')
+        return nil unless muted.is_a?(String) && !muted.empty?
+
+        muted.split(',').reject(&:empty?)
+      end
+
+      def parse_new_muted_channels(prefs)
+        notifications_prefs = prefs.dig('prefs', 'all_notifications_prefs')
+        return nil unless notifications_prefs.is_a?(String) && !notifications_prefs.empty?
+
+        parsed = JSON.parse(notifications_prefs)
+        channels = parsed['channels'] || {}
+        channels.select { |_id, opts| opts['muted'] == true }.keys
+      rescue JSON::ParserError => e
+        @on_debug&.call("Failed to parse notification prefs: #{e.message}")
+        nil
+      end
+
+      public
 
       def conversations(cursor: nil, limit: 1000)
         params = { limit: limit, types: 'public_channel,private_channel,mpim,im' }

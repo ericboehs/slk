@@ -62,7 +62,12 @@ module SlackCli
       def help_text
         help = Support::HelpFormatter.new('slk emoji <action> [workspace]')
         help.description('Manage emoji cache.')
+        add_actions_section(help)
+        add_options_section(help)
+        help.render
+      end
 
+      def add_actions_section(help)
         help.section('ACTIONS') do |s|
           s.action('status', 'Show emoji cache status')
           s.action('search <query>', 'Search emoji by name (all workspaces by default)')
@@ -70,14 +75,14 @@ module SlackCli
           s.action('download [ws]', 'Download workspace custom emoji')
           s.action('clear [ws]', 'Clear emoji cache')
         end
+      end
 
+      def add_options_section(help)
         help.section('OPTIONS') do |s|
           s.option('-w, --workspace', 'Limit to specific workspace')
           s.option('-f, --force', 'Skip confirmation for clear')
           s.option('-q, --quiet', 'Suppress output')
         end
-
-        help.render
       end
 
       private
@@ -97,34 +102,41 @@ module SlackCli
         gemoji_path = File.join(cache_dir, 'gemoji.json')
 
         if File.exist?(gemoji_path)
-          begin
-            gemoji = JSON.parse(File.read(gemoji_path))
-            puts "Standard emoji database: #{gemoji.size} emojis"
-          rescue JSON::ParserError
-            puts "Standard emoji database: #{output.yellow('corrupted')}"
-            puts "  Run 'slk emoji sync-standard' to re-download"
-          end
+          display_gemoji_status(gemoji_path)
         else
           puts "Standard emoji database: #{output.yellow('not downloaded')}"
           puts "  Run 'slk emoji sync-standard' to download"
         end
       end
 
+      def display_gemoji_status(gemoji_path)
+        gemoji = JSON.parse(File.read(gemoji_path))
+        puts "Standard emoji database: #{gemoji.size} emojis"
+      rescue JSON::ParserError
+        puts "Standard emoji database: #{output.yellow('corrupted')}"
+        puts "  Run 'slk emoji sync-standard' to re-download"
+      end
+
       def show_workspace_emoji_status(emoji_dir)
         puts "Workspace emojis: (#{emoji_dir})"
+        target_workspaces.each { |workspace| display_workspace_status(emoji_dir, workspace) }
+      end
 
-        target_workspaces.each do |workspace|
-          workspace_dir = File.join(emoji_dir, workspace.name)
+      def display_workspace_status(emoji_dir, workspace)
+        workspace_dir = File.join(emoji_dir, workspace.name)
 
-          if Dir.exist?(workspace_dir)
-            files = Dir.glob(File.join(workspace_dir, '*'))
-            count = files.count
-            size = files.sum { |f| safe_file_size(f) }
-            puts "  #{workspace.name}: #{count} emojis (#{format_size(size)})"
-          else
-            puts "  #{workspace.name}: #{output.yellow('not downloaded')}"
-          end
+        if Dir.exist?(workspace_dir)
+          display_workspace_emoji_count(workspace.name, workspace_dir)
+        else
+          puts "  #{workspace.name}: #{output.yellow('not downloaded')}"
         end
+      end
+
+      def display_workspace_emoji_count(name, workspace_dir)
+        files = Dir.glob(File.join(workspace_dir, '*'))
+        count = files.count
+        size = files.sum { |f| safe_file_size(f) }
+        puts "  #{name}: #{count} emojis (#{format_size(size)})"
       end
 
       def search_emoji(query)
@@ -207,22 +219,19 @@ module SlackCli
 
       def sync_standard
         paths = Support::XdgPaths.new
-
-        syncer = Services::GemojiSync.new(
-          cache_dir: paths.cache_dir,
-          on_progress: ->(msg) { puts msg }
-        )
-
+        syncer = Services::GemojiSync.new(cache_dir: paths.cache_dir, on_progress: ->(msg) { puts msg })
         result = syncer.sync
 
-        if result[:error]
-          error(result[:error])
-          return 1
-        end
+        return sync_error(result[:error]) if result[:error]
 
         success("Downloaded #{result[:count]} standard emoji mappings")
         puts "  Location: #{result[:path]}"
         0
+      end
+
+      def sync_error(message)
+        error(message)
+        1
       end
 
       def download_emoji(workspace_name)
@@ -301,20 +310,21 @@ module SlackCli
 
       def display_clear_preview(to_clear)
         puts 'Will delete:'
-        total_count = 0
-        total_size = 0
+        totals = { count: 0, size: 0 }
 
-        to_clear.each do |entry|
-          files = Dir.glob(File.join(entry[:dir], '*'))
-          count = files.count
-          size = files.sum { |f| safe_file_size(f) }
-          total_count += count
-          total_size += size
-          puts "  #{entry[:name]}: #{count} files (#{format_size(size)})"
-        end
+        to_clear.each { |entry| display_clear_entry(entry, totals) }
 
-        puts "  Total: #{total_count} files (#{format_size(total_size)})"
-        { total_count: total_count, total_size: total_size }
+        puts "  Total: #{totals[:count]} files (#{format_size(totals[:size])})"
+        { total_count: totals[:count], total_size: totals[:size] }
+      end
+
+      def display_clear_entry(entry, totals)
+        files = Dir.glob(File.join(entry[:dir], '*'))
+        count = files.count
+        size = files.sum { |f| safe_file_size(f) }
+        totals[:count] += count
+        totals[:size] += size
+        puts "  #{entry[:name]}: #{count} files (#{format_size(size)})"
       end
 
       def confirm_clear?

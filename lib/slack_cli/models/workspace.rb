@@ -11,22 +11,9 @@ module SlackCli
         token_str = token.to_s
         cookie_str = cookie&.to_s
 
-        # Validate name is not empty and doesn't contain path separators
-        raise ArgumentError, 'workspace name cannot be empty' if name_str.empty?
-        raise ArgumentError, 'workspace name contains invalid characters' if name_str.match?(%r{[/\\]})
-
-        # Validate token format
-        unless VALID_TOKEN_PREFIXES.any? { |prefix| token_str.start_with?(prefix) }
-          raise ArgumentError, 'invalid token format (must start with xoxb-, xoxc-, or xoxp-)'
-        end
-
-        # xoxc tokens require a cookie
-        if token_str.start_with?('xoxc-') && (cookie_str.nil? || cookie_str.strip.empty?)
-          raise ArgumentError, 'xoxc tokens require a cookie'
-        end
-
-        # Validate cookie doesn't contain newlines (HTTP header injection prevention)
-        raise ArgumentError, 'cookie cannot contain newlines' if cookie_str&.match?(/[\r\n]/)
+        validate_name!(name_str)
+        validate_token!(token_str)
+        validate_cookie!(token_str, cookie_str)
 
         super(name: name_str.freeze, token: token_str.freeze, cookie: cookie_str&.freeze)
       end
@@ -38,12 +25,29 @@ module SlackCli
       def to_s = name
 
       def headers
-        h = {
-          'Authorization' => "Bearer #{token}",
-          'Content-Type' => 'application/json; charset=utf-8'
-        }
+        h = { 'Authorization' => "Bearer #{token}", 'Content-Type' => 'application/json; charset=utf-8' }
         h['Cookie'] = "d=#{cookie}" if cookie
         h
+      end
+
+      private
+
+      def validate_name!(name_str)
+        raise ArgumentError, 'workspace name cannot be empty' if name_str.empty?
+        raise ArgumentError, 'workspace name contains invalid characters' if name_str.match?(%r{[/\\]})
+      end
+
+      def validate_token!(token_str)
+        return if VALID_TOKEN_PREFIXES.any? { |prefix| token_str.start_with?(prefix) }
+
+        raise ArgumentError, 'invalid token format (must start with xoxb-, xoxc-, or xoxp-)'
+      end
+
+      def validate_cookie!(token_str, cookie_str)
+        if token_str.start_with?('xoxc-') && (cookie_str.nil? || cookie_str.strip.empty?)
+          raise ArgumentError, 'xoxc tokens require a cookie'
+        end
+        raise ArgumentError, 'cookie cannot contain newlines' if cookie_str&.match?(/[\r\n]/)
       end
     end
   end

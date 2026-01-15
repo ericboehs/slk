@@ -6,6 +6,7 @@ require_relative '../support/help_formatter'
 module SlackCli
   module Commands
     # Manages and applies saved status presets
+    # rubocop:disable Metrics/ClassLength
     class Preset < Base
       include Support::InlineImages
 
@@ -13,17 +14,16 @@ module SlackCli
         result = validate_options
         return result if result
 
+        dispatch_action
+      end
+
+      def dispatch_action
         case positional_args
-        in ['list' | 'ls'] | []
-          list_presets
-        in ['add']
-          add_preset
-        in ['edit', name]
-          edit_preset(name)
-        in ['delete' | 'rm', name]
-          delete_preset(name)
-        in [name, *]
-          apply_preset(name)
+        in ['list' | 'ls'] | [] then list_presets
+        in ['add'] then add_preset
+        in ['edit', name] then edit_preset(name)
+        in ['delete' | 'rm', name] then delete_preset(name)
+        in [name, *] then apply_preset(name)
         end
       end
 
@@ -32,7 +32,13 @@ module SlackCli
       def help_text
         help = Support::HelpFormatter.new('slk preset <action|name> [options]')
         help.description('Manage and apply status presets.')
+        add_actions_section(help)
+        add_examples_section(help)
+        add_options_section(help)
+        help.render
+      end
 
+      def add_actions_section(help)
         help.section('ACTIONS') do |s|
           s.action('list', 'List all presets')
           s.action('add', 'Add a new preset (interactive)')
@@ -40,42 +46,54 @@ module SlackCli
           s.action('delete <name>', 'Delete a preset')
           s.action('<name>', 'Apply a preset')
         end
+      end
 
+      def add_examples_section(help)
         help.section('EXAMPLES') do |s|
           s.example('slk preset list')
           s.example('slk preset meeting')
           s.example('slk preset add')
         end
+      end
 
+      def add_options_section(help)
         help.section('OPTIONS') do |s|
           s.option('-w, --workspace', 'Specify workspace')
           s.option('--all', 'Apply to all workspaces')
           s.option('-q, --quiet', 'Suppress output')
         end
-
-        help.render
       end
 
       private
 
       def list_presets
         presets = preset_store.all
-
-        if presets.empty?
-          puts 'No presets configured.'
-          return 0
-        end
+        return show_no_presets if presets.empty?
 
         puts 'Presets:'
-        presets.each do |preset|
-          puts "  #{output.bold(preset.name)}"
-          display_preset_status(preset) unless preset.text.empty? && preset.emoji.empty?
-          puts "    Duration: #{preset.duration}" unless preset.duration == '0'
-          puts "    Presence: #{preset.presence}" if preset.sets_presence?
-          puts "    DND: #{preset.dnd}" if preset.sets_dnd?
-        end
-
+        presets.each { |preset| display_preset(preset) }
         0
+      end
+
+      def show_no_presets
+        puts 'No presets configured.'
+        0
+      end
+
+      def display_preset(preset)
+        puts "  #{output.bold(preset.name)}"
+        display_preset_status(preset) if preset_has_status?(preset)
+        display_preset_options(preset)
+      end
+
+      def preset_has_status?(preset)
+        !preset.text.empty? || !preset.emoji.empty?
+      end
+
+      def display_preset_options(preset)
+        puts "    Duration: #{preset.duration}" unless preset.duration == '0'
+        puts "    Presence: #{preset.presence}" if preset.sets_presence?
+        puts "    DND: #{preset.dnd}" if preset.sets_dnd?
       end
 
       def display_preset_status(preset)
@@ -167,17 +185,18 @@ module SlackCli
         preset = preset_store.get(name)
         return error("Preset '#{name}' not found") unless preset
 
-        target_workspaces.each do |workspace|
-          apply_status(workspace, preset)
-          apply_presence(workspace, preset)
-          apply_dnd(workspace, preset)
-          success("Applied preset '#{name}' on #{workspace.name}")
-        end
-
+        target_workspaces.each { |workspace| apply_preset_to_workspace(workspace, preset, name) }
         0
       rescue ApiError => e
         error("Failed to apply preset: #{e.message}")
         1
+      end
+
+      def apply_preset_to_workspace(workspace, preset, name)
+        apply_status(workspace, preset)
+        apply_presence(workspace, preset)
+        apply_dnd(workspace, preset)
+        success("Applied preset '#{name}' on #{workspace.name}")
       end
 
       def apply_status(workspace, preset)
@@ -207,5 +226,6 @@ module SlackCli
         end
       end
     end
+    # rubocop:enable Metrics/ClassLength
   end
 end

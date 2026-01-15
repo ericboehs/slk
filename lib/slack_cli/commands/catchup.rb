@@ -51,27 +51,40 @@ module SlackCli
       def help_text
         help = Support::HelpFormatter.new('slk catchup [options]')
         help.description('Interactively review and dismiss unread messages (all workspaces by default).')
+        add_options_section(help)
+        add_keys_section(help)
+        help.render
+      end
 
+      def add_options_section(help)
         help.section('OPTIONS') do |s|
-          s.option('--batch', 'Non-interactive mode (mark all as read)')
-          s.option('--muted', 'Include muted channels')
-          s.option('-n, --limit N', 'Messages per channel (default: 5)')
-          s.option('--no-emoji', 'Show :emoji: codes instead of unicode')
-          s.option('--no-reactions', 'Hide reactions')
-          s.option('--reaction-names', 'Show reactions with user names')
-          s.option('--reaction-timestamps', 'Show when each person reacted')
-          s.option('-w, --workspace', 'Limit to specific workspace')
-          s.option('-q, --quiet', 'Suppress output')
+          add_primary_options(s)
+          add_formatting_options(s)
         end
+      end
 
+      def add_primary_options(section)
+        section.option('--batch', 'Non-interactive mode (mark all as read)')
+        section.option('--muted', 'Include muted channels')
+        section.option('-n, --limit N', 'Messages per channel (default: 5)')
+      end
+
+      def add_formatting_options(section)
+        section.option('--no-emoji', 'Show :emoji: codes instead of unicode')
+        section.option('--no-reactions', 'Hide reactions')
+        section.option('--reaction-names', 'Show reactions with user names')
+        section.option('--reaction-timestamps', 'Show when each person reacted')
+        section.option('-w, --workspace', 'Limit to specific workspace')
+        section.option('-q, --quiet', 'Suppress output')
+      end
+
+      def add_keys_section(help)
         help.section('INTERACTIVE KEYS') do |s|
           s.item('s / Enter', 'Skip channel')
           s.item('r', 'Mark as read and continue')
           s.item('o', 'Open in Slack')
           s.item('q', 'Quit')
         end
-
-        help.render
       end
 
       private
@@ -127,10 +140,12 @@ module SlackCli
         channels = filter_unread_channels(workspace, counts['channels'] || [])
         threads_response = fetch_unread_threads(workspace)
 
+        build_items_result(ims, channels, threads_response)
+      end
+
+      def build_items_result(ims, channels, threads_response)
         {
-          ims: ims,
-          channels: channels,
-          threads_response: threads_response,
+          ims: ims, channels: channels, threads_response: threads_response,
           total: ims.size + channels.size + (threads_response ? 1 : 0),
           empty: ims.empty? && channels.empty? && !threads_response
         }
@@ -348,16 +363,25 @@ module SlackCli
         case input&.downcase
         when 's', "\r", "\n", nil then :next
         when 'q', "\u0003", "\u0004" then :quit
-        when 'r'
-          mark_threads_as_read(workspace, thread_mark_data)
-          :next
-        when 'o'
-          open_first_thread(workspace, thread_mark_data)
-          :next
-        else
-          print_invalid_key
-          nil
+        when 'r' then handle_mark_threads(workspace, thread_mark_data)
+        when 'o' then handle_open_threads(workspace, thread_mark_data)
+        else handle_invalid_key
         end
+      end
+
+      def handle_mark_threads(workspace, thread_mark_data)
+        mark_threads_as_read(workspace, thread_mark_data)
+        :next
+      end
+
+      def handle_open_threads(workspace, thread_mark_data)
+        open_first_thread(workspace, thread_mark_data)
+        :next
+      end
+
+      def handle_invalid_key
+        print_invalid_key
+        nil
       end
 
       def mark_threads_as_read(workspace, thread_mark_data)

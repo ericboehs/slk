@@ -11,22 +11,23 @@ module SlackCli
         return result if result
 
         target = positional_args.first
-        unless target
-          error('Usage: slk thread <url>')
-          return 1
-        end
-
-        # Thread command requires a URL
-        url_parser = Support::SlackUrlParser.new
-        unless url_parser.slack_url?(target)
-          error('thread command requires a Slack URL')
-          return 1
-        end
+        return usage_error unless target
+        return url_required_error unless Support::SlackUrlParser.new.slack_url?(target)
 
         super
       end
 
       protected
+
+      def usage_error
+        error('Usage: slk thread <url>')
+        1
+      end
+
+      def url_required_error
+        error('thread command requires a Slack URL')
+        1
+      end
 
       def default_options
         super.merge(
@@ -39,11 +40,19 @@ module SlackCli
       def help_text
         help = Support::HelpFormatter.new('slk thread <url> [options]')
         help.description('View a message thread from a Slack URL.')
+        add_usage_section(help)
+        add_options_section(help)
+        add_examples_section(help)
+        help.render
+      end
 
-        help.section('USAGE') do |s|
-          s.item('<slack_url>', 'Slack message URL')
-        end
+      private
 
+      def add_usage_section(help)
+        help.section('USAGE') { |s| s.item('<slack_url>', 'Slack message URL') }
+      end
+
+      def add_options_section(help)
         help.section('OPTIONS') do |s|
           s.option('--no-emoji', 'Show :emoji: codes instead of unicode')
           s.option('--no-reactions', 'Hide reactions')
@@ -51,12 +60,12 @@ module SlackCli
           s.option('--json', 'Output as JSON')
           s.option('-v, --verbose', 'Show debug information')
         end
+      end
 
+      def add_examples_section(help)
         help.section('EXAMPLES') do |s|
           s.item('slk thread https://work.slack.com/archives/C123/p1234567890', 'View thread')
         end
-
-        help.render
       end
     end
   end

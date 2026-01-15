@@ -47,28 +47,24 @@ module SlackCli
       end
 
       def render
-        lines = []
-        lines << "USAGE: #{@usage}"
-        lines << ''
-
-        lines << @description if @description
-
-        @notes.each do |note|
-          lines << note
-        end
-
-        lines << '' if @description || @notes.any?
-
-        @sections.each do |section|
-          lines << "#{section.title}:"
-          lines.concat(section.render)
-          lines << ''
-        end
-
-        # Remove trailing blank line
+        lines = build_header
+        lines.concat(build_sections)
         lines.pop if lines.last == ''
-
         lines.join("\n")
+      end
+
+      private
+
+      def build_header
+        lines = ["USAGE: #{@usage}", '']
+        lines << @description if @description
+        @notes.each { |note| lines << note }
+        lines << '' if @description || @notes.any?
+        lines
+      end
+
+      def build_sections
+        @sections.flat_map { |section| ["#{section.title}:", *section.render, ''] }
       end
 
       # Represents a section within help output (OPTIONS, EXAMPLES, etc.)
@@ -108,29 +104,26 @@ module SlackCli
         def render
           return [] if @items.empty?
 
-          # Calculate max width of left column
-          max_left = @items
-                     .reject { |type, _, _| type == :text }
-                     .map { |_, left, _| left.length }
-                     .max || 0
+          max_left = calculate_max_left_width
+          @items.map { |type, left, right| format_item(type, left, right, max_left) }
+        end
 
-          # Add padding (2 spaces between columns)
-          padding = 2
+        private
 
-          @items.map do |type, left, right|
-            case type
-            when :text
-              "  #{left}"
-            when :example
-              if right
-                "  #{left.ljust(max_left + padding)}#{right}"
-              else
-                "  #{left}"
-              end
-            else
-              "  #{left.ljust(max_left + padding)}#{right}"
-            end
+        def calculate_max_left_width
+          @items.reject { |type, _, _| type == :text }.map { |_, left, _| left.length }.max || 0
+        end
+
+        def format_item(type, left, right, max_left)
+          case type
+          when :text then "  #{left}"
+          when :example then format_example(left, right, max_left)
+          else "  #{left.ljust(max_left + 2)}#{right}"
           end
+        end
+
+        def format_example(left, right, max_left)
+          right ? "  #{left.ljust(max_left + 2)}#{right}" : "  #{left}"
         end
       end
     end

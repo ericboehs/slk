@@ -16,31 +16,39 @@ module SlackCli
       # @param default_workspace [Workspace] Workspace to use if not in URL
       # @return [Result] Resolved target
       def resolve(target, default_workspace:)
-        # Check if it's a Slack URL
         url_result = resolve_url(target)
         return url_result if url_result
 
-        # Direct channel ID
-        if target.match?(/^[CDG][A-Z0-9]+$/)
-          return Result.new(workspace: default_workspace, channel_id: target, thread_ts: nil, msg_ts: nil)
-        end
+        resolve_non_url(target, default_workspace)
+      end
 
-        # Channel by name
-        if target.start_with?('#') || !target.start_with?('@')
-          channel_id = resolve_channel(default_workspace, target.delete_prefix('#'))
-          return Result.new(workspace: default_workspace, channel_id: channel_id, thread_ts: nil, msg_ts: nil)
-        end
+      private
 
-        # DM by username
-        if target.start_with?('@')
-          channel_id = resolve_dm(default_workspace, target.delete_prefix('@'))
-          return Result.new(workspace: default_workspace, channel_id: channel_id, thread_ts: nil, msg_ts: nil)
-        end
+      def resolve_non_url(target, workspace)
+        return build_result(workspace, target) if channel_id?(target)
+        return resolve_channel_target(workspace, target) unless target.start_with?('@')
+        return resolve_dm_target(workspace, target) if target.start_with?('@')
 
         raise ConfigError, "Could not resolve target: #{target}"
       end
 
-      private
+      def channel_id?(target)
+        target.match?(/^[CDG][A-Z0-9]+$/)
+      end
+
+      def resolve_channel_target(workspace, target)
+        channel_id = resolve_channel(workspace, target.delete_prefix('#'))
+        build_result(workspace, channel_id)
+      end
+
+      def resolve_dm_target(workspace, target)
+        channel_id = resolve_dm(workspace, target.delete_prefix('@'))
+        build_result(workspace, channel_id)
+      end
+
+      def build_result(workspace, channel_id, thread_ts: nil, msg_ts: nil)
+        Result.new(workspace: workspace, channel_id: channel_id, thread_ts: thread_ts, msg_ts: msg_ts)
+      end
 
       def resolve_url(target)
         url_parser = Support::SlackUrlParser.new
@@ -61,17 +69,16 @@ module SlackCli
         cached = @cache.get_channel_id(workspace.name, name)
         return cached if cached
 
-        api = @runner.conversations_api(workspace.name)
-        response = api.list
-        channels = response['channels'] || []
+        fetch_and_cache_channel(workspace, name)
+      end
+
+      def fetch_and_cache_channel(workspace, name)
+        channels = @runner.conversations_api(workspace.name).list['channels'] || []
         channel = channels.find { |c| c['name'] == name }
+        raise ConfigError, "Channel not found: ##{name}" unless channel
 
-        if channel
-          @cache.set_channel(workspace.name, name, channel['id'])
-          return channel['id']
-        end
-
-        raise ConfigError, "Channel not found: ##{name}"
+        @cache.set_channel(workspace.name, name, channel['id'])
+        channel['id']
       end
 
       def resolve_dm(workspace, username)

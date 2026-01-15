@@ -6,6 +6,7 @@ require_relative '../support/help_formatter'
 module SlackCli
   module Commands
     # Gets or sets user status text and emoji
+    # rubocop:disable Metrics/ClassLength
     class Status < Base
       include Support::InlineImages
 
@@ -13,17 +14,18 @@ module SlackCli
         result = validate_options
         return result if result
 
-        case positional_args
-        in ['clear', *]
-          clear_status
-        in [text, *rest]
-          set_status(text, rest)
-        in []
-          get_status
-        end
+        dispatch_action
       rescue ApiError => e
         error("Failed: #{e.message}")
         1
+      end
+
+      def dispatch_action
+        case positional_args
+        in ['clear', *] then clear_status
+        in [text, *rest] then set_status(text, rest)
+        in [] then get_status
+        end
       end
 
       protected
@@ -47,7 +49,12 @@ module SlackCli
         help = Support::HelpFormatter.new('slk status [text] [emoji] [duration] [options]')
         help.description('Get or set your Slack status.')
         help.note('GET shows all workspaces by default. SET applies to primary only.')
+        add_examples_section(help)
+        add_options_section(help)
+        help.render
+      end
 
+      def add_examples_section(help)
         help.section('EXAMPLES') do |s|
           s.example('slk status', 'Show status (all workspaces)')
           s.example('slk status clear', 'Clear status')
@@ -55,7 +62,9 @@ module SlackCli
           s.example('slk status "Meeting" :calendar: 1h', 'Set status for 1 hour')
           s.example('slk status "Focus" :headphones: 2h -p away -d 2h')
         end
+      end
 
+      def add_options_section(help)
         help.section('OPTIONS') do |s|
           s.option('-p, --presence VALUE', 'Also set presence (away/auto/active)')
           s.option('-d, --dnd DURATION', "Also set DND (or 'off')")
@@ -64,49 +73,56 @@ module SlackCli
           s.option('-v, --verbose', 'Show debug information')
           s.option('-q, --quiet', 'Suppress output')
         end
-
-        help.render
       end
 
       private
 
       def get_status # rubocop:disable Naming/AccessorMethodName
         # GET defaults to all workspaces unless -w specified
-        workspaces = @options[:workspace] ? [runner.workspace(@options[:workspace])] : runner.all_workspaces
+        workspaces = target_workspaces_for_get
 
         workspaces.each do |workspace|
           status = runner.users_api(workspace.name).get_status
-
-          puts output.bold(workspace.name) if workspaces.size > 1
-
-          if status.empty?
-            puts '  (no status set)'
-          else
-            display_status(workspace, status)
-          end
+          print_workspace_status(workspaces, workspace, status)
         end
 
         0
       end
 
+      def target_workspaces_for_get
+        @options[:workspace] ? [runner.workspace(@options[:workspace])] : runner.all_workspaces
+      end
+
+      def print_workspace_status(workspaces, workspace, status)
+        puts output.bold(workspace.name) if workspaces.size > 1
+
+        if status.empty?
+          puts '  (no status set)'
+        else
+          display_status(workspace, status)
+        end
+      end
+
       def display_status(workspace, status)
-        # Check if emoji is a custom workspace emoji with an image
-        emoji_name = status.emoji.delete_prefix(':').delete_suffix(':')
-        emoji_path = find_workspace_emoji(workspace.name, emoji_name)
+        emoji_path = workspace_emoji_path(workspace.name, status.emoji)
 
         if emoji_path && inline_images_supported?
-          # Build status text without emoji (we'll display it as image)
-          parts = []
-          parts << status.text unless status.text.empty?
-          if (remaining = status.time_remaining)
-            parts << "(#{remaining})"
-          end
-          text = "  #{parts.join(' ')}"
-
-          print_inline_image_with_text(emoji_path, text)
+          print_status_with_image(emoji_path, status)
         else
           puts "  #{status}"
         end
+      end
+
+      def workspace_emoji_path(workspace_name, emoji)
+        emoji_name = emoji.delete_prefix(':').delete_suffix(':')
+        find_workspace_emoji(workspace_name, emoji_name)
+      end
+
+      def print_status_with_image(emoji_path, status)
+        parts = []
+        parts << status.text unless status.text.empty?
+        parts << "(#{status.time_remaining})" if status.time_remaining
+        print_inline_image_with_text(emoji_path, "  #{parts.join(' ')}")
       end
 
       def find_workspace_emoji(workspace_name, emoji_name)
@@ -122,28 +138,40 @@ module SlackCli
       end
 
       def set_status(text, rest)
-        # Parse emoji and duration from rest
-        emoji = rest.find { |arg| arg.start_with?(':') && arg.end_with?(':') } || ':speech_balloon:'
-        duration_str = rest.find { |arg| arg.match?(/^\d+[hms]?$/) }
-        duration = duration_str ? Models::Duration.parse(duration_str) : Models::Duration.zero
+        emoji = extract_emoji(rest)
+        duration = extract_duration(rest)
 
         target_workspaces.each do |workspace|
-          api = runner.users_api(workspace.name)
-          api.set_status(text: text, emoji: emoji, duration: duration)
-
-          success("Status set on #{workspace.name}")
-          debug("  Text: #{text}")
-          debug("  Emoji: #{emoji}")
-          debug("  Duration: #{duration}") unless duration.zero?
-
-          # Handle combo options
-          apply_presence(workspace) if @options[:presence]
-          apply_dnd(workspace) if @options[:dnd]
+          apply_status_to_workspace(workspace, text, emoji, duration)
         end
 
         show_all_workspaces_hint
-
         0
+      end
+
+      def extract_emoji(rest)
+        rest.find { |arg| arg.start_with?(':') && arg.end_with?(':') } || ':speech_balloon:'
+      end
+
+      def extract_duration(rest)
+        duration_str = rest.find { |arg| arg.match?(/^\d+[hms]?$/) }
+        duration_str ? Models::Duration.parse(duration_str) : Models::Duration.zero
+      end
+
+      def apply_status_to_workspace(workspace, text, emoji, duration)
+        api = runner.users_api(workspace.name)
+        api.set_status(text: text, emoji: emoji, duration: duration)
+
+        log_status_set(workspace.name, text, emoji, duration)
+        apply_presence(workspace) if @options[:presence]
+        apply_dnd(workspace) if @options[:dnd]
+      end
+
+      def log_status_set(workspace_name, text, emoji, duration)
+        success("Status set on #{workspace_name}")
+        debug("  Text: #{text}")
+        debug("  Emoji: #{emoji}")
+        debug("  Duration: #{duration}") unless duration.zero?
       end
 
       def apply_presence(workspace)
@@ -190,5 +218,6 @@ module SlackCli
         info('Tip: Use --all to set across all workspaces')
       end
     end
+    # rubocop:enable Metrics/ClassLength
   end
 end

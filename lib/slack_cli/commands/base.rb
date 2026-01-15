@@ -3,6 +3,7 @@
 module SlackCli
   module Commands
     # Base class for all CLI commands with option parsing and output helpers
+    # rubocop:disable Metrics/ClassLength
     class Base
       attr_reader :runner, :options, :positional_args
 
@@ -27,20 +28,15 @@ module SlackCli
       def api_client = runner.api_client
 
       def default_options
-        {
-          workspace: nil,
-          all: false,
-          verbose: false,
-          quiet: false,
-          json: false,
-          width: default_width,
-          # Common formatting options
-          no_emoji: false,
-          no_reactions: false,
-          no_names: false,
-          reaction_names: false,
-          reaction_timestamps: false
-        }
+        base_options.merge(formatting_options)
+      end
+
+      def base_options
+        { workspace: nil, all: false, verbose: false, quiet: false, json: false, width: default_width }
+      end
+
+      def formatting_options
+        { no_emoji: false, no_reactions: false, no_names: false, reaction_names: false, reaction_timestamps: false }
       end
 
       # Default wrap width: 72 for interactive terminals, nil (no wrap) otherwise
@@ -55,46 +51,43 @@ module SlackCli
 
         while args.any?
           arg = args.shift
+          next remaining << arg unless arg.start_with?('-')
 
-          case arg
-          when '-w', '--workspace'
-            @options[:workspace] = args.shift
-          when '--width'
-            value = args.shift
-            @options[:width] = value == '0' ? nil : value.to_i
-          when '--no-wrap'
-            @options[:width] = nil
-          when '--all'
-            @options[:all] = true
-          when '-v', '--verbose'
-            @options[:verbose] = true
-          when '-q', '--quiet'
-            @options[:quiet] = true
-          when '--json'
-            @options[:json] = true
-          when '-h', '--help'
-            @options[:help] = true
-          # Common formatting options
-          when '--no-emoji'
-            @options[:no_emoji] = true
-          when '--no-reactions'
-            @options[:no_reactions] = true
-          when '--no-names'
-            @options[:no_names] = true
-          when '--reaction-names'
-            @options[:reaction_names] = true
-          when '--reaction-timestamps'
-            @options[:reaction_timestamps] = true
-          when /^-/
-            # Let subclass handle unknown options
-            handle_option(arg, args, remaining)
-          else
-            remaining << arg
-          end
+          parse_single_option(arg, args, remaining)
         end
 
         remaining
       end
+
+      private
+
+      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
+      def parse_single_option(arg, args, remaining)
+        case arg
+        when '-w', '--workspace' then @options[:workspace] = args.shift
+        when '--width' then parse_width_option(args)
+        when '--no-wrap' then @options[:width] = nil
+        when '--all' then @options[:all] = true
+        when '-v', '--verbose' then @options[:verbose] = true
+        when '-q', '--quiet' then @options[:quiet] = true
+        when '--json' then @options[:json] = true
+        when '-h', '--help' then @options[:help] = true
+        when '--no-emoji' then @options[:no_emoji] = true
+        when '--no-reactions' then @options[:no_reactions] = true
+        when '--no-names' then @options[:no_names] = true
+        when '--reaction-names' then @options[:reaction_names] = true
+        when '--reaction-timestamps' then @options[:reaction_timestamps] = true
+        else handle_option(arg, args, remaining)
+        end
+      end
+      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
+
+      def parse_width_option(args)
+        value = args.shift
+        @options[:width] = value == '0' ? nil : value.to_i
+      end
+
+      protected
 
       # Override in subclass to handle command-specific options
       # Return true if option was handled, false to raise unknown option error
@@ -203,5 +196,6 @@ module SlackCli
         }
       end
     end
+    # rubocop:enable Metrics/ClassLength
   end
 end

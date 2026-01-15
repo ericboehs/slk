@@ -10,20 +10,26 @@ module SlackCli
         result = validate_options
         return result if result
 
-        case positional_args
-        in ['away']
-          set_presence('away')
-        in ['auto' | 'active']
-          set_presence('auto')
-        in []
-          get_presence
-        else
-          error("Unknown presence: #{positional_args.first}")
-          error('Valid options: away, auto, active')
-          1
-        end
+        dispatch_action
       rescue ApiError => e
         error("Failed: #{e.message}")
+        1
+      end
+
+      private
+
+      def dispatch_action
+        case positional_args
+        in ['away'] then set_presence('away')
+        in ['auto' | 'active'] then set_presence('auto')
+        in [] then get_presence
+        else unknown_presence
+        end
+      end
+
+      def unknown_presence
+        error("Unknown presence: #{positional_args.first}")
+        error('Valid options: away, auto, active')
         1
       end
 
@@ -33,52 +39,49 @@ module SlackCli
         help = Support::HelpFormatter.new('slk presence [away|auto|active]')
         help.description('Get or set your presence status.')
         help.note('GET shows all workspaces by default. SET applies to primary only.')
+        add_actions_section(help)
+        add_options_section(help)
+        help.render
+      end
 
+      def add_actions_section(help)
         help.section('ACTIONS') do |s|
           s.action('(none)', 'Show current presence (all workspaces)')
           s.action('away', 'Set presence to away')
           s.action('auto', 'Set presence to auto (active)')
           s.action('active', 'Alias for auto')
         end
+      end
 
+      def add_options_section(help)
         help.section('OPTIONS') do |s|
           s.option('-w, --workspace', 'Limit to specific workspace')
           s.option('--all', 'Set across all workspaces')
           s.option('-q, --quiet', 'Suppress output')
         end
-
-        help.render
       end
 
       private
 
       def get_presence # rubocop:disable Naming/AccessorMethodName
-        # GET defaults to all workspaces unless -w specified
         workspaces = @options[:workspace] ? [runner.workspace(@options[:workspace])] : runner.all_workspaces
-
-        workspaces.each do |workspace|
-          data = runner.users_api(workspace.name).get_presence
-
-          puts output.bold(workspace.name) if workspaces.size > 1
-
-          presence = data[:presence]
-          manual = data[:manual_away]
-
-          status = case [presence, manual]
-                   in ['away', true]
-                     output.yellow('away (manual)')
-                   in ['away', _]
-                     output.yellow('away')
-                   in ['active', _]
-                     output.green('active')
-                   else
-                     presence
-                   end
-
-          puts "  Presence: #{status}"
-        end
-
+        workspaces.each { |workspace| display_workspace_presence(workspace, workspaces.size > 1) }
         0
+      end
+
+      def display_workspace_presence(workspace, show_header)
+        data = runner.users_api(workspace.name).get_presence
+        puts output.bold(workspace.name) if show_header
+        puts "  Presence: #{format_presence_status(data[:presence], data[:manual_away])}"
+      end
+
+      def format_presence_status(presence, manual)
+        case [presence, manual]
+        in ['away', true] then output.yellow('away (manual)')
+        in ['away', _] then output.yellow('away')
+        in ['active', _] then output.green('active')
+        else presence
+        end
       end
 
       def set_presence(presence) # rubocop:disable Naming/AccessorMethodName

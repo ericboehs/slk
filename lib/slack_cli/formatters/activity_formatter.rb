@@ -3,6 +3,7 @@
 module SlackCli
   module Formatters
     # Formats activity feed items for terminal display
+    # rubocop:disable Metrics/ClassLength
     class ActivityFormatter
       def initialize(output:, enricher:, emoji_replacer:, mention_replacer:, on_debug: nil)
         @output = output
@@ -25,22 +26,21 @@ module SlackCli
       def display_item(item, workspace, options)
         type = item.dig('item', 'type')
         timestamp = format_time(item['feed_ts'])
-
-        case type
-        when 'message_reaction'
-          display_reaction(item, workspace, timestamp, options)
-        when 'at_user', 'at_user_group', 'at_channel', 'at_everyone'
-          display_mention(item, workspace, timestamp, options)
-        when 'thread_v2'
-          display_thread(item, workspace, timestamp, options)
-        when 'bot_dm_bundle'
-          display_bot_dm(item, workspace, timestamp, options)
-        else
-          @on_debug&.call("Unknown activity type '#{type}' - skipping") if type
-        end
+        dispatch_activity_display(type, item, workspace, timestamp, options)
       end
 
       private
+
+      def dispatch_activity_display(type, item, workspace, timestamp, options)
+        case type
+        when 'message_reaction' then display_reaction(item, workspace, timestamp, options)
+        when 'at_user', 'at_user_group', 'at_channel', 'at_everyone'
+          display_mention(item, workspace, timestamp, options)
+        when 'thread_v2' then display_thread(item, workspace, timestamp, options)
+        when 'bot_dm_bundle' then display_bot_dm(item, workspace, timestamp, options)
+        else @on_debug&.call("Unknown activity type '#{type}' - skipping") if type
+        end
+      end
 
       def display_reaction(item, workspace, timestamp, options)
         reaction_data = item.dig('item', 'reaction')
@@ -143,5 +143,6 @@ module SlackCli
         @on_debug&.call("Could not display #{item_type} activity - missing data")
       end
     end
+    # rubocop:enable Metrics/ClassLength
   end
 end

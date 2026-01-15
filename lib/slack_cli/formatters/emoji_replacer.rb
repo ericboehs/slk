@@ -122,12 +122,7 @@ module SlackCli
       private
 
       def load_gemoji_cache
-        cache_path = File.join(
-          ENV.fetch('XDG_CACHE_HOME', File.expand_path('~/.cache')),
-          'slk',
-          'gemoji.json'
-        )
-
+        cache_path = gemoji_cache_path
         return nil unless File.exist?(cache_path)
 
         JSON.parse(File.read(cache_path))
@@ -136,6 +131,10 @@ module SlackCli
         nil
       rescue Errno::ENOENT
         nil
+      end
+
+      def gemoji_cache_path
+        File.join(ENV.fetch('XDG_CACHE_HOME', File.expand_path('~/.cache')), 'slk', 'gemoji.json')
       end
     end
   end

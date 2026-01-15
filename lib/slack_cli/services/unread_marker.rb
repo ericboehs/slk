@@ -84,15 +84,16 @@ module SlackCli
         unread_replies = thread['unread_replies'] || []
         return false if unread_replies.empty?
 
-        root_msg = thread['root_msg'] || {}
-        channel_id = root_msg['channel']
-        thread_ts = root_msg['thread_ts']
-        latest_ts = unread_replies.map { |r| r['ts'] }.max
+        call_mark_thread(thread, unread_replies)
+      end
 
-        @threads.mark(channel: channel_id, thread_ts: thread_ts, timestamp: latest_ts)
+      def call_mark_thread(thread, unread_replies)
+        root_msg = thread['root_msg'] || {}
+        @threads.mark(channel: root_msg['channel'], thread_ts: root_msg['thread_ts'],
+                      timestamp: unread_replies.map { |r| r['ts'] }.max)
         true
       rescue ApiError => e
-        @on_debug&.call("Could not mark thread #{thread_ts} in #{channel_id}: #{e.message}")
+        @on_debug&.call("Could not mark thread #{root_msg['thread_ts']} in #{root_msg['channel']}: #{e.message}")
         false
       end
     end

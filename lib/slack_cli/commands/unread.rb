@@ -13,17 +13,24 @@ module SlackCli
         result = validate_options
         return result if result
 
-        case positional_args
-        in ['clear', *rest]
-          clear_unread(rest.first)
-        in []
-          show_unread
-        else
-          error("Unknown action: #{positional_args.first}")
-          1
-        end
+        dispatch_action
       rescue ApiError => e
         error("Failed: #{e.message}")
+        1
+      end
+
+      private
+
+      def dispatch_action
+        case positional_args
+        in ['clear', *rest] then clear_unread(rest.first)
+        in [] then show_unread
+        else unknown_action
+        end
+      end
+
+      def unknown_action
+        error("Unknown action: #{positional_args.first}")
         1
       end
 
@@ -51,26 +58,39 @@ module SlackCli
       def help_text
         help = Support::HelpFormatter.new('slk unread [action] [options]')
         help.description('View and manage unread messages (all workspaces by default).')
+        add_actions_section(help)
+        add_options_section(help)
+        help.render
+      end
 
+      def add_actions_section(help)
         help.section('ACTIONS') do |s|
           s.action('(none)', 'Show unread messages')
           s.action('clear', 'Mark all as read')
           s.action('clear #channel', 'Mark specific channel as read')
         end
+      end
 
+      def add_options_section(help)
         help.section('OPTIONS') do |s|
-          s.option('-n, --limit N', 'Messages per channel (default: 10)')
-          s.option('--muted', 'Include/clear muted channels')
-          s.option('--no-emoji', 'Show :emoji: codes instead of unicode')
-          s.option('--no-reactions', 'Hide reactions')
-          s.option('--reaction-names', 'Show reactions with user names')
-          s.option('--reaction-timestamps', 'Show when each person reacted')
-          s.option('-w, --workspace', 'Limit to specific workspace')
-          s.option('--json', 'Output as JSON')
-          s.option('-q, --quiet', 'Suppress output')
+          add_core_options(s)
+          add_formatting_options(s)
         end
+      end
 
-        help.render
+      def add_core_options(section)
+        section.option('-n, --limit N', 'Messages per channel (default: 10)')
+        section.option('--muted', 'Include/clear muted channels')
+        section.option('-w, --workspace', 'Limit to specific workspace')
+        section.option('--json', 'Output as JSON')
+        section.option('-q, --quiet', 'Suppress output')
+      end
+
+      def add_formatting_options(section)
+        section.option('--no-emoji', 'Show :emoji: codes instead of unicode')
+        section.option('--no-reactions', 'Hide reactions')
+        section.option('--reaction-names', 'Show reactions with user names')
+        section.option('--reaction-timestamps', 'Show when each person reacted')
       end
 
       private

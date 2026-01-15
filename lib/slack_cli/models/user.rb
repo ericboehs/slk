@@ -20,20 +20,19 @@ module SlackCli
 
       def initialize(id:, name: nil, real_name: nil, display_name: nil, is_bot: false)
         id_str = id.to_s.strip
-        raise ArgumentError, 'user id cannot be empty' if id_str.empty?
-
-        # Validate user ID format (starts with U or W followed by alphanumeric)
-        unless id_str.match?(USER_ID_PATTERN)
-          raise ArgumentError, "invalid user id format: #{id_str} (expected U or W prefix)"
-        end
+        validate_id!(id_str)
 
         super(
-          id: id_str.freeze,
-          name: name&.freeze,
-          real_name: real_name&.freeze,
-          display_name: display_name&.freeze,
-          is_bot: is_bot
+          id: id_str.freeze, name: name&.freeze, real_name: real_name&.freeze,
+          display_name: display_name&.freeze, is_bot: is_bot
         )
+      end
+
+      def validate_id!(id_str)
+        raise ArgumentError, 'user id cannot be empty' if id_str.empty?
+        return if id_str.match?(USER_ID_PATTERN)
+
+        raise ArgumentError, "invalid user id format: #{id_str} (expected U or W prefix)"
       end
 
       def best_name

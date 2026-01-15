@@ -26,62 +26,56 @@ module SlackCli
       private
 
       def fetch_reaction_activity(_channel_id, message_timestamps)
-        # Fetch first page of recent reactions (max 50 per API limit)
-        # Note: This may not cover all historical reactions, but that's acceptable
-        # for performance reasons. Older reactions simply won't have timestamps.
         response = @activity_api.feed(limit: 50, types: 'message_reaction')
         return {} unless response['ok']
 
-        # Build map: "channel_id:message_ts:emoji:user" => timestamp
-        activity_map = {}
-        items = response['items'] || []
-
-        items.each do |item|
-          next unless item.dig('item', 'type') == 'message_reaction'
-
-          msg_data = item.dig('item', 'message')
-          reaction_data = item.dig('item', 'reaction')
-          next unless msg_data && reaction_data
-
-          # Only include reactions for messages we care about
-          msg_ts = msg_data['ts']
-          next unless message_timestamps.include?(msg_ts)
-
-          key = [
-            msg_data['channel'],
-            msg_ts,
-            reaction_data['name'],
-            reaction_data['user']
-          ].join(':')
-
-          activity_map[key] = item['feed_ts']
-        end
-
-        activity_map
+        build_activity_map(response['items'] || [], message_timestamps)
       rescue SlackCli::ApiError
         # If activity API fails, gracefully degrade - return empty map
-        # Messages will still be displayed, just without reaction timestamps
         {}
+      end
+
+      def build_activity_map(items, message_timestamps)
+        activity_map = {}
+        items.each do |item|
+          key, timestamp = extract_reaction_key(item, message_timestamps)
+          activity_map[key] = timestamp if key
+        end
+        activity_map
+      end
+
+      def extract_reaction_key(item, message_timestamps)
+        return nil unless item.dig('item', 'type') == 'message_reaction'
+
+        msg_data = item.dig('item', 'message')
+        reaction_data = item.dig('item', 'reaction')
+        return nil unless msg_data && reaction_data
+
+        msg_ts = msg_data['ts']
+        return nil unless message_timestamps.include?(msg_ts)
+
+        key = [msg_data['channel'], msg_ts, reaction_data['name'], reaction_data['user']].join(':')
+        [key, item['feed_ts']]
       end
 
       def enhance_reactions(message, activity_map)
         return message.reactions if message.reactions.empty?
 
-        message.reactions.map do |reaction|
-          timestamp_map = {}
+        message.reactions.map { |reaction| enhance_reaction(message, reaction, activity_map) }
+      end
 
-          reaction.users.each do |user_id|
-            key = [message.channel_id, message.ts, reaction.name, user_id].join(':')
-            timestamp_map[user_id] = activity_map[key] if activity_map[key]
-          end
+      def enhance_reaction(message, reaction, activity_map)
+        timestamp_map = build_timestamp_map(message, reaction, activity_map)
+        timestamp_map.empty? ? reaction : reaction.with_timestamps(timestamp_map)
+      end
 
-          # Only create a new reaction with timestamps if we found any
-          if timestamp_map.empty?
-            reaction
-          else
-            reaction.with_timestamps(timestamp_map)
-          end
+      def build_timestamp_map(message, reaction, activity_map)
+        timestamp_map = {}
+        reaction.users.each do |user_id|
+          key = [message.channel_id, message.ts, reaction.name, user_id].join(':')
+          timestamp_map[user_id] = activity_map[key] if activity_map[key]
         end
+        timestamp_map
       end
     end
   end

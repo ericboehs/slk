@@ -2,39 +2,46 @@
 
 module SlackCli
   module Models
+    # Duration unit multipliers (seconds per unit)
+    DURATION_UNITS = { 'h' => 3600, 'm' => 60, 's' => 1 }.freeze
+
     Duration = Data.define(:seconds) do
       class << self
         def parse(input)
           return new(seconds: 0) if input.nil? || input.to_s.strip.empty?
           return new(seconds: input.to_i) if input.to_s.match?(/^\d+$/)
 
-          total = 0
-          str = input.to_s.downcase
-
-          # Check for duplicate units (e.g., "1h1h" is invalid)
-          raise ArgumentError, "Duplicate 'h' unit in duration: #{input}" if str.scan(/\d+h/).length > 1
-          raise ArgumentError, "Duplicate 'm' unit in duration: #{input}" if str.scan(/\d+m/).length > 1
-          raise ArgumentError, "Duplicate 's' unit in duration: #{input}" if str.scan(/\d+s/).length > 1
-
-          if (match = str.match(/(\d+)h/))
-            total += match[1].to_i * 3600
-          end
-          if (match = str.match(/(\d+)m/))
-            total += match[1].to_i * 60
-          end
-          if (match = str.match(/(\d+)s/))
-            total += match[1].to_i
-          end
-
-          raise ArgumentError, "Invalid duration format: #{input}" if total.zero? && !str.match?(/^0/)
-
-          new(seconds: total)
+          parse_duration_string(input.to_s.downcase, input)
         end
 
         def zero = new(seconds: 0)
 
         def from_minutes(minutes)
           new(seconds: minutes.to_i * 60)
+        end
+
+        private
+
+        def parse_duration_string(str, original)
+          validate_no_duplicate_units(str, original)
+          total = calculate_total_seconds(str)
+          raise ArgumentError, "Invalid duration format: #{original}" if total.zero? && !str.match?(/^0/)
+
+          new(seconds: total)
+        end
+
+        def validate_no_duplicate_units(str, original)
+          DURATION_UNITS.each_key do |unit|
+            next unless str.scan(/\d+#{unit}/).length > 1
+
+            raise ArgumentError, "Duplicate '#{unit}' unit in duration: #{original}"
+          end
+        end
+
+        def calculate_total_seconds(str)
+          DURATION_UNITS.sum do |unit, multiplier|
+            (match = str.match(/(\d+)#{unit}/)) ? match[1].to_i * multiplier : 0
+          end
         end
       end
 
@@ -51,24 +58,7 @@ module SlackCli
       def to_s
         return '' if zero?
 
-        parts = []
-        remaining = seconds
-
-        if remaining >= 3600
-          hours = remaining / 3600
-          parts << "#{hours}h"
-          remaining %= 3600
-        end
-
-        if remaining >= 60
-          minutes = remaining / 60
-          parts << "#{minutes}m"
-          remaining %= 60
-        end
-
-        parts << "#{remaining}s" if remaining.positive? && parts.empty?
-
-        parts.join
+        format_duration
       end
 
       def +(other)
@@ -77,6 +67,27 @@ module SlackCli
 
       def -(other)
         Duration.new(seconds: [seconds - other.seconds, 0].max)
+      end
+
+      private
+
+      def format_duration
+        parts = []
+        remaining = seconds
+
+        _hours, remaining = extract_unit(remaining, 3600, 'h', parts)
+        _minutes, remaining = extract_unit(remaining, 60, 'm', parts)
+        parts << "#{remaining}s" if remaining.positive? && parts.empty?
+
+        parts.join
+      end
+
+      def extract_unit(remaining, divisor, suffix, parts)
+        return [0, remaining] if remaining < divisor
+
+        value = remaining / divisor
+        parts << "#{value}#{suffix}"
+        [value, remaining % divisor]
       end
     end
   end

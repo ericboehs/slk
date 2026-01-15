@@ -3,6 +3,7 @@
 module SlackCli
   module Services
     # HTTP client for Slack API with connection pooling
+    # rubocop:disable Metrics/ClassLength
     class ApiClient
       BASE_URL = ENV.fetch('SLACK_API_BASE', 'https://slack.com/api')
 
@@ -29,66 +30,61 @@ module SlackCli
 
       # Close all cached HTTP connections
       def close
-        @http_cache.each_value do |http|
-          http.finish if http.started?
-        rescue IOError
-          # Connection already closed
-        end
+        @http_cache.each_value { |http| safe_close(http) }
         @http_cache.clear
       end
 
       def post(workspace, method, params = {})
-        log_request(method)
-        uri = URI("#{BASE_URL}/#{method}")
-
-        http = get_http(uri)
-
-        request = Net::HTTP::Post.new(uri)
-        workspace.headers.each { |k, v| request[k] = v }
-        request.body = JSON.generate(params) unless params.empty?
-
-        response = http.request(request)
-        handle_response(response, method)
-      rescue *NETWORK_ERRORS => e
-        raise ApiError, "Network error: #{e.message}"
+        execute_request(method) do |uri, http|
+          request = Net::HTTP::Post.new(uri)
+          workspace.headers.each { |k, v| request[k] = v }
+          request.body = JSON.generate(params) unless params.empty?
+          http.request(request)
+        end
       end
 
       def get(workspace, method, params = {})
-        log_request(method)
-        uri = URI("#{BASE_URL}/#{method}")
-        uri.query = URI.encode_www_form(params) unless params.empty?
-
-        http = get_http(uri)
-
-        request = Net::HTTP::Get.new(uri)
-        request['Authorization'] = workspace.headers['Authorization']
-        request['Cookie'] = workspace.headers['Cookie'] if workspace.headers['Cookie']
-
-        response = http.request(request)
-        handle_response(response, method)
-      rescue *NETWORK_ERRORS => e
-        raise ApiError, "Network error: #{e.message}"
+        execute_request(method, params) do |uri, http|
+          request = Net::HTTP::Get.new(uri)
+          apply_auth_headers(request, workspace)
+          http.request(request)
+        end
       end
 
       # Form-encoded POST (some Slack endpoints require this)
       def post_form(workspace, method, params = {})
+        execute_request(method) do |uri, http|
+          request = Net::HTTP::Post.new(uri)
+          apply_auth_headers(request, workspace)
+          request.set_form_data(params)
+          http.request(request)
+        end
+      end
+
+      private
+
+      def safe_close(http)
+        http.finish if http.started?
+      rescue IOError
+        # Connection already closed
+      end
+
+      def execute_request(method, query_params = nil)
         log_request(method)
         uri = URI("#{BASE_URL}/#{method}")
+        uri.query = URI.encode_www_form(query_params) if query_params&.any?
 
         http = get_http(uri)
-
-        request = Net::HTTP::Post.new(uri)
-        request['Authorization'] = workspace.headers['Authorization']
-        request['Cookie'] = workspace.headers['Cookie'] if workspace.headers['Cookie']
-        request.set_form_data(params)
-
-        response = http.request(request)
+        response = yield(uri, http)
         handle_response(response, method)
       rescue *NETWORK_ERRORS => e
         raise ApiError, "Network error: #{e.message}"
       end
 
-      private
+      def apply_auth_headers(request, workspace)
+        request['Authorization'] = workspace.headers['Authorization']
+        request['Cookie'] = workspace.headers['Cookie'] if workspace.headers['Cookie']
+      end
 
       def log_request(method)
         @call_count += 1
@@ -128,21 +124,22 @@ module SlackCli
 
       def handle_response(response, _method)
         case response
-        when Net::HTTPSuccess
-          result = JSON.parse(response.body)
-          raise ApiError, result['error'] || 'Unknown error' unless result['ok']
-
-          result
-        when Net::HTTPUnauthorized
-          raise ApiError, 'Invalid token or session expired'
-        when Net::HTTPTooManyRequests
-          raise ApiError, 'Rate limited - please wait and try again'
-        else
-          raise ApiError, "HTTP #{response.code}: #{response.message}"
+        when Net::HTTPSuccess then parse_success_response(response)
+        when Net::HTTPUnauthorized then raise ApiError, 'Invalid token or session expired'
+        when Net::HTTPTooManyRequests then raise ApiError, 'Rate limited - please wait and try again'
+        else raise ApiError, "HTTP #{response.code}: #{response.message}"
         end
+      end
+
+      def parse_success_response(response)
+        result = JSON.parse(response.body)
+        raise ApiError, result['error'] || 'Unknown error' unless result['ok']
+
+        result
       rescue JSON::ParserError
         raise ApiError, 'Invalid JSON response from Slack API'
       end
     end
+    # rubocop:enable Metrics/ClassLength
   end
 end

@@ -19,12 +19,25 @@ module SlackCli
       private
 
       def show_general_help
-        puts <<~HELP
+        puts build_header
+        puts build_commands_section
+        puts build_options_section
+        puts build_examples_section
+        puts "Run #{output.cyan('slk <command> --help')} for command-specific help."
+      end
+
+      def build_header
+        <<~HEADER
           #{output.bold('slk')} - Slack CLI v#{VERSION}
 
           #{output.bold('USAGE:')}
             slk <command> [options]
+        HEADER
+      end
 
+      # rubocop:disable Metrics/AbcSize
+      def build_commands_section
+        <<~COMMANDS
           #{output.bold('COMMANDS:')}
             #{output.cyan('status')}       Get or set your status
             #{output.cyan('presence')}     Get or set your presence (away/active)
@@ -36,7 +49,12 @@ module SlackCli
             #{output.cyan('cache')}        Manage user/channel cache
             #{output.cyan('emoji')}        Download workspace custom emoji
             #{output.cyan('config')}       Configuration and setup
+        COMMANDS
+      end
+      # rubocop:enable Metrics/AbcSize
 
+      def build_options_section
+        <<~OPTIONS
           #{output.bold('GLOBAL OPTIONS:')}
             -w, --workspace NAME   Use specific workspace
             --all                  Apply to all workspaces
@@ -44,7 +62,11 @@ module SlackCli
             -q, --quiet            Suppress output
             --json                 Output as JSON (where supported)
             -h, --help             Show help
+        OPTIONS
+      end
 
+      def build_examples_section
+        <<~EXAMPLES
           #{output.bold('EXAMPLES:')}
             slk status                       Show current status
             slk status "Working" :laptop:    Set status
@@ -52,9 +74,7 @@ module SlackCli
             slk dnd 1h                       Enable DND for 1 hour
             slk messages #general            Read channel messages
             slk preset meeting               Apply preset
-
-          Run #{output.cyan('slk <command> --help')} for command-specific help.
-        HELP
+        EXAMPLES
       end
 
       def show_command_help(topic)

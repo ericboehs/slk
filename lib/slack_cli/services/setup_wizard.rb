@@ -44,15 +44,20 @@ module SlackCli
       end
 
       def setup_encryption
+        print_encryption_header
+        ssh_key = $stdin.gets&.chomp
+        configure_ssh_key(ssh_key) if ssh_key && !ssh_key.empty?
+      end
+
+      def print_encryption_header
         @output.puts
         @output.puts 'Encryption Setup (optional)'
         @output.puts '----------------------------'
         @output.puts 'You can encrypt your tokens with age using an SSH key.'
         @output.print 'SSH key path (or press Enter to skip): '
-        ssh_key = $stdin.gets&.chomp
+      end
 
-        return if ssh_key.nil? || ssh_key.empty?
-
+      def configure_ssh_key(ssh_key)
         if File.exist?(ssh_key)
           @config.ssh_key = ssh_key
           @output.success('SSH key configured')
@@ -62,22 +67,27 @@ module SlackCli
       end
 
       def setup_workspace
+        print_workspace_header
+        name, token = prompt_credentials
+        return 1 unless name && token
+
+        save_workspace(name, token, prompt_cookie_if_needed(token))
+        0
+      end
+
+      def print_workspace_header
         @output.puts
         @output.puts 'Workspace Setup'
         @output.puts '---------------'
+      end
 
-        name = prompt_workspace_name
-        return 1 unless name
+      def prompt_credentials
+        [prompt_workspace_name, prompt_token]
+      end
 
-        token = prompt_token
-        return 1 unless token
-
-        cookie = prompt_cookie_if_needed(token)
-
+      def save_workspace(name, token, cookie)
         @token_store.add(name, token, cookie)
         @config.primary_workspace = name if @config.primary_workspace.nil?
-
-        0
       end
 
       def prompt_workspace_name

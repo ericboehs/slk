@@ -35,19 +35,7 @@ module SlackCli
 
         URL_PATTERNS.each do |pattern|
           match = input.match(pattern)
-          next unless match
-
-          workspace = match[1]
-          channel_id = match[2]
-          msg_ts = match[3] ? format_ts(match[3]) : nil
-          thread_ts = match[4]
-
-          return Result.new(
-            workspace: workspace,
-            channel_id: channel_id,
-            msg_ts: msg_ts,
-            thread_ts: thread_ts
-          )
+          return build_result(match) if match
         end
 
         nil
@@ -58,6 +46,15 @@ module SlackCli
       end
 
       private
+
+      def build_result(match)
+        Result.new(
+          workspace: match[1],
+          channel_id: match[2],
+          msg_ts: match[3] ? format_ts(match[3]) : nil,
+          thread_ts: match[4]
+        )
+      end
 
       # Convert Slack URL timestamp format to API format
       # URL: p1234567890123456 -> API: 1234567890.123456
