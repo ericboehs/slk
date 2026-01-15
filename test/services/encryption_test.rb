@@ -17,6 +17,7 @@ class EncryptionTest < Minitest::Test
   def test_validate_key_type_accepts_ed25519
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
+      File.write(key_path, 'dummy private key')
       File.write("#{key_path}.pub", 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@host')
 
       assert @encryption.validate_key_type!(key_path)
@@ -26,6 +27,7 @@ class EncryptionTest < Minitest::Test
   def test_validate_key_type_accepts_rsa
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
+      File.write(key_path, 'dummy private key')
       File.write("#{key_path}.pub", 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAB... user@host')
 
       assert @encryption.validate_key_type!(key_path)
@@ -35,6 +37,7 @@ class EncryptionTest < Minitest::Test
   def test_validate_key_type_rejects_ecdsa
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
+      File.write(key_path, 'dummy private key')
       File.write("#{key_path}.pub", 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTI... user@host')
 
       error = assert_raises(Slk::EncryptionError) do
@@ -46,7 +49,7 @@ class EncryptionTest < Minitest::Test
     end
   end
 
-  def test_validate_key_type_raises_when_public_key_missing
+  def test_validate_key_type_raises_when_private_key_missing
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/nonexistent"
 
@@ -54,7 +57,48 @@ class EncryptionTest < Minitest::Test
         @encryption.validate_key_type!(key_path)
       end
 
+      assert_match(/Private key not found/, error.message)
+    end
+  end
+
+  def test_validate_key_type_raises_when_public_key_missing
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/test_key"
+      File.write(key_path, 'dummy private key')
+      # No .pub file created
+
+      error = assert_raises(Slk::EncryptionError) do
+        @encryption.validate_key_type!(key_path)
+      end
+
       assert_match(/Public key not found/, error.message)
+    end
+  end
+
+  def test_validate_key_type_prompts_for_pub_key_when_not_found
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/test_key"
+      alt_pub_path = "#{dir}/alt_key.pub"
+      File.write(key_path, 'dummy private key')
+      File.write(alt_pub_path, 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@host')
+
+      @encryption.on_prompt_pub_key = ->(_path) { alt_pub_path }
+
+      assert @encryption.validate_key_type!(key_path)
+    end
+  end
+
+  def test_validate_key_type_rejects_empty_pub_file
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/test_key"
+      File.write(key_path, 'dummy private key')
+      File.write("#{key_path}.pub", '')
+
+      error = assert_raises(Slk::EncryptionError) do
+        @encryption.validate_key_type!(key_path)
+      end
+
+      assert_match(/Unsupported SSH key type: unknown/, error.message)
     end
   end
 
@@ -76,7 +120,8 @@ class EncryptionTest < Minitest::Test
     skip unless @encryption.available?
 
     Dir.mktmpdir do |dir|
-      key_path = "#{dir}/nonexistent"
+      key_path = "#{dir}/test_key"
+      File.write(key_path, 'dummy private key')
       output_path = "#{dir}/output.age"
 
       error = assert_raises(Slk::EncryptionError) do

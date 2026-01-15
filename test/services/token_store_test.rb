@@ -232,6 +232,7 @@ class TokenStoreTest < Minitest::Test
 
       # Create an ECDSA key (unsupported by age)
       key_path = "#{dir}/ecdsa_key"
+      File.write(key_path, 'dummy private key')
       File.write("#{key_path}.pub", 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTI... user@host')
 
       store = Slk::Services::TokenStore.new

@@ -22,6 +22,7 @@ class ConfigCommandTest < Minitest::Test
     token_store.define_singleton_method(:empty?) { workspace_list.empty? }
     token_store.define_singleton_method(:on_warning=) { |_| nil }
     token_store.define_singleton_method(:on_info=) { |_| nil }
+    token_store.define_singleton_method(:on_prompt_pub_key=) { |_| nil }
     token_store.define_singleton_method(:add) { |_name, _token, _cookie| nil }
     token_store.define_singleton_method(:migrate_encryption) { |_old, _new| nil }
 
@@ -95,6 +96,7 @@ class ConfigCommandTest < Minitest::Test
   def test_set_ssh_key_validates_key_type
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/ecdsa_key"
+      File.write(key_path, 'dummy private key')
       File.write("#{key_path}.pub", 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTI... user@host')
 
       runner = create_runner_with_validation
@@ -112,6 +114,7 @@ class ConfigCommandTest < Minitest::Test
     token_store.define_singleton_method(:empty?) { true }
     token_store.define_singleton_method(:on_warning=) { |_| nil }
     token_store.define_singleton_method(:on_info=) { |_| nil }
+    token_store.define_singleton_method(:on_prompt_pub_key=) { |_| nil }
 
     encryption = Slk::Services::Encryption.new
     token_store.define_singleton_method(:migrate_encryption) do |_old, new_key|
@@ -132,6 +135,7 @@ class ConfigCommandTest < Minitest::Test
     Dir.mktmpdir do |dir|
       # Create a valid ed25519 key
       key_path = "#{dir}/test_key"
+      File.write(key_path, 'dummy private key')
       File.write("#{key_path}.pub", 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@host')
 
       runner = create_runner
@@ -167,6 +171,42 @@ class ConfigCommandTest < Minitest::Test
     assert_includes @io.string, 'setup'
     assert_includes @io.string, 'get'
     assert_includes @io.string, 'set'
+  end
+
+  def test_unset_clears_config_value
+    @config.data['emoji_dir'] = '/some/path'
+
+    runner = create_runner
+    command = Slk::Commands::Config.new(%w[unset emoji_dir], runner: runner)
+    result = command.execute
+
+    assert_equal 0, result
+    assert_nil @config.data['emoji_dir']
+    assert_includes @io.string, 'Unset emoji_dir'
+  end
+
+  def test_unset_ssh_key_clears_value
+    with_temp_config do
+      @config.data['ssh_key'] = nil # No previous key
+
+      runner = create_runner
+      command = Slk::Commands::Config.new(%w[unset ssh_key], runner: runner)
+      result = command.execute
+
+      assert_equal 0, result
+      assert_nil @config.data['ssh_key']
+      assert_includes @io.string, 'Cleared ssh_key'
+    end
+  end
+
+  def test_set_ssh_key_rejects_pub_file
+    runner = create_runner
+    command = Slk::Commands::Config.new(['set', 'ssh_key', '/path/to/key.pub'], runner: runner)
+    result = command.execute
+
+    assert_equal 1, result
+    assert_includes @err.string, 'private key path'
+    assert_includes @err.string, 'not the public key'
   end
 
   class MockConfig

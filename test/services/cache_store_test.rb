@@ -59,6 +59,36 @@ class CacheStoreTest < Minitest::Test
     end
   end
 
+  def test_get_user_id_by_name_returns_nil_for_unknown_name
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_user('workspace1', 'U123', 'John Doe')
+
+      assert_nil store.get_user_id_by_name('workspace1', 'Jane Smith')
+    end
+  end
+
+  def test_get_user_id_by_name_returns_id_for_known_name
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_user('workspace1', 'U123', 'John Doe')
+      store.set_user('workspace1', 'U456', 'Jane Smith')
+
+      assert_equal 'U456', store.get_user_id_by_name('workspace1', 'Jane Smith')
+    end
+  end
+
+  def test_get_user_id_by_name_isolates_workspaces
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_user('workspace1', 'U123', 'John Doe')
+      store.set_user('workspace2', 'U456', 'John Doe')
+
+      assert_equal 'U123', store.get_user_id_by_name('workspace1', 'John Doe')
+      assert_equal 'U456', store.get_user_id_by_name('workspace2', 'John Doe')
+    end
+  end
+
   # Channel cache tests
   def test_get_channel_id_returns_nil_for_unknown_channel
     with_temp_config do

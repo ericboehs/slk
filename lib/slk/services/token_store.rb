@@ -7,7 +7,7 @@ module Slk
   module Services
     # Manages workspace tokens with optional encryption
     class TokenStore
-      attr_accessor :on_warning, :on_info
+      attr_accessor :on_warning, :on_info, :on_prompt_pub_key
 
       def initialize(config: nil, encryption: nil, paths: nil)
         @config = config || Configuration.new
@@ -17,6 +17,7 @@ module Slk
         @saver = TokenSaver.new(encryption: @encryption, paths: @paths)
         @on_warning = nil
         @on_info = nil
+        @on_prompt_pub_key = nil
       end
 
       def workspace(name)
@@ -65,6 +66,7 @@ module Slk
         tokens = @loader.load(old_ssh_key)
         return if tokens.empty?
 
+        @encryption.on_prompt_pub_key = @on_prompt_pub_key
         @encryption.validate_key_type!(new_ssh_key) if new_ssh_key
         @saver.save_with_cleanup(tokens, new_ssh_key)
         notify_encryption_change(new_ssh_key)
