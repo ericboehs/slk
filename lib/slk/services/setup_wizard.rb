@@ -122,9 +122,9 @@ module Slk
         @output.success('Setup complete!')
         @output.puts
         @output.puts 'Try these commands:'
-        @output.puts '  slack status           - View your status'
-        @output.puts '  slack messages #general - Read channel messages'
-        @output.puts '  slack help             - See all commands'
+        @output.puts '  slk status           - View your status'
+        @output.puts '  slk messages general - Read channel messages'
+        @output.puts '  slk help             - See all commands'
       end
     end
   end

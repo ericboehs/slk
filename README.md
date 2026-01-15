@@ -56,10 +56,10 @@ slk dnd off               # Disable DND
 ### Messages
 
 ```bash
-slk messages #general           # Read channel messages
+slk messages general            # Read channel messages
 slk messages @username          # Read DM with user
-slk messages #general -n 50     # Show 50 messages
-slk messages #general --json    # Output as JSON
+slk messages general -n 50      # Show 50 messages
+slk messages general --json     # Output as JSON
 ```
 
 ### Activity
@@ -86,7 +86,7 @@ Use `--show-messages` (or `-m`) to preview the actual message content for each a
 ```bash
 slk unread                # Show unread counts
 slk unread clear          # Mark all as read
-slk unread clear #general # Mark channel as read
+slk unread clear general  # Mark channel as read
 ```
 
 ### Catchup (Interactive Triage)
@@ -177,13 +177,15 @@ ruby -Ilib bin/slk --version
 
 # Run tests
 rake test
-
-# Build gem
-gem build slk.gemspec
-
-# Install locally
-gem install ./slk-0.1.0.gem
 ```
+
+### Releasing
+
+1. Update version in `lib/slk/version.rb`
+2. Update `CHANGELOG.md` (move Unreleased to new version, add date)
+3. Commit: `git commit -am "Release vX.Y.Z"`
+4. Release to RubyGems: `rake release`
+5. Create GitHub Release: `gh release create vX.Y.Z --generate-notes`
 
 ## License
 
