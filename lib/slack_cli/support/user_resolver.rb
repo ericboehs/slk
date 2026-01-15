@@ -17,39 +17,55 @@ module SlackCli
       # @param conversations [Api::Conversations] API client for conversation info
       # @return [String] User name or channel ID if not found
       def resolve_dm_user_name(workspace, channel_id, conversations)
-        info = conversations.info(channel: channel_id)
-        return channel_id unless info['ok'] && info['channel']
-
-        user_id = info['channel']['user']
+        user_id = get_dm_user_id(channel_id, conversations)
         return channel_id unless user_id
 
-        # Try cache first
-        cached = cache_store.get_user(workspace.name, user_id)
-        return cached if cached
-
-        # Try users API lookup
-        begin
-          users_api = runner.users_api(workspace.name)
-          user_info = users_api.info(user_id)
-          if user_info['ok'] && user_info['user']
-            profile = user_info['user']['profile'] || {}
-            name = profile['display_name']
-            name = profile['real_name'] if name.to_s.empty?
-            name = user_info['user']['name'] if name.to_s.empty?
-            if name && !name.empty?
-              cache_store.set_user(workspace.name, user_id, name, persist: true)
-              return name
-            end
-          end
-        rescue ApiError => e
-          debug("User lookup failed for #{user_id}: #{e.message}")
-        end
-
-        user_id
+        lookup_user_name(workspace, user_id) || user_id
       rescue ApiError => e
         debug("DM info lookup failed for #{channel_id}: #{e.message}")
         channel_id
       end
+
+      private
+
+      def get_dm_user_id(channel_id, conversations)
+        info = conversations.info(channel: channel_id)
+        return nil unless info['ok'] && info['channel']
+
+        info['channel']['user']
+      end
+
+      def lookup_user_name(workspace, user_id)
+        cached = cache_store.get_user(workspace.name, user_id)
+        return cached if cached
+
+        fetch_and_cache_user_name(workspace, user_id)
+      end
+
+      def fetch_and_cache_user_name(workspace, user_id)
+        users_api = runner.users_api(workspace.name)
+        user_info = users_api.info(user_id)
+        return nil unless user_info['ok'] && user_info['user']
+
+        name = extract_name_from_user_info(user_info['user'])
+        return nil unless name
+
+        cache_store.set_user(workspace.name, user_id, name, persist: true)
+        name
+      rescue ApiError => e
+        debug("User lookup failed for #{user_id}: #{e.message}")
+        nil
+      end
+
+      def extract_name_from_user_info(user)
+        profile = user['profile'] || {}
+        name = profile['display_name']
+        name = profile['real_name'] if name.to_s.empty?
+        name = user['name'] if name.to_s.empty?
+        name unless name.to_s.empty?
+      end
+
+      public
 
       # Resolves a channel ID to a formatted label (@username or #channel)
       # @param workspace [Models::Workspace] The workspace to look up in
