@@ -98,7 +98,7 @@ module SlackCli
 
       # Override in subclass to handle command-specific options
       # Return true if option was handled, false to raise unknown option error
-      def handle_option(arg, _args, _remaining)
+      def handle_option(arg, _args, _remaining) # rubocop:disable Naming/PredicateMethod
         # By default, unknown options are errors
         # Subclasses can override and return true to accept the option,
         # or call super to get this error behavior

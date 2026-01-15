@@ -2,14 +2,6 @@ AllCops:
   TargetRubyVersion: 3.2
   NewCops: enable
 
-# These are false positives - these methods aren't predicates
-Naming/PredicateMethod:
-  AllowedMethods:
-    - encrypt
-    - remove
-    - handle_option
-    - print_inline_image_with_text
-
 # Allow short parameter names that are domain-specific (Slack API uses ts, ws, id)
 Naming/MethodParameterName:
   AllowedNames:

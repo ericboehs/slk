@@ -75,7 +75,7 @@ module SlackCli
         save_presets(presets)
       end
 
-      def remove(name)
+      def remove(name) # rubocop:disable Naming/PredicateMethod
         presets = load_presets
         removed = presets.delete(name)
         save_presets(presets) if removed

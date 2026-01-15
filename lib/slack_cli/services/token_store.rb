@@ -52,7 +52,7 @@ module SlackCli
         save_tokens(tokens)
       end
 
-      def remove(name)
+      def remove(name) # rubocop:disable Naming/PredicateMethod
         tokens = load_tokens
         removed = tokens.delete(name)
         save_tokens(tokens) if removed

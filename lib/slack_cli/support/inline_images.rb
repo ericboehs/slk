@@ -47,7 +47,7 @@ module SlackCli
 
       # Print inline image with name on same line
       # Handles tmux cursor positioning to keep image and text on same line
-      def print_inline_image_with_text(path, text, height: 1)
+      def print_inline_image_with_text(path, text, height: 1) # rubocop:disable Naming/PredicateMethod
         return false unless inline_images_supported? && File.exist?(path)
 
         print_inline_image(path, height: height)

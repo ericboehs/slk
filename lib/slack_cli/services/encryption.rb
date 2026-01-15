@@ -10,7 +10,7 @@ module SlackCli
         system('which age > /dev/null 2>&1')
       end
 
-      def encrypt(content, ssh_key_path, output_file)
+      def encrypt(content, ssh_key_path, output_file) # rubocop:disable Naming/PredicateMethod
         raise EncryptionError, 'age encryption tool not available' unless available?
 
         public_key = "#{ssh_key_path}.pub"
