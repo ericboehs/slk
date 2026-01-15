@@ -174,12 +174,24 @@ class CLITest < Minitest::Test
       @stderr += "Warning: #{msg}\n"
     end
 
-    def debug(msg)
+    def success(msg)
+      @stdout += "#{msg}\n"
+    end
+
+    def debug(_msg)
       # Ignore debug output
     end
 
     def verbose?
       false
     end
+
+    # Color methods (no-op for tests)
+    def bold(str) = str
+    def cyan(str) = str
+    def green(str) = str
+    def yellow(str) = str
+    def red(str) = str
+    def dim(str) = str
   end
 end

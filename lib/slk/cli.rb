@@ -117,7 +117,7 @@ module Slk
     def build_runner(args)
       verbose = verbose_mode?(args)
       very_verbose = args.include?('-vv') || args.include?('--very-verbose')
-      output = Formatters::Output.new(verbose: verbose)
+      output = @output || Formatters::Output.new(verbose: verbose)
       runner = Runner.new(output: output)
       setup_verbose_logging(runner, output) if verbose
       setup_very_verbose_logging(runner, output) if very_verbose
