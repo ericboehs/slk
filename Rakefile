@@ -15,14 +15,14 @@ task default: :test
 
 desc 'Run the CLI'
 task :run, [:args] do |_t, args|
-  require_relative 'lib/slack_cli'
+  require_relative 'lib/slk'
   argv = args[:args]&.split || []
-  SlackCli::CLI.new(argv).run
+  Slk::CLI.new(argv).run
 end
 
-desc 'Console with slack_cli loaded'
+desc 'Console with slk loaded'
 task :console do
-  require_relative 'lib/slack_cli'
+  require_relative 'lib/slk'
   require 'irb'
   IRB.start
 end

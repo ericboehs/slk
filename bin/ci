@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Run the full CI suite (tests + linting)
+set -e
+
+cd "$(dirname "$0")/.."
+
+echo "==> Running tests..."
+rake test
+
+echo ""
+echo "==> Running rubocop..."
+rubocop
+
+echo ""
+echo "==> All checks passed!"
