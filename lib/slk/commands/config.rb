@@ -21,6 +21,7 @@ module Slk
         in ['setup'] | [_] then run_setup
         in ['get', key] then get_value(key)
         in ['set', key, value] then set_value(key, value)
+        in ['unset', key] then unset_value(key)
         end
       end
 
@@ -41,6 +42,7 @@ module Slk
           s.action('setup', 'Run setup wizard')
           s.action('get <key>', 'Get a config value')
           s.action('set <key> <val>', 'Set a config value')
+          s.action('unset <key>', 'Remove a config value')
         end
       end
 
@@ -114,9 +116,26 @@ module Slk
         0
       end
 
+      def unset_value(key)
+        if key == 'ssh_key'
+          return 1 if unset_ssh_key.nil?
+        else
+          config[key] = nil
+          success("Unset #{key}")
+        end
+
+        0
+      end
+
       def set_ssh_key(new_path)
         # Expand path and handle unsetting
         new_path = new_path == '' ? nil : File.expand_path(new_path)
+
+        if new_path&.end_with?('.pub')
+          error('Please provide the private key path, not the public key (.pub)')
+          return nil
+        end
+
         old_path = config.ssh_key
 
         # Migrate tokens to new encryption setting
@@ -135,6 +154,35 @@ module Slk
       rescue EncryptionError => e
         error(e.message)
         nil # Signal failure
+      end
+
+      def unset_ssh_key
+        old_path = config.ssh_key
+        old_path = nil if old_path.to_s.empty?
+
+        # If encrypted file exists but no key in config, we need to ask for it
+        if old_path.nil? && encrypted_tokens_exist?
+          output.puts 'Encrypted tokens exist but no ssh_key is configured.'
+          output.print 'Enter path to SSH key for decryption: '
+          old_path = $stdin.gets&.chomp
+          old_path = File.expand_path(old_path) if old_path && !old_path.empty?
+        end
+
+        token_store.on_info = ->(msg) { success(msg) }
+        token_store.on_warning = ->(msg) { warn(msg) }
+        token_store.migrate_encryption(old_path, nil)
+
+        config['ssh_key'] = nil
+        success('Cleared ssh_key')
+        true
+      rescue EncryptionError => e
+        error(e.message)
+        nil
+      end
+
+      def encrypted_tokens_exist?
+        paths = Support::XdgPaths.new
+        File.exist?(paths.config_file('tokens.age'))
       end
     end
   end
