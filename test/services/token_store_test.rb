@@ -197,6 +197,153 @@ class TokenStoreTest < Minitest::Test
     assert_equal callback, store.on_warning
   end
 
+  def test_on_info_callback_is_settable
+    store = Slk::Services::TokenStore.new
+    callback = ->(msg) { puts msg }
+    store.on_info = callback
+    assert_equal callback, store.on_info
+  end
+
+  # migrate_encryption tests
+  def test_migrate_encryption_does_nothing_when_keys_are_same
+    with_temp_config do |dir|
+      write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-test' } })
+      store = Slk::Services::TokenStore.new
+
+      # Should not raise or change anything
+      store.migrate_encryption('/same/key', '/same/key')
+
+      assert store.exists?('myworkspace')
+    end
+  end
+
+  def test_migrate_encryption_does_nothing_when_no_tokens
+    with_temp_config do
+      store = Slk::Services::TokenStore.new
+
+      # Should not raise when there are no tokens to migrate
+      store.migrate_encryption(nil, '/some/new/key.pub')
+    end
+  end
+
+  def test_migrate_encryption_validates_new_key_type
+    with_temp_config do |dir|
+      write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-test' } })
+
+      # Create an ECDSA key (unsupported by age)
+      key_path = "#{dir}/ecdsa_key"
+      File.write("#{key_path}.pub", 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTI... user@host')
+
+      store = Slk::Services::TokenStore.new
+
+      error = assert_raises(Slk::EncryptionError) do
+        store.migrate_encryption(nil, key_path)
+      end
+
+      assert_match(/Unsupported SSH key type/, error.message)
+    end
+  end
+
+  def test_migrate_encryption_notifies_when_encrypting
+    skip unless can_create_test_ssh_key?
+    skip unless age_available?
+
+    with_temp_config do |dir|
+      write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-test' } })
+
+      # Create a valid ed25519 key
+      key_path = "#{dir}/test_key"
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+
+      store = Slk::Services::TokenStore.new
+      messages = []
+      store.on_info = ->(msg) { messages << msg }
+
+      store.migrate_encryption(nil, key_path)
+
+      assert_includes messages, 'Tokens have been encrypted with the new SSH key.'
+    end
+  end
+
+  def test_migrate_encryption_notifies_when_decrypting_to_plaintext
+    skip unless can_create_test_ssh_key?
+    skip unless age_available?
+
+    with_temp_config do |dir|
+      # Create a valid ed25519 key
+      key_path = "#{dir}/test_key"
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+
+      # Write plaintext tokens first
+      write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-test' } })
+
+      store = Slk::Services::TokenStore.new
+      # Encrypt tokens first
+      store.migrate_encryption(nil, key_path)
+
+      # Now decrypt them
+      messages = []
+      store.on_warning = ->(msg) { messages << msg }
+      store.migrate_encryption(key_path, nil)
+
+      assert_includes messages, 'Tokens are now stored in plaintext.'
+    end
+  end
+
+  def test_migrate_encryption_from_plaintext_to_encrypted
+    skip unless can_create_test_ssh_key?
+    skip unless age_available?
+
+    with_temp_config do |dir|
+      write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-test' } })
+
+      # Create a valid ed25519 key
+      key_path = "#{dir}/test_key"
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+
+      store = Slk::Services::TokenStore.new
+      store.migrate_encryption(nil, key_path)
+
+      config_dir = "#{dir}/slk"
+
+      # Plain file should be removed
+      refute File.exist?("#{config_dir}/tokens.json")
+      # Encrypted file should exist
+      assert File.exist?("#{config_dir}/tokens.age")
+    end
+  end
+
+  def test_migrate_encryption_from_encrypted_to_plaintext
+    skip unless can_create_test_ssh_key?
+    skip unless age_available?
+
+    with_temp_config do |dir|
+      # Create a valid ed25519 key
+      key_path = "#{dir}/test_key"
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+
+      # Write plaintext tokens first, then encrypt
+      write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-test' } })
+      store = Slk::Services::TokenStore.new
+      store.migrate_encryption(nil, key_path)
+
+      config_dir = "#{dir}/slk"
+      assert File.exist?("#{config_dir}/tokens.age")
+
+      # Now decrypt to plaintext
+      store.migrate_encryption(key_path, nil)
+
+      # Encrypted file should be removed
+      refute File.exist?("#{config_dir}/tokens.age")
+      # Plain file should exist
+      assert File.exist?("#{config_dir}/tokens.json")
+
+      # Verify tokens are readable
+      tokens = JSON.parse(File.read("#{config_dir}/tokens.json"))
+      assert_equal 'xoxb-test', tokens['myworkspace']['token']
+    end
+  end
+
   # File permissions test
   def test_add_creates_file_with_restricted_permissions
     with_temp_config do |dir|
@@ -256,5 +403,13 @@ class TokenStoreTest < Minitest::Test
     config_dir = "#{dir}/slk"
     FileUtils.mkdir_p(config_dir)
     File.write("#{config_dir}/tokens.json", JSON.generate(tokens))
+  end
+
+  def can_create_test_ssh_key?
+    system('which ssh-keygen > /dev/null 2>&1')
+  end
+
+  def age_available?
+    system('which age > /dev/null 2>&1')
   end
 end

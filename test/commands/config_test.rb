@@ -21,7 +21,9 @@ class ConfigCommandTest < Minitest::Test
     token_store.define_singleton_method(:workspace_names) { workspace_list.map(&:name) }
     token_store.define_singleton_method(:empty?) { workspace_list.empty? }
     token_store.define_singleton_method(:on_warning=) { |_| nil }
+    token_store.define_singleton_method(:on_info=) { |_| nil }
     token_store.define_singleton_method(:add) { |_name, _token, _cookie| nil }
+    token_store.define_singleton_method(:migrate_encryption) { |_old, _new| nil }
 
     preset_store = Object.new
     preset_store.define_singleton_method(:on_warning=) { |_| nil }
@@ -88,6 +90,75 @@ class ConfigCommandTest < Minitest::Test
     assert_equal 0, result
     assert_equal '/new/path', @config.data['emoji_dir']
     assert_includes @io.string, 'Set'
+  end
+
+  def test_set_ssh_key_validates_key_type
+    Dir.mktmpdir do |dir|
+      # Create an ECDSA key (unsupported by age)
+      key_path = "#{dir}/ecdsa_key"
+      File.write("#{key_path}.pub", 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTI... user@host')
+
+      # Use a mock token store that will call migrate_encryption
+      token_store = Object.new
+      token_store.define_singleton_method(:workspace_names) { [] }
+      token_store.define_singleton_method(:empty?) { true }
+      token_store.define_singleton_method(:on_warning=) { |_| nil }
+      token_store.define_singleton_method(:on_info=) { |_| nil }
+
+      # migrate_encryption should validate key type and raise
+      encryption = Slk::Services::Encryption.new
+      token_store.define_singleton_method(:migrate_encryption) do |_old, new_key|
+        encryption.validate_key_type!(new_key) if new_key
+      end
+
+      preset_store = Object.new
+      preset_store.define_singleton_method(:on_warning=) { |_| nil }
+
+      cache_store = Object.new
+      cache_store.define_singleton_method(:on_warning=) { |_| nil }
+
+      runner = Slk::Runner.new(
+        output: @output,
+        config: @config,
+        token_store: token_store,
+        preset_store: preset_store,
+        cache_store: cache_store
+      )
+
+      command = Slk::Commands::Config.new(['set', 'ssh_key', key_path], runner: runner)
+      result = command.execute
+
+      assert_equal 1, result
+      assert_includes @err.string, 'Unsupported SSH key type'
+    end
+  end
+
+  def test_set_ssh_key_expands_path
+    Dir.mktmpdir do |dir|
+      # Create a valid ed25519 key
+      key_path = "#{dir}/test_key"
+      File.write("#{key_path}.pub", 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@host')
+
+      runner = create_runner
+      command = Slk::Commands::Config.new(['set', 'ssh_key', key_path], runner: runner)
+      result = command.execute
+
+      assert_equal 0, result
+      # Path should be expanded (absolute)
+      assert @config.data['ssh_key'].start_with?('/')
+    end
+  end
+
+  def test_set_ssh_key_empty_clears_key
+    @config.data['ssh_key'] = nil # No previous key
+
+    runner = create_runner
+    command = Slk::Commands::Config.new(['set', 'ssh_key', ''], runner: runner)
+    result = command.execute
+
+    assert_equal 0, result
+    assert_nil @config.data['ssh_key']
+    assert_includes @io.string, 'Cleared ssh_key'
   end
 
   def test_help_option

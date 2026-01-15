@@ -13,6 +13,51 @@ class EncryptionTest < Minitest::Test
     assert [true, false].include?(result)
   end
 
+  # validate_key_type! tests
+  def test_validate_key_type_accepts_ed25519
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/test_key"
+      File.write("#{key_path}.pub", 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@host')
+
+      assert @encryption.validate_key_type!(key_path)
+    end
+  end
+
+  def test_validate_key_type_accepts_rsa
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/test_key"
+      File.write("#{key_path}.pub", 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAB... user@host')
+
+      assert @encryption.validate_key_type!(key_path)
+    end
+  end
+
+  def test_validate_key_type_rejects_ecdsa
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/test_key"
+      File.write("#{key_path}.pub", 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTI... user@host')
+
+      error = assert_raises(Slk::EncryptionError) do
+        @encryption.validate_key_type!(key_path)
+      end
+
+      assert_match(/Unsupported SSH key type: ecdsa-sha2-nistp256/, error.message)
+      assert_match(/age only supports: ssh-rsa, ssh-ed25519/, error.message)
+    end
+  end
+
+  def test_validate_key_type_raises_when_public_key_missing
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/nonexistent"
+
+      error = assert_raises(Slk::EncryptionError) do
+        @encryption.validate_key_type!(key_path)
+      end
+
+      assert_match(/Public key not found/, error.message)
+    end
+  end
+
   # encrypt tests
   def test_encrypt_raises_when_age_not_available
     encryption = Slk::Services::Encryption.new

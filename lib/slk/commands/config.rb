@@ -104,10 +104,37 @@ module Slk
       end
 
       def set_value(key, value)
-        config[key] = value
-        success("Set #{key} = #{value}")
+        if key == 'ssh_key'
+          return 1 if set_ssh_key(value).nil?
+        else
+          config[key] = value
+          success("Set #{key} = #{value}")
+        end
 
         0
+      end
+
+      def set_ssh_key(new_path)
+        # Expand path and handle unsetting
+        new_path = new_path == '' ? nil : File.expand_path(new_path)
+        old_path = config.ssh_key
+
+        # Migrate tokens to new encryption setting
+        token_store.on_info = ->(msg) { success(msg) }
+        token_store.on_warning = ->(msg) { warn(msg) }
+        token_store.migrate_encryption(old_path, new_path)
+
+        # Save the new setting
+        config['ssh_key'] = new_path
+        if new_path
+          success("Set ssh_key = #{new_path}")
+        else
+          success('Cleared ssh_key')
+        end
+        true # Signal success
+      rescue EncryptionError => e
+        error(e.message)
+        nil # Signal failure
       end
     end
   end

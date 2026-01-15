@@ -6,8 +6,28 @@ module Slk
   module Services
     # Encrypts/decrypts tokens using age with SSH keys
     class Encryption
+      SUPPORTED_KEY_TYPES = %w[ssh-rsa ssh-ed25519].freeze
+
       def available?
         system('which age > /dev/null 2>&1')
+      end
+
+      # Validate that the SSH key is a type supported by age
+      # @param ssh_key_path [String] Path to the SSH private key (public key at .pub)
+      # @return [true] if valid
+      # @raise [EncryptionError] if key type is unsupported
+      def validate_key_type!(ssh_key_path)
+        public_key = "#{ssh_key_path}.pub"
+        raise EncryptionError, "Public key not found: #{public_key}" unless File.exist?(public_key)
+
+        first_line = File.read(public_key).lines.first&.strip || ''
+        key_type = first_line.split.first
+
+        return true if SUPPORTED_KEY_TYPES.include?(key_type)
+
+        raise EncryptionError,
+              "Unsupported SSH key type: #{key_type || 'unknown'}. " \
+              "age only supports: #{SUPPORTED_KEY_TYPES.join(', ')}"
       end
 
       def encrypt(content, ssh_key_path, output_file) # rubocop:disable Naming/PredicateMethod
