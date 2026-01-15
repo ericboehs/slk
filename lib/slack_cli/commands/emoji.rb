@@ -120,26 +120,28 @@ module SlackCli
       end
 
       def search_emoji(query)
-        paths = Support::XdgPaths.new
-        emoji_dir = config.emoji_dir || paths.cache_dir
-
-        searcher = Services::EmojiSearcher.new(
-          cache_dir: paths.cache_dir,
-          emoji_dir: emoji_dir,
-          on_debug: ->(msg) { debug(msg) }
-        )
-
+        searcher = build_emoji_searcher
         workspaces = @options[:workspace] ? [runner.workspace(@options[:workspace])] : runner.all_workspaces
         by_source = searcher.search(query, workspaces: workspaces)
 
         if by_source.empty?
           puts "No emoji matching '#{query}'"
-          return 0
+        else
+          display_search_results(by_source)
+          puts "Found #{by_source.values.flatten.size} emoji matching '#{query}'"
         end
-
-        display_search_results(by_source)
-        puts "Found #{by_source.values.flatten.size} emoji matching '#{query}'"
         0
+      end
+
+      def build_emoji_searcher
+        paths = Support::XdgPaths.new
+        emoji_dir = config.emoji_dir || paths.cache_dir
+
+        Services::EmojiSearcher.new(
+          cache_dir: paths.cache_dir,
+          emoji_dir: emoji_dir,
+          on_debug: ->(msg) { debug(msg) }
+        )
       end
 
       def display_search_results(by_source)
@@ -217,31 +219,39 @@ module SlackCli
 
       def download_emoji(workspace_name)
         workspaces = workspace_name ? [runner.workspace(workspace_name)] : target_workspaces
+        downloader = build_emoji_downloader
+
+        workspaces.each { |workspace| download_workspace_emoji(workspace, downloader) }
+        0
+      end
+
+      def build_emoji_downloader
         paths = Support::XdgPaths.new
         emoji_dir = config.emoji_dir || paths.cache_dir
 
-        downloader = Services::EmojiDownloader.new(
+        Services::EmojiDownloader.new(
           emoji_dir: emoji_dir,
           on_progress: ->(current, total, downloaded, skipped) { print_progress(current, total, downloaded, skipped) },
           on_debug: ->(msg) { debug(msg) }
         )
+      end
 
-        workspaces.each do |workspace|
-          puts "Fetching emoji list for #{workspace.name}..."
+      def download_workspace_emoji(workspace, downloader)
+        puts "Fetching emoji list for #{workspace.name}..."
 
-          api = runner.emoji_api(workspace.name)
-          emoji_map = api.custom_emoji
+        api = runner.emoji_api(workspace.name)
+        emoji_map = api.custom_emoji
+        stats = downloader.download(workspace.name, emoji_map)
 
-          stats = downloader.download(workspace.name, emoji_map)
+        display_download_results(workspace.name, stats)
+      end
 
-          puts "\r#{' ' * 60}\r" # Clear progress line
-          success("Downloaded #{stats[:downloaded]} new emoji for #{workspace.name}")
-          if stats[:skipped].positive? || stats[:failed].positive?
-            puts "  Skipped: #{stats[:skipped]} (already exist), #{stats[:aliases]} aliases, #{stats[:failed]} failed"
-          end
-        end
+      def display_download_results(workspace_name, stats)
+        puts "\r#{' ' * 60}\r" # Clear progress line
+        success("Downloaded #{stats[:downloaded]} new emoji for #{workspace_name}")
+        return unless stats[:skipped].positive? || stats[:failed].positive?
 
-        0
+        puts "  Skipped: #{stats[:skipped]} (already exist), #{stats[:aliases]} aliases, #{stats[:failed]} failed"
       end
 
       def clear_emoji(workspace_name)
@@ -258,27 +268,27 @@ module SlackCli
       end
 
       def gather_dirs_to_clear(emoji_dir, workspace_name)
-        if workspace_name
-          workspace_dir = File.join(emoji_dir, workspace_name)
-          if Dir.exist?(workspace_dir)
-            [{ name: workspace_name, dir: workspace_dir }]
-          else
-            puts "No emoji cache for #{workspace_name}"
-            nil
-          end
-        else
-          dirs = target_workspaces.filter_map do |workspace|
-            workspace_dir = File.join(emoji_dir, workspace.name)
-            { name: workspace.name, dir: workspace_dir } if Dir.exist?(workspace_dir)
-          end
+        workspace_name ? gather_single_workspace_dir(emoji_dir, workspace_name) : gather_all_workspace_dirs(emoji_dir)
+      end
 
-          if dirs.empty?
-            puts 'No emoji caches to clear'
-            nil
-          else
-            dirs
-          end
+      def gather_single_workspace_dir(emoji_dir, workspace_name)
+        workspace_dir = File.join(emoji_dir, workspace_name)
+        return [{ name: workspace_name, dir: workspace_dir }] if Dir.exist?(workspace_dir)
+
+        puts "No emoji cache for #{workspace_name}"
+        nil
+      end
+
+      def gather_all_workspace_dirs(emoji_dir)
+        dirs = target_workspaces.filter_map do |workspace|
+          workspace_dir = File.join(emoji_dir, workspace.name)
+          { name: workspace.name, dir: workspace_dir } if Dir.exist?(workspace_dir)
         end
+
+        return dirs if dirs.any?
+
+        puts 'No emoji caches to clear'
+        nil
       end
 
       def display_clear_preview(to_clear)

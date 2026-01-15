@@ -179,46 +179,39 @@ module SlackCli
 
       def display_messages(messages, workspace, channel_id)
         formatter = runner.message_formatter
-        format_options = {
-          no_emoji: @options[:no_emoji],
-          no_reactions: @options[:no_reactions],
-          no_names: @options[:no_names],
-          reaction_names: @options[:reaction_names],
-          width: @options[:width]
-        }
+        opts = format_options.merge(channel_id: channel_id)
 
         messages.each_with_index do |message, index|
-          formatted = formatter.format(message, workspace: workspace, options: format_options)
-          print_with_workspace_emoji(formatted, workspace)
+          display_single_message(formatter, message, workspace, opts)
           puts if index < messages.length - 1
 
-          # Show thread replies if requested
-          if @options[:threads] && message.thread? && !message.reply?
-            show_thread_replies(workspace, channel_id, message, format_options)
-          end
+          show_thread_replies(workspace, channel_id, message, opts) if should_show_thread?(message)
         end
       end
 
-      def show_thread_replies(workspace, channel_id, parent_message, format_options)
-        api = runner.conversations_api(workspace.name)
-        formatter = runner.message_formatter
+      def should_show_thread?(message)
+        @options[:threads] && message.thread? && !message.reply?
+      end
 
-        # Fetch all replies with pagination
+      def display_single_message(formatter, message, workspace, opts)
+        formatted = formatter.format(message, workspace: workspace, options: opts)
+        print_with_workspace_emoji(formatted, workspace)
+      end
+
+      def show_thread_replies(workspace, channel_id, parent_message, opts)
+        api = runner.conversations_api(workspace.name)
         replies = fetch_all_thread_replies(api, channel_id, parent_message.ts)
 
-        # Skip the parent message (first one) and show replies
-        replies[1..].each do |reply_data|
-          reply = Models::Message.from_api(reply_data, channel_id: channel_id)
-          formatted = formatter.format(reply, workspace: workspace, options: format_options)
+        replies[1..].each { |reply_data| display_thread_reply(reply_data, workspace, channel_id, opts) }
+      end
 
-          # Indent multiline messages so continuation lines align with the first line
-          lines = formatted.lines
-          first_line = "  └ #{lines.first}"
-          continuation_lines = lines[1..].map { |line| "    #{line}" }
+      def display_thread_reply(reply_data, workspace, channel_id, opts)
+        reply = Models::Message.from_api(reply_data, channel_id: channel_id)
+        formatted = runner.message_formatter.format(reply, workspace: workspace, options: opts)
 
-          print_with_workspace_emoji(first_line, workspace)
-          continuation_lines.each { |line| print_with_workspace_emoji(line, workspace) }
-        end
+        lines = formatted.lines
+        print_with_workspace_emoji("  └ #{lines.first}", workspace)
+        lines[1..].each { |line| print_with_workspace_emoji("    #{line}", workspace) }
       end
 
       # Print text, replacing workspace emoji codes with inline images when enabled
