@@ -21,7 +21,6 @@ Naming/MethodParameterName:
 
 # These methods aren't simple attribute accessors - they're API operations
 # that perform network calls. The get/set prefix clarifies their behavior.
-# Unfortunately this cop doesn't support AllowedMethods, so we exclude files.
 Naming/AccessorMethodName:
   Exclude:
     - 'lib/slack_cli/api/dnd.rb'

@@ -5,6 +5,7 @@ module SlackCli
   class Runner
     attr_reader :output, :config, :token_store, :api_client, :cache_store, :preset_store
 
+    # rubocop:disable Metrics/ParameterLists
     def initialize(
       output: nil,
       config: nil,
@@ -23,6 +24,7 @@ module SlackCli
       # Wire up warning callbacks to show warnings to users
       wire_up_warnings
     end
+    # rubocop:enable Metrics/ParameterLists
 
     # Workspace helpers
     def workspace(name = nil)

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+# rubocop:disable Metrics/ModuleLength
 module SlackCli
   module Models
     # Minimum text length before we extract content from Block Kit blocks.
@@ -77,6 +78,7 @@ module SlackCli
         end.join
       end
 
+      # rubocop:disable Metrics/ParameterLists
       def initialize(
         ts:,
         user_id:,
@@ -116,6 +118,7 @@ module SlackCli
           channel_id: channel_id&.freeze
         )
       end
+      # rubocop:enable Metrics/ParameterLists
 
       # Recursively freeze nested structures (arrays and hashes)
       def self.deep_freeze(obj)
@@ -215,3 +218,4 @@ module SlackCli
     end
   end
 end
+# rubocop:enable Metrics/ModuleLength

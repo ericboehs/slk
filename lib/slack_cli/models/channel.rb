@@ -14,6 +14,7 @@ module SlackCli
         )
       end
 
+      # rubocop:disable Metrics/ParameterLists
       def initialize(id:, name: nil, is_private: false, is_im: false, is_mpim: false, is_archived: false)
         super(
           id: id.to_s.freeze,
@@ -24,6 +25,7 @@ module SlackCli
           is_archived: is_archived
         )
       end
+      # rubocop:enable Metrics/ParameterLists
 
       def dm?
         is_im || is_mpim

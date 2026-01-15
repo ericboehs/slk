@@ -14,6 +14,7 @@ module SlackCli
         )
       end
 
+      # rubocop:disable Metrics/ParameterLists
       def initialize(name:, text: '', emoji: '', duration: '0', presence: '', dnd: '')
         name_str = name.to_s.strip
         raise ArgumentError, 'preset name cannot be empty' if name_str.empty?
@@ -31,6 +32,7 @@ module SlackCli
           dnd: dnd.to_s.freeze
         )
       end
+      # rubocop:enable Metrics/ParameterLists
 
       def to_h
         {

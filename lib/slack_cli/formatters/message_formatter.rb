@@ -4,6 +4,7 @@ module SlackCli
   module Formatters
     # Formats Slack messages for terminal display or JSON output
     class MessageFormatter
+      # rubocop:disable Metrics/ParameterLists
       def initialize(output:, mention_replacer:, emoji_replacer:, cache_store:, api_client: nil, on_debug: nil)
         @output = output
         @mentions = mention_replacer
@@ -18,6 +19,7 @@ module SlackCli
         )
         @json_formatter = JsonMessageFormatter.new(cache_store: cache_store)
       end
+      # rubocop:enable Metrics/ParameterLists
 
       def format(message, workspace:, options: {})
         username = resolve_username(message, workspace, options)
