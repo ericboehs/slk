@@ -43,6 +43,11 @@ module SlackCli
     autoload :PresetStore, 'slack_cli/services/preset_store'
     autoload :Encryption, 'slack_cli/services/encryption'
     autoload :ReactionEnricher, 'slack_cli/services/reaction_enricher'
+    autoload :GemojiSync, 'slack_cli/services/gemoji_sync'
+    autoload :EmojiDownloader, 'slack_cli/services/emoji_downloader'
+    autoload :EmojiSearcher, 'slack_cli/services/emoji_searcher'
+    autoload :ActivityEnricher, 'slack_cli/services/activity_enricher'
+    autoload :UnreadMarker, 'slack_cli/services/unread_marker'
   end
 
   # Output formatters for messages, durations, and emoji
@@ -52,6 +57,9 @@ module SlackCli
     autoload :MentionReplacer, 'slack_cli/formatters/mention_replacer'
     autoload :EmojiReplacer, 'slack_cli/formatters/emoji_replacer'
     autoload :MessageFormatter, 'slack_cli/formatters/message_formatter'
+    autoload :ReactionFormatter, 'slack_cli/formatters/reaction_formatter'
+    autoload :JsonMessageFormatter, 'slack_cli/formatters/json_message_formatter'
+    autoload :ActivityFormatter, 'slack_cli/formatters/activity_formatter'
   end
 
   # CLI commands implementing user-facing functionality
@@ -94,5 +102,7 @@ module SlackCli
     autoload :HelpFormatter, 'slack_cli/support/help_formatter'
     autoload :ErrorLogger, 'slack_cli/support/error_logger'
     autoload :UserResolver, 'slack_cli/support/user_resolver'
+    autoload :TextWrapper, 'slack_cli/support/text_wrapper'
+    autoload :InteractivePrompt, 'slack_cli/support/interactive_prompt'
   end
 end

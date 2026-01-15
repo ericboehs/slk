@@ -7,6 +7,7 @@ module SlackCli
     # Interactive review and dismissal of unread messages
     class Catchup < Base
       include Support::UserResolver
+      include Support::InteractivePrompt
 
       def execute
         result = validate_options
@@ -88,73 +89,17 @@ module SlackCli
 
       def batch_catchup
         target_workspaces.each do |workspace|
-          client = runner.client_api(workspace.name)
-          counts = client.counts
-          conversations = runner.conversations_api(workspace.name)
+          marker = Services::UnreadMarker.new(
+            conversations_api: runner.conversations_api(workspace.name),
+            threads_api: runner.threads_api(workspace.name),
+            client_api: runner.client_api(workspace.name),
+            users_api: runner.users_api(workspace.name),
+            on_debug: ->(msg) { debug(msg) }
+          )
 
-          # Mark DMs as read
-          ims = counts['ims'] || []
-          dms_marked = 0
-
-          ims.each do |im|
-            next unless im['has_unreads']
-
-            begin
-              history = conversations.history(channel: im['id'], limit: 1)
-              if (messages = history['messages']) && messages.any?
-                conversations.mark(channel: im['id'], ts: messages.first['ts'])
-                dms_marked += 1
-              end
-            rescue ApiError => e
-              debug("Could not mark DM #{im['id']}: #{e.message}")
-            end
-          end
-
-          # Mark channels as read
-          channels = counts['channels'] || []
-          channels_marked = 0
-
-          channels.each do |channel|
-            next unless channel['has_unreads']
-            next if !@options[:muted] && channel['is_muted']
-
-            begin
-              history = conversations.history(channel: channel['id'], limit: 1)
-              if (messages = history['messages']) && messages.any?
-                conversations.mark(channel: channel['id'], ts: messages.first['ts'])
-                channels_marked += 1
-              end
-            rescue ApiError => e
-              debug("Could not mark channel #{channel['id']}: #{e.message}")
-            end
-          end
-
-          # Mark threads as read
-          threads_api = runner.threads_api(workspace.name)
-          threads_response = threads_api.get_view(limit: 50)
-          threads_marked = 0
-
-          if threads_response['ok']
-            (threads_response['threads'] || []).each do |thread|
-              unread_replies = thread['unread_replies'] || []
-              next if unread_replies.empty?
-
-              root_msg = thread['root_msg'] || {}
-              channel_id = root_msg['channel']
-              thread_ts = root_msg['thread_ts']
-              latest_ts = unread_replies.map { |r| r['ts'] }.max
-
-              begin
-                threads_api.mark(channel: channel_id, thread_ts: thread_ts, ts: latest_ts)
-                threads_marked += 1
-              rescue ApiError => e
-                debug("Could not mark thread #{thread_ts} in #{channel_id}: #{e.message}")
-              end
-            end
-          end
-
-          success("Marked #{dms_marked} DMs, #{channels_marked} channels, " \
-                  "and #{threads_marked} threads as read on #{workspace.name}")
+          counts = marker.mark_all(options: { muted: @options[:muted] })
+          success("Marked #{counts[:dms]} DMs, #{counts[:channels]} channels, " \
+                  "and #{counts[:threads]} threads as read on #{workspace.name}")
         end
 
         0
@@ -332,13 +277,6 @@ module SlackCli
         end
       end
 
-      def prompt_for_action(prompt)
-        print "\n#{prompt} > "
-        input = read_single_char
-        puts
-        input
-      end
-
       def handle_channel_action(input, workspace, channel_id, latest_ts, conversations)
         case input&.downcase
         when 's', "\r", "\n", nil
@@ -461,16 +399,6 @@ module SlackCli
           print "\r#{output.red('Invalid key')} - #{output.cyan('[s]kip  [r]ead  [o]pen  [q]uit')}"
           nil # Return nil to continue loop
         end
-      end
-
-      def read_single_char
-        if $stdin.tty?
-          $stdin.raw(&:readchar)
-        else
-          $stdin.gets&.chomp
-        end
-      rescue Interrupt
-        'q'
       end
     end
   end

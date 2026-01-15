@@ -9,16 +9,6 @@ module SlackCli
     class Emoji < Base
       include Support::InlineImages
 
-      NETWORK_ERRORS = [
-        SocketError,
-        Errno::ECONNREFUSED,
-        Errno::ETIMEDOUT,
-        Net::OpenTimeout,
-        Net::ReadTimeout,
-        URI::InvalidURIError,
-        OpenSSL::SSL::SSLError
-      ].freeze
-
       def execute
         result = validate_options
         return result if result
@@ -87,9 +77,17 @@ module SlackCli
       def show_status
         paths = Support::XdgPaths.new
         emoji_dir = config.emoji_dir || paths.cache_dir
-        gemoji_path = File.join(paths.cache_dir, 'gemoji.json')
 
-        # Show standard emoji status
+        show_standard_emoji_status(paths.cache_dir)
+        puts
+        show_workspace_emoji_status(emoji_dir)
+
+        0
+      end
+
+      def show_standard_emoji_status(cache_dir)
+        gemoji_path = File.join(cache_dir, 'gemoji.json')
+
         if File.exist?(gemoji_path)
           begin
             gemoji = JSON.parse(File.read(gemoji_path))
@@ -102,8 +100,9 @@ module SlackCli
           puts "Standard emoji database: #{output.yellow('not downloaded')}"
           puts "  Run 'slk emoji sync-standard' to download"
         end
+      end
 
-        puts
+      def show_workspace_emoji_status(emoji_dir)
         puts "Workspace emojis: (#{emoji_dir})"
 
         target_workspaces.each do |workspace|
@@ -113,73 +112,54 @@ module SlackCli
             files = Dir.glob(File.join(workspace_dir, '*'))
             count = files.count
             size = files.sum { |f| safe_file_size(f) }
-            size_str = format_size(size)
-            puts "  #{workspace.name}: #{count} emojis (#{size_str})"
+            puts "  #{workspace.name}: #{count} emojis (#{format_size(size)})"
           else
             puts "  #{workspace.name}: #{output.yellow('not downloaded')}"
           end
         end
-
-        0
       end
 
       def search_emoji(query)
         paths = Support::XdgPaths.new
         emoji_dir = config.emoji_dir || paths.cache_dir
-        gemoji_path = File.join(paths.cache_dir, 'gemoji.json')
-        pattern = Regexp.new(Regexp.escape(query), Regexp::IGNORECASE)
 
-        results = []
+        searcher = Services::EmojiSearcher.new(
+          cache_dir: paths.cache_dir,
+          emoji_dir: emoji_dir,
+          on_debug: ->(msg) { debug(msg) }
+        )
 
-        # Search standard emoji
-        if File.exist?(gemoji_path)
-          begin
-            gemoji = JSON.parse(File.read(gemoji_path))
-            gemoji.each do |name, char|
-              results << { name: name, char: char, source: 'standard' } if name.match?(pattern)
-            end
-          rescue JSON::ParserError
-            # Skip standard emoji search if cache is corrupted
-            debug('Standard emoji cache corrupted, skipping')
-          end
-        end
-
-        # Search workspace custom emoji (all workspaces by default, or -w to limit)
         workspaces = @options[:workspace] ? [runner.workspace(@options[:workspace])] : runner.all_workspaces
-        workspaces.each do |workspace|
-          workspace_dir = File.join(emoji_dir, workspace.name)
-          next unless Dir.exist?(workspace_dir)
+        by_source = searcher.search(query, workspaces: workspaces)
 
-          Dir.glob(File.join(workspace_dir, '*')).each do |filepath|
-            name = File.basename(filepath, '.*')
-            results << { name: name, path: filepath, source: workspace.name } if name.match?(pattern)
-          end
-        end
-
-        if results.empty?
+        if by_source.empty?
           puts "No emoji matching '#{query}'"
           return 0
         end
 
-        # Group by source
-        by_source = results.group_by { |r| r[:source] }
+        display_search_results(by_source)
+        puts "Found #{by_source.values.flatten.size} emoji matching '#{query}'"
+        0
+      end
 
+      def display_search_results(by_source)
         by_source.each do |source, items|
           puts output.bold(source == 'standard' ? 'Standard emoji:' : "#{source}:")
           items.sort_by { |r| r[:name] }.each do |item|
-            if item[:char]
-              puts "#{item[:char]}  :#{item[:name]}:"
-            elsif item[:path]
-              puts ":#{item[:name]}:" unless print_inline_image_with_text(item[:path], ":#{item[:name]}:")
-            else
-              puts ":#{item[:name]}:"
-            end
+            display_emoji_item(item)
           end
           puts
         end
+      end
 
-        puts "Found #{results.size} emoji matching '#{query}'"
-        0
+      def display_emoji_item(item)
+        if item[:char]
+          puts "#{item[:char]}  :#{item[:name]}:"
+        elsif item[:path]
+          puts ":#{item[:name]}:" unless print_inline_image_with_text(item[:path], ":#{item[:name]}:")
+        else
+          puts ":#{item[:name]}:"
+        end
       end
 
       def print_progress(current, total, downloaded, _skipped)
@@ -217,62 +197,22 @@ module SlackCli
 
       def sync_standard
         paths = Support::XdgPaths.new
-        cache_dir = paths.cache_dir
-        emoji_json_path = File.join(cache_dir, 'gemoji.json')
 
-        puts 'Downloading standard emoji database...'
+        syncer = Services::GemojiSync.new(
+          cache_dir: paths.cache_dir,
+          on_progress: ->(msg) { puts msg }
+        )
 
-        # Download gemoji JSON from GitHub
-        gemoji_url = 'https://raw.githubusercontent.com/github/gemoji/master/db/emoji.json'
+        result = syncer.sync
 
-        begin
-          uri = URI.parse(gemoji_url)
-          http = Net::HTTP.new(uri.host, uri.port)
-          http.use_ssl = true
-          http.verify_mode = OpenSSL::SSL::VERIFY_PEER
-          http.cert_store = OpenSSL::X509::Store.new
-          http.cert_store.set_default_paths
-
-          request = Net::HTTP::Get.new(uri)
-          response = http.request(request)
-
-          unless response.is_a?(Net::HTTPSuccess)
-            error("Failed to download: HTTP #{response.code}")
-            return 1
-          end
-
-          # Parse and transform to shortcode -> emoji mapping
-          emoji_data = JSON.parse(response.body)
-          emoji_map = {}
-
-          emoji_data.each do |emoji|
-            char = emoji['emoji']
-            next unless char
-
-            # Add all aliases
-            (emoji['aliases'] || []).each do |name|
-              emoji_map[name] = char
-            end
-          end
-
-          # Save to cache
-          FileUtils.mkdir_p(cache_dir)
-          File.write(emoji_json_path, JSON.pretty_generate(emoji_map))
-
-          success("Downloaded #{emoji_map.size} standard emoji mappings")
-          puts "  Location: #{emoji_json_path}"
-
-          0
-        rescue JSON::ParserError => e
-          error("Failed to parse emoji data: #{e.message}")
-          1
-        rescue *NETWORK_ERRORS => e
-          error("Network error: #{e.message}")
-          1
-        rescue SystemCallError => e
-          error("File system error: #{e.message}")
-          1
+        if result[:error]
+          error(result[:error])
+          return 1
         end
+
+        success("Downloaded #{result[:count]} standard emoji mappings")
+        puts "  Location: #{result[:path]}"
+        0
       end
 
       def download_emoji(workspace_name)
@@ -280,70 +220,24 @@ module SlackCli
         paths = Support::XdgPaths.new
         emoji_dir = config.emoji_dir || paths.cache_dir
 
+        downloader = Services::EmojiDownloader.new(
+          emoji_dir: emoji_dir,
+          on_progress: ->(current, total, downloaded, skipped) { print_progress(current, total, downloaded, skipped) },
+          on_debug: ->(msg) { debug(msg) }
+        )
+
         workspaces.each do |workspace|
           puts "Fetching emoji list for #{workspace.name}..."
 
           api = runner.emoji_api(workspace.name)
           emoji_map = api.custom_emoji
 
-          workspace_dir = File.join(emoji_dir, workspace.name)
-          FileUtils.mkdir_p(workspace_dir)
-
-          downloaded = 0
-          skipped = 0
-          failed = 0
-          total = emoji_map.size
-          processed = 0
-
-          # Filter to only downloadable (non-alias) emoji
-          to_download = emoji_map.reject { |_, url| url.start_with?('alias:') }
-          aliases = total - to_download.size
-
-          to_download.each do |name, url|
-            processed += 1
-            ext = File.extname(URI.parse(url).path)
-            ext = '.png' if ext.empty?
-            filepath = File.join(workspace_dir, "#{name}#{ext}")
-
-            # Skip if already exists
-            if File.exist?(filepath)
-              skipped += 1
-              print_progress(processed, to_download.size, downloaded, skipped)
-              next
-            end
-
-            # Download
-            begin
-              uri = URI.parse(url)
-              http = Net::HTTP.new(uri.host, uri.port)
-              http.use_ssl = true
-              http.verify_mode = OpenSSL::SSL::VERIFY_PEER
-              http.cert_store = OpenSSL::X509::Store.new
-              http.cert_store.set_default_paths
-              http.open_timeout = 10
-              http.read_timeout = 30
-
-              request = Net::HTTP::Get.new(uri)
-              response = http.request(request)
-
-              if response.is_a?(Net::HTTPSuccess)
-                File.binwrite(filepath, response.body)
-                downloaded += 1
-              else
-                failed += 1
-              end
-            rescue *NETWORK_ERRORS, SystemCallError => e
-              debug("Failed to download emoji #{name}: #{e.message}")
-              failed += 1
-            end
-
-            print_progress(processed, to_download.size, downloaded, skipped)
-          end
+          stats = downloader.download(workspace.name, emoji_map)
 
           puts "\r#{' ' * 60}\r" # Clear progress line
-          success("Downloaded #{downloaded} new emoji for #{workspace.name}")
-          if skipped.positive? || failed.positive?
-            puts "  Skipped: #{skipped} (already exist), #{aliases} aliases, #{failed} failed"
+          success("Downloaded #{stats[:downloaded]} new emoji for #{workspace.name}")
+          if stats[:skipped].positive? || stats[:failed].positive?
+            puts "  Skipped: #{stats[:skipped]} (already exist), #{stats[:aliases]} aliases, #{stats[:failed]} failed"
           end
         end
 
@@ -354,32 +248,44 @@ module SlackCli
         paths = Support::XdgPaths.new
         emoji_dir = config.emoji_dir || paths.cache_dir
 
-        # Gather info about what will be deleted
-        to_clear = []
+        to_clear = gather_dirs_to_clear(emoji_dir, workspace_name)
+        return 0 if to_clear.nil?
+
+        stats = display_clear_preview(to_clear)
+        return 0 unless confirm_clear?
+
+        perform_clear(to_clear, stats[:total_count])
+      end
+
+      def gather_dirs_to_clear(emoji_dir, workspace_name)
         if workspace_name
           workspace_dir = File.join(emoji_dir, workspace_name)
           if Dir.exist?(workspace_dir)
-            to_clear << { name: workspace_name, dir: workspace_dir }
+            [{ name: workspace_name, dir: workspace_dir }]
           else
             puts "No emoji cache for #{workspace_name}"
-            return 0
+            nil
           end
         else
-          target_workspaces.each do |workspace|
+          dirs = target_workspaces.filter_map do |workspace|
             workspace_dir = File.join(emoji_dir, workspace.name)
-            to_clear << { name: workspace.name, dir: workspace_dir } if Dir.exist?(workspace_dir)
+            { name: workspace.name, dir: workspace_dir } if Dir.exist?(workspace_dir)
           end
 
-          if to_clear.empty?
+          if dirs.empty?
             puts 'No emoji caches to clear'
-            return 0
+            nil
+          else
+            dirs
           end
         end
+      end
 
-        # Show what will be deleted
+      def display_clear_preview(to_clear)
         puts 'Will delete:'
         total_count = 0
         total_size = 0
+
         to_clear.each do |entry|
           files = Dir.glob(File.join(entry[:dir], '*'))
           count = files.count
@@ -388,19 +294,23 @@ module SlackCli
           total_size += size
           puts "  #{entry[:name]}: #{count} files (#{format_size(size)})"
         end
+
         puts "  Total: #{total_count} files (#{format_size(total_size)})"
+        { total_count: total_count, total_size: total_size }
+      end
 
-        # Confirm unless --force
-        unless @options[:force]
-          print "\nAre you sure? [y/N] "
-          response = $stdin.gets&.chomp&.downcase
-          unless %w[y yes].include?(response)
-            puts 'Cancelled'
-            return 0
-          end
-        end
+      def confirm_clear?
+        return true if @options[:force]
 
-        # Delete
+        print "\nAre you sure? [y/N] "
+        response = $stdin.gets&.chomp&.downcase
+        return true if %w[y yes].include?(response)
+
+        puts 'Cancelled'
+        false
+      end
+
+      def perform_clear(to_clear, total_count)
         to_clear.each do |entry|
           FileUtils.rm_rf(entry[:dir])
         end

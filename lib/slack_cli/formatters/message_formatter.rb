@@ -11,6 +11,12 @@ module SlackCli
         @cache = cache_store
         @api_client = api_client
         @on_debug = on_debug
+        @reaction_formatter = ReactionFormatter.new(
+          output: output,
+          emoji_replacer: emoji_replacer,
+          cache_store: cache_store
+        )
+        @json_formatter = JsonMessageFormatter.new(cache_store: cache_store)
       end
 
       def format(message, workspace:, options: {})
@@ -20,7 +26,7 @@ module SlackCli
 
         # Build the header: [timestamp] username:
         header = "#{@output.blue("[#{timestamp}]")} #{@output.bold(username)}:"
-        header_visible_width = visible_length("[#{timestamp}] #{username}: ")
+        header_visible_width = Support::TextWrapper.visible_length("[#{timestamp}] #{username}: ")
 
         # Preserve newlines in message text (just strip leading/trailing whitespace)
         display_text = text.strip
@@ -30,7 +36,7 @@ module SlackCli
         if width && width > header_visible_width && !display_text.empty?
           # First line has less space (width minus header), continuation lines use full width
           first_line_width = width - header_visible_width
-          display_text = wrap_text(display_text, first_line_width, width)
+          display_text = Support::TextWrapper.wrap(display_text, first_line_width, width)
         end
 
         # If no text but there are files, put first file inline with header
@@ -67,76 +73,11 @@ module SlackCli
       end
 
       def format_reaction_inline(message, options)
-        parts = message.reactions.map do |r|
-          emoji = options[:no_emoji] ? r.emoji_code : (@emoji.lookup_emoji(r.name) || r.emoji_code)
-          "#{r.count} #{emoji}"
-        end
-        " [#{parts.join(', ')}]"
+        @reaction_formatter.format_inline(message.reactions, options)
       end
 
       def format_json(message, workspace: nil, options: {})
-        reactions_json = message.reactions.map do |r|
-          reaction_hash = { name: r.name, count: r.count }
-
-          # Always return user objects with id, name (if available), and reacted_at (if available)
-          reaction_hash[:users] = r.users.map do |user_id|
-            user_hash = { id: user_id }
-
-            # Try to resolve display name
-            unless options[:no_names]
-              workspace_name = workspace&.name
-              if workspace_name
-                cached_name = @cache.get_user(workspace_name, user_id)
-                user_hash[:name] = cached_name if cached_name
-              end
-            end
-
-            # Add timestamp if available
-            if r.timestamps?
-              timestamp = r.timestamp_for(user_id)
-              if timestamp
-                user_hash[:reacted_at] = timestamp
-                user_hash[:reacted_at_iso8601] = Time.at(timestamp.to_f).iso8601
-              end
-            end
-
-            user_hash
-          end
-
-          reaction_hash
-        end
-
-        result = {
-          ts: message.ts,
-          user_id: message.user_id,
-          text: message.text,
-          reactions: reactions_json,
-          reply_count: message.reply_count,
-          thread_ts: message.thread_ts,
-          attachments: message.attachments,
-          files: message.files
-        }
-
-        # Add resolved user name if available
-        unless options[:no_names]
-          workspace_name = workspace&.name
-          if workspace_name
-            user_name = @cache.get_user(workspace_name, message.user_id)
-            result[:user_name] = user_name if user_name
-          end
-        end
-
-        # Add channel info if available
-        if options[:channel_id]
-          result[:channel_id] = options[:channel_id]
-          workspace_name = workspace&.name
-          if workspace_name
-            channel_name = @cache.get_channel_name(workspace_name, options[:channel_id])
-            result[:channel_name] = channel_name if channel_name
-          end
-        end
-
-        result
+        @json_formatter.format(message, workspace: workspace, options: options)
       end
 
       private
@@ -198,58 +139,6 @@ module SlackCli
           .gsub('&gt;', '>')
       end
 
-      # Calculate visible length of text (excluding ANSI escape codes)
-      def visible_length(text)
-        text.gsub(/\e\[[0-9;]*m/, '').length
-      end
-
-      # Wrap text to width, handling first line differently and preserving existing newlines
-      def wrap_text(text, first_line_width, continuation_width)
-        result = []
-
-        text.each_line do |paragraph|
-          paragraph = paragraph.chomp
-          if paragraph.empty?
-            result << ''
-            next
-          end
-
-          # For each paragraph, wrap to width
-          # First paragraph's first line uses first_line_width, all other lines use continuation_width
-          current_first_width = result.empty? ? first_line_width : continuation_width
-          wrapped = wrap_paragraph(paragraph, current_first_width, continuation_width)
-          result << wrapped
-        end
-
-        result.join("\n")
-      end
-
-      # Wrap a single paragraph (no internal newlines)
-      def wrap_paragraph(text, first_width, rest_width)
-        words = text.split(/(\s+)/)
-        lines = []
-        current_line = ''
-        current_width = first_width
-
-        words.each do |word|
-          word_len = visible_length(word)
-
-          if current_line.empty?
-            current_line = word
-          elsif visible_length(current_line) + word_len <= current_width
-            current_line += word
-          else
-            lines << current_line
-            current_line = word.lstrip
-            current_width = rest_width
-          end
-        end
-
-        lines << current_line unless current_line.empty?
-
-        lines.join("\n")
-      end
-
       def format_header(timestamp, username, message, options)
         parts = []
         parts << @output.blue("[#{timestamp}]")
@@ -291,7 +180,7 @@ module SlackCli
 
             # Wrap attachment text if width is specified (account for "> " prefix)
             width = options[:width]
-            processed_text = wrap_text(processed_text, width - 2, width - 2) if width && width > 2
+            processed_text = Support::TextWrapper.wrap(processed_text, width - 2, width - 2) if width && width > 2
 
             # Prefix each line with > to show it's quoted/attachment content
             processed_text.each_line do |line|
@@ -332,7 +221,7 @@ module SlackCli
 
           # Wrap if width specified (account for "> " prefix)
           width = options[:width]
-          processed = wrap_text(processed, width - 2, width - 2) if width && width > 2
+          processed = Support::TextWrapper.wrap(processed, width - 2, width - 2) if width && width > 2
 
           # Prefix each line with >
           processed.each_line do |line|
@@ -377,57 +266,10 @@ module SlackCli
 
         # Check if we should show timestamps and if any reactions have them
         if options[:reaction_timestamps] && message.reactions.any?(&:timestamps?)
-          format_reactions_with_timestamps(message, lines, workspace, options)
+          lines.concat(@reaction_formatter.format_with_timestamps(message.reactions, workspace, options))
         else
-          # Standard reaction display
-          reaction_text = message.reactions.map do |r|
-            emoji = options[:no_emoji] ? r.emoji_code : (@emoji.lookup_emoji(r.name) || r.emoji_code)
-            "#{r.count} #{emoji}"
-          end.join('  ')
-
-          lines << @output.yellow("[#{reaction_text}]")
+          lines << @reaction_formatter.format_summary(message.reactions, options)
         end
-      end
-
-      def format_reactions_with_timestamps(message, lines, workspace, options)
-        workspace_name = workspace&.name
-
-        message.reactions.each do |reaction|
-          emoji = options[:no_emoji] ? reaction.emoji_code : (@emoji.lookup_emoji(reaction.name) || reaction.emoji_code)
-
-          # Group users with their timestamps
-          user_strings = reaction.users.map do |user_id|
-            username = resolve_user_for_reaction(user_id, workspace_name, options)
-            timestamp = reaction.timestamp_for(user_id)
-
-            if timestamp
-              time_str = format_reaction_time(timestamp)
-              "#{username} (#{time_str})"
-            else
-              username
-            end
-          end
-
-          lines << @output.yellow("  ↳ #{emoji} #{user_strings.join(', ')}")
-        end
-      end
-
-      def resolve_user_for_reaction(user_id, workspace_name, options)
-        return user_id if options[:no_names]
-
-        # Try cache lookup
-        if workspace_name
-          cached = @cache.get_user(workspace_name, user_id)
-          return cached if cached
-        end
-
-        # Fall back to user ID
-        user_id
-      end
-
-      def format_reaction_time(slack_timestamp)
-        time = Time.at(slack_timestamp.to_f)
-        time.strftime('%-I:%M %p') # e.g., "2:45 PM"
       end
 
       def format_thread_indicator(message, lines, options)
