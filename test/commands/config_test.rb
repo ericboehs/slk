@@ -94,43 +94,38 @@ class ConfigCommandTest < Minitest::Test
 
   def test_set_ssh_key_validates_key_type
     Dir.mktmpdir do |dir|
-      # Create an ECDSA key (unsupported by age)
       key_path = "#{dir}/ecdsa_key"
       File.write("#{key_path}.pub", 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTI... user@host')
 
-      # Use a mock token store that will call migrate_encryption
-      token_store = Object.new
-      token_store.define_singleton_method(:workspace_names) { [] }
-      token_store.define_singleton_method(:empty?) { true }
-      token_store.define_singleton_method(:on_warning=) { |_| nil }
-      token_store.define_singleton_method(:on_info=) { |_| nil }
-
-      # migrate_encryption should validate key type and raise
-      encryption = Slk::Services::Encryption.new
-      token_store.define_singleton_method(:migrate_encryption) do |_old, new_key|
-        encryption.validate_key_type!(new_key) if new_key
-      end
-
-      preset_store = Object.new
-      preset_store.define_singleton_method(:on_warning=) { |_| nil }
-
-      cache_store = Object.new
-      cache_store.define_singleton_method(:on_warning=) { |_| nil }
-
-      runner = Slk::Runner.new(
-        output: @output,
-        config: @config,
-        token_store: token_store,
-        preset_store: preset_store,
-        cache_store: cache_store
-      )
-
+      runner = create_runner_with_validation
       command = Slk::Commands::Config.new(['set', 'ssh_key', key_path], runner: runner)
       result = command.execute
 
       assert_equal 1, result
       assert_includes @err.string, 'Unsupported SSH key type'
     end
+  end
+
+  def create_runner_with_validation
+    token_store = Object.new
+    token_store.define_singleton_method(:workspace_names) { [] }
+    token_store.define_singleton_method(:empty?) { true }
+    token_store.define_singleton_method(:on_warning=) { |_| nil }
+    token_store.define_singleton_method(:on_info=) { |_| nil }
+
+    encryption = Slk::Services::Encryption.new
+    token_store.define_singleton_method(:migrate_encryption) do |_old, new_key|
+      encryption.validate_key_type!(new_key) if new_key
+    end
+
+    preset_store = Object.new
+    preset_store.define_singleton_method(:on_warning=) { |_| nil }
+
+    cache_store = Object.new
+    cache_store.define_singleton_method(:on_warning=) { |_| nil }
+
+    Slk::Runner.new(output: @output, config: @config, token_store: token_store,
+                    preset_store: preset_store, cache_store: cache_store)
   end
 
   def test_set_ssh_key_expands_path

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative '../support/help_formatter'
+require_relative 'ssh_key_manager'
 
 module Slk
   module Commands
@@ -28,161 +28,89 @@ module Slk
       protected
 
       def help_text
-        help = Support::HelpFormatter.new('slk config [action]')
-        help.description('Manage configuration.')
-        add_actions_section(help)
-        add_keys_section(help)
-        add_options_section(help)
-        help.render
+        Support::HelpFormatter.new('slk config [action]').tap do |h|
+          h.description('Manage configuration.')
+          h.section('ACTIONS') { |s| add_actions(s) }
+          h.section('CONFIG KEYS') { |s| add_keys(s) }
+          h.section('OPTIONS') { |s| s.option('-q, --quiet', 'Suppress output') }
+        end.render
       end
 
-      def add_actions_section(help)
-        help.section('ACTIONS') do |s|
-          s.action('show', 'Show current configuration')
-          s.action('setup', 'Run setup wizard')
-          s.action('get <key>', 'Get a config value')
-          s.action('set <key> <val>', 'Set a config value')
-          s.action('unset <key>', 'Remove a config value')
-        end
+      def add_actions(section)
+        section.action('show', 'Show current configuration')
+        section.action('setup', 'Run setup wizard')
+        section.action('get <key>', 'Get a config value')
+        section.action('set <key> <val>', 'Set a config value')
+        section.action('unset <key>', 'Remove a config value')
       end
 
-      def add_keys_section(help)
-        help.section('CONFIG KEYS') do |s|
-          s.item('primary_workspace', 'Default workspace name')
-          s.item('ssh_key', 'Path to SSH key for encryption')
-          s.item('emoji_dir', 'Custom emoji directory')
-        end
-      end
-
-      def add_options_section(help)
-        help.section('OPTIONS') do |s|
-          s.option('-q, --quiet', 'Suppress output')
-        end
+      def add_keys(section)
+        section.item('primary_workspace', 'Default workspace name')
+        section.item('ssh_key', 'Path to SSH key for encryption')
+        section.item('emoji_dir', 'Custom emoji directory')
       end
 
       private
 
       def show_config
-        display_config_values
-        display_workspace_info
-        display_paths
+        print_config_values
+        print_paths
         0
       end
 
-      def display_config_values
+      def print_config_values
         puts 'Configuration:'
         puts "  Primary workspace: #{config.primary_workspace || '(not set)'}"
         puts "  SSH key: #{config.ssh_key || '(not set)'}"
         puts "  Emoji dir: #{config.emoji_dir || '(default)'}"
-      end
-
-      def display_workspace_info
         puts
         puts "Workspaces: #{runner.workspace_names.join(', ')}"
       end
 
-      def display_paths
-        puts
+      def print_paths
         paths = Support::XdgPaths.new
+        puts
         puts "Config dir: #{paths.config_dir}"
         puts "Cache dir: #{paths.cache_dir}"
       end
 
       def run_setup
-        wizard = Services::SetupWizard.new(
-          runner: runner,
-          config: config,
-          token_store: token_store,
-          output: output
-        )
-        wizard.run
+        Services::SetupWizard.new(runner: runner, config: config, token_store: token_store, output: output).run
       end
 
       def get_value(key)
-        value = config[key]
-        puts value || '(not set)'
-
+        puts config[key] || '(not set)'
         0
       end
 
       def set_value(key, value)
-        if key == 'ssh_key'
-          return 1 if set_ssh_key(value).nil?
-        else
-          config[key] = value
-          success("Set #{key} = #{value}")
-        end
+        return handle_ssh_key_result(ssh_key_manager.set(value)) if key == 'ssh_key'
 
+        config[key] = value
+        success("Set #{key} = #{value}")
         0
       end
 
       def unset_value(key)
-        if key == 'ssh_key'
-          return 1 if unset_ssh_key.nil?
-        else
-          config[key] = nil
-          success("Unset #{key}")
-        end
+        return handle_ssh_key_result(ssh_key_manager.unset) if key == 'ssh_key'
 
+        config[key] = nil
+        success("Unset #{key}")
         0
       end
 
-      def set_ssh_key(new_path)
-        # Expand path and handle unsetting
-        new_path = new_path == '' ? nil : File.expand_path(new_path)
-
-        if new_path&.end_with?('.pub')
-          error('Please provide the private key path, not the public key (.pub)')
-          return nil
+      def ssh_key_manager
+        @ssh_key_manager ||= SshKeyManager.new(config: config, token_store: token_store, output: output).tap do |mgr|
+          mgr.on_info = ->(msg) { success(msg) }
+          mgr.on_warning = ->(msg) { warn(msg) }
         end
-
-        old_path = config.ssh_key
-
-        # Migrate tokens to new encryption setting
-        token_store.on_info = ->(msg) { success(msg) }
-        token_store.on_warning = ->(msg) { warn(msg) }
-        token_store.migrate_encryption(old_path, new_path)
-
-        # Save the new setting
-        config['ssh_key'] = new_path
-        if new_path
-          success("Set ssh_key = #{new_path}")
-        else
-          success('Cleared ssh_key')
-        end
-        true # Signal success
-      rescue EncryptionError => e
-        error(e.message)
-        nil # Signal failure
       end
 
-      def unset_ssh_key
-        old_path = config.ssh_key
-        old_path = nil if old_path.to_s.empty?
+      def handle_ssh_key_result(result)
+        return success(result[:message]) || 0 if result[:success]
 
-        # If encrypted file exists but no key in config, we need to ask for it
-        if old_path.nil? && encrypted_tokens_exist?
-          output.puts 'Encrypted tokens exist but no ssh_key is configured.'
-          output.print 'Enter path to SSH key for decryption: '
-          old_path = $stdin.gets&.chomp
-          old_path = File.expand_path(old_path) if old_path && !old_path.empty?
-        end
-
-        token_store.on_info = ->(msg) { success(msg) }
-        token_store.on_warning = ->(msg) { warn(msg) }
-        token_store.migrate_encryption(old_path, nil)
-
-        config['ssh_key'] = nil
-        success('Cleared ssh_key')
-        true
-      rescue EncryptionError => e
-        error(e.message)
-        nil
-      end
-
-      def encrypted_tokens_exist?
-        paths = Support::XdgPaths.new
-        File.exist?(paths.config_file('tokens.age'))
+        error(result[:error])
+        1
       end
     end
   end

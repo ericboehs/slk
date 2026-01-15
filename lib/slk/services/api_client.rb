@@ -148,11 +148,9 @@ module Slk
 
       def handle_rate_limit(response)
         retry_after = response['Retry-After']
-        if retry_after
-          raise ApiError, "Rate limited - retry after #{retry_after} seconds"
-        else
-          raise ApiError, 'Rate limited - please wait and try again'
-        end
+        raise ApiError, "Rate limited - retry after #{retry_after} seconds" if retry_after
+
+        raise ApiError, 'Rate limited - please wait and try again'
       end
 
       def parse_success_response(response)

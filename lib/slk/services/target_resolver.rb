@@ -101,24 +101,30 @@ module Slk
 
       def fetch_user_id_from_api(workspace, username)
         api = @runner.users_api(workspace.name)
-        response = api.list
-        users = response['members'] || []
+        users = api.list['members'] || []
+        user = find_user_by_name(users, username)
+        cache_user(workspace.name, user) if user
+        user&.dig('id')
+      end
 
-        user = users.find do |u|
+      def find_user_by_name(users, username)
+        users.find do |u|
           u['name'] == username ||
             u.dig('profile', 'display_name') == username ||
             u.dig('profile', 'real_name') == username
         end
+      end
 
-        # Cache the result if found
-        if user
-          display_name = user.dig('profile', 'display_name').to_s.strip
-          display_name = user.dig('profile', 'real_name') if display_name.empty?
-          display_name = user['name'] if display_name.to_s.empty?
-          @cache.set_user(workspace.name, user['id'], display_name, persist: true)
-        end
+      def cache_user(workspace_name, user)
+        display_name = extract_display_name(user)
+        @cache.set_user(workspace_name, user['id'], display_name, persist: true)
+      end
 
-        user&.dig('id')
+      def extract_display_name(user)
+        name = user.dig('profile', 'display_name').to_s.strip
+        name = user.dig('profile', 'real_name') if name.empty?
+        name = user['name'] if name.to_s.empty?
+        name
       end
     end
   end
