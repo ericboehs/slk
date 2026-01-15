@@ -11,25 +11,33 @@ module Slk
       end
 
       def set(new_path)
+        with_error_handling { perform_set(new_path) }
+      end
+
+      def unset
+        with_error_handling { perform_unset }
+      end
+
+      private
+
+      def perform_set(new_path)
         new_path = normalize_path(new_path)
         return error('Please provide the private key path, not the public key (.pub)') if pub_key?(new_path)
 
         migrate_tokens(@config.ssh_key, new_path)
         @config['ssh_key'] = new_path
         success_message(new_path)
-      rescue EncryptionError => e
-        error(e.message)
-      rescue ArgumentError => e
-        error("Invalid path: #{e.message}")
-      rescue SystemCallError => e
-        error("File system error: #{e.message}")
       end
 
-      def unset
+      def perform_unset
         old_path = resolve_old_path
         migrate_tokens(old_path, nil)
         @config['ssh_key'] = nil
         success('Cleared ssh_key')
+      end
+
+      def with_error_handling
+        yield
       rescue EncryptionError => e
         error(e.message)
       rescue ArgumentError => e
@@ -37,8 +45,6 @@ module Slk
       rescue SystemCallError => e
         error("File system error: #{e.message}")
       end
-
-      private
 
       def normalize_path(path)
         path == '' ? nil : File.expand_path(path)

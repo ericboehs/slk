@@ -74,8 +74,6 @@ module Slk
       def run_age_encrypt(content, public_key, output_file)
         _output, error, status = Open3.capture3('age', '-R', public_key, '-o', output_file, stdin_data: content)
         raise EncryptionError, "Failed to encrypt: #{error.strip}" unless status.success?
-
-        true
       end
 
       def run_age_decrypt(encrypted_file, ssh_key_path)

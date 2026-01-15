@@ -23,16 +23,22 @@ module Slk
 
       def load_auto(config)
         if encrypted_file_exists?
-          unless config.ssh_key
-            raise EncryptionError,
-                  'Cannot read encrypted tokens - no SSH key configured. Run: slk config set ssh_key <path>'
-          end
-          decrypt_with_key(config.ssh_key)
+          load_encrypted(config)
         elsif plain_file_exists?
           parse_plain_file
         else
           {}
         end
+      end
+
+      def load_encrypted(config)
+        raise_missing_key_error unless config.ssh_key
+        decrypt_with_key(config.ssh_key)
+      end
+
+      def raise_missing_key_error
+        raise EncryptionError,
+              'Cannot read encrypted tokens - no SSH key configured. Run: slk config set ssh_key <path>'
       end
 
       def encrypted_file_exists?
