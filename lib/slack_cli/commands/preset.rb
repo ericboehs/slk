@@ -113,30 +113,7 @@ module SlackCli
         name = $stdin.gets&.chomp
         return error('Name is required') if name.nil? || name.empty?
 
-        print 'Status text: '
-        text = $stdin.gets&.chomp || ''
-
-        print 'Emoji (e.g., :calendar:): '
-        emoji = $stdin.gets&.chomp || ''
-
-        print 'Duration (e.g., 1h, 30m, or 0 for none): '
-        duration = $stdin.gets&.chomp || '0'
-
-        print 'Presence (away/auto or blank): '
-        presence = $stdin.gets&.chomp || ''
-
-        print 'DND (e.g., 1h, off, or blank): '
-        dnd = $stdin.gets&.chomp || ''
-
-        preset = Models::Preset.new(
-          name: name,
-          text: text,
-          emoji: emoji,
-          duration: duration,
-          presence: presence,
-          dnd: dnd
-        )
-
+        preset = prompt_for_preset_fields(name)
         preset_store.add(preset)
         success("Preset '#{name}' created")
 
@@ -144,44 +121,37 @@ module SlackCli
       end
 
       def edit_preset(name)
-        preset = preset_store.get(name)
-        return error("Preset '#{name}' not found") unless preset
+        existing = preset_store.get(name)
+        return error("Preset '#{name}' not found") unless existing
 
         puts "Editing preset '#{name}' (press Enter to keep current value)"
-
-        print "Status text [#{preset.text}]: "
-        text = $stdin.gets&.chomp
-        text = preset.text if text.empty?
-
-        print "Emoji [#{preset.emoji}]: "
-        emoji = $stdin.gets&.chomp
-        emoji = preset.emoji if emoji.empty?
-
-        print "Duration [#{preset.duration}]: "
-        duration = $stdin.gets&.chomp
-        duration = preset.duration if duration.empty?
-
-        print "Presence [#{preset.presence}]: "
-        presence = $stdin.gets&.chomp
-        presence = preset.presence if presence.empty?
-
-        print "DND [#{preset.dnd}]: "
-        dnd = $stdin.gets&.chomp
-        dnd = preset.dnd if dnd.empty?
-
-        updated = Models::Preset.new(
-          name: name,
-          text: text,
-          emoji: emoji,
-          duration: duration,
-          presence: presence,
-          dnd: dnd
-        )
-
-        preset_store.add(updated)
+        preset = prompt_for_preset_fields(name, defaults: existing)
+        preset_store.add(preset)
         success("Preset '#{name}' updated")
 
         0
+      end
+
+      def prompt_for_preset_fields(name, defaults: nil)
+        Models::Preset.new(
+          name: name,
+          text: prompt_field('Status text', defaults&.text),
+          emoji: prompt_field('Emoji (e.g., :calendar:)', defaults&.emoji),
+          duration: prompt_field('Duration (e.g., 1h, 30m, or 0 for none)', defaults&.duration || '0'),
+          presence: prompt_field('Presence (away/auto or blank)', defaults&.presence),
+          dnd: prompt_field('DND (e.g., 1h, off, or blank)', defaults&.dnd)
+        )
+      end
+
+      def prompt_field(label, default = nil)
+        if default
+          print "#{label} [#{default}]: "
+          input = $stdin.gets&.chomp
+          input.empty? ? default : input
+        else
+          print "#{label}: "
+          $stdin.gets&.chomp || ''
+        end
       end
 
       def delete_preset(name)
@@ -198,32 +168,9 @@ module SlackCli
         return error("Preset '#{name}' not found") unless preset
 
         target_workspaces.each do |workspace|
-          # Set status
-          if preset.clears_status?
-            runner.users_api(workspace.name).clear_status
-          else
-            duration = preset.duration_value
-            runner.users_api(workspace.name).set_status(
-              text: preset.text,
-              emoji: preset.emoji,
-              duration: duration
-            )
-          end
-
-          # Set presence
-          runner.users_api(workspace.name).set_presence(preset.presence) if preset.sets_presence?
-
-          # Set DND
-          if preset.sets_dnd?
-            dnd_api = runner.dnd_api(workspace.name)
-            if preset.dnd == 'off'
-              dnd_api.end_snooze
-            else
-              duration = Models::Duration.parse(preset.dnd)
-              dnd_api.set_snooze(duration)
-            end
-          end
-
+          apply_status(workspace, preset)
+          apply_presence(workspace, preset)
+          apply_dnd(workspace, preset)
           success("Applied preset '#{name}' on #{workspace.name}")
         end
 
@@ -231,6 +178,33 @@ module SlackCli
       rescue ApiError => e
         error("Failed to apply preset: #{e.message}")
         1
+      end
+
+      def apply_status(workspace, preset)
+        users_api = runner.users_api(workspace.name)
+        if preset.clears_status?
+          users_api.clear_status
+        else
+          users_api.set_status(text: preset.text, emoji: preset.emoji, duration: preset.duration_value)
+        end
+      end
+
+      def apply_presence(workspace, preset)
+        return unless preset.sets_presence?
+
+        runner.users_api(workspace.name).set_presence(preset.presence)
+      end
+
+      def apply_dnd(workspace, preset)
+        return unless preset.sets_dnd?
+
+        dnd_api = runner.dnd_api(workspace.name)
+        if preset.dnd == 'off'
+          dnd_api.end_snooze
+        else
+          duration = Models::Duration.parse(preset.dnd)
+          dnd_api.set_snooze(duration)
+        end
       end
     end
   end

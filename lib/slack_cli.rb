@@ -48,6 +48,7 @@ module SlackCli
     autoload :EmojiSearcher, 'slack_cli/services/emoji_searcher'
     autoload :ActivityEnricher, 'slack_cli/services/activity_enricher'
     autoload :UnreadMarker, 'slack_cli/services/unread_marker'
+    autoload :TargetResolver, 'slack_cli/services/target_resolver'
   end
 
   # Output formatters for messages, durations, and emoji

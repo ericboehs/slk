@@ -19,28 +19,15 @@ module SlackCli
           return 1
         end
 
-        workspace, channel_id, thread_ts, msg_ts = resolve_target(target)
+        resolved = target_resolver.resolve(target, default_workspace: target_workspaces.first)
+        workspace, channel_id, thread_ts, msg_ts = resolved.to_a
 
-        # Apply default limits based on target type
         apply_default_limit(msg_ts)
-
         messages = fetch_messages(workspace, channel_id, thread_ts, oldest: msg_ts)
-
-        # Enrich with reaction timestamps if requested
-        if @options[:reaction_timestamps]
-          enricher = Services::ReactionEnricher.new(activity_api: runner.activity_api(workspace.name))
-          messages = enricher.enrich_messages(messages, channel_id)
-        end
+        messages = enrich_reactions(messages, workspace, channel_id) if @options[:reaction_timestamps]
 
         if @options[:json]
-          format_options = {
-            no_names: @options[:no_names],
-            reaction_timestamps: @options[:reaction_timestamps],
-            channel_id: channel_id
-          }
-          output_json(messages.map do |m|
-            runner.message_formatter.format_json(m, workspace: workspace, options: format_options)
-          end)
+          output_json_messages(messages, workspace, channel_id)
         else
           display_messages(messages, workspace, channel_id)
         end
@@ -125,91 +112,24 @@ module SlackCli
 
       private
 
-      def resolve_target(target)
-        url_parser = Support::SlackUrlParser.new
-
-        # Check if it's a Slack URL
-        if url_parser.slack_url?(target)
-          result = url_parser.parse(target)
-          if result
-            ws = runner.workspace(result.workspace)
-            # thread_ts means it's a thread, msg_ts means start from that message
-            return [ws, result.channel_id, result.thread_ts, nil] if result.thread?
-
-            return [ws, result.channel_id, nil, result.msg_ts]
-
-          end
-        end
-
-        workspace = target_workspaces.first
-
-        # Direct channel ID
-        return [workspace, target, nil, nil] if target.match?(/^[CDG][A-Z0-9]+$/)
-
-        # Channel by name
-        if target.start_with?('#') || !target.start_with?('@')
-          channel_name = target.delete_prefix('#')
-          channel_id = resolve_channel(workspace, channel_name)
-          return [workspace, channel_id, nil, nil]
-        end
-
-        # DM by username
-        if target.start_with?('@')
-          username = target.delete_prefix('@')
-          channel_id = resolve_dm(workspace, username)
-          return [workspace, channel_id, nil, nil]
-        end
-
-        raise ConfigError, "Could not resolve target: #{target}"
+      def target_resolver
+        @target_resolver ||= Services::TargetResolver.new(runner: runner, cache_store: cache_store)
       end
 
-      def resolve_channel(workspace, name)
-        # Check cache first
-        cached = cache_store.get_channel_id(workspace.name, name)
-        return cached if cached
-
-        # Search via API
-        api = runner.conversations_api(workspace.name)
-        response = api.list
-
-        channels = response['channels'] || []
-        channel = channels.find { |c| c['name'] == name }
-
-        if channel
-          cache_store.set_channel(workspace.name, name, channel['id'])
-          return channel['id']
-        end
-
-        raise ConfigError, "Channel not found: ##{name}"
+      def enrich_reactions(messages, workspace, channel_id)
+        enricher = Services::ReactionEnricher.new(activity_api: runner.activity_api(workspace.name))
+        enricher.enrich_messages(messages, channel_id)
       end
 
-      def resolve_dm(workspace, username)
-        # Find user ID
-        user_id = find_user_id(workspace, username)
-        raise ConfigError, "User not found: @#{username}" unless user_id
-
-        # Open DM
-        api = runner.conversations_api(workspace.name)
-        response = api.open(users: user_id)
-        response.dig('channel', 'id')
-      end
-
-      def find_user_id(workspace, username)
-        # Check cache
-        # Note: We need reverse lookup, which cache_store doesn't support directly
-        # For now, fetch user list and search
-
-        api = runner.users_api(workspace.name)
-        response = api.list
-
-        users = response['members'] || []
-        user = users.find do |u|
-          u['name'] == username ||
-            u.dig('profile', 'display_name') == username ||
-            u.dig('profile', 'real_name') == username
-        end
-
-        user&.dig('id')
+      def output_json_messages(messages, workspace, channel_id)
+        format_options = {
+          no_names: @options[:no_names],
+          reaction_timestamps: @options[:reaction_timestamps],
+          channel_id: channel_id
+        }
+        output_json(messages.map do |m|
+          runner.message_formatter.format_json(m, workspace: workspace, options: format_options)
+        end)
       end
 
       # Apply default limit based on target type (50 for message URLs, 500 otherwise)

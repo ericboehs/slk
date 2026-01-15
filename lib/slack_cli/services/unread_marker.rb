@@ -25,6 +25,13 @@ module SlackCli
         }
       end
 
+      # Mark a single channel as read
+      # @param channel_id [String] Channel ID
+      # @return [Boolean] true if marked successfully
+      def mark_single_channel(channel_id)
+        mark_conversation(channel_id)
+      end
+
       private
 
       def mark_dms(ims)

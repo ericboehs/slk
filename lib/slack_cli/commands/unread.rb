@@ -88,76 +88,93 @@ module SlackCli
 
       def show_unread
         target_workspaces.each do |workspace|
-          client = runner.client_api(workspace.name)
-          conversations_api = runner.conversations_api(workspace.name)
-          formatter = runner.message_formatter
-
           puts output.bold(workspace.name) if @options[:all] || target_workspaces.size > 1
 
-          counts = client.counts
-
-          # Get muted channels from user prefs unless --muted flag is set
-          muted_ids = @options[:muted] ? [] : runner.users_api(workspace.name).muted_channels
-
-          # DMs first
-          ims = counts['ims'] || []
-          unread_ims = ims.select { |i| i['has_unreads'] }
-
-          unread_ims.each do |im|
-            mention_count = im['mention_count'] || 0
-            user_name = resolve_dm_user_name(workspace, im['id'], conversations_api)
-            puts
-            puts output.bold("@#{user_name}") + (mention_count.positive? ? " (#{mention_count} mentions)" : '')
-            puts
-            show_channel_messages(workspace, im['id'], @options[:limit], conversations_api, formatter)
-          end
-
-          # Channels
-          channels = counts['channels'] || []
-          unreads = channels
-                    .select { |c| c['has_unreads'] || (c['mention_count'] || 0).positive? }
-                    .reject { |c| muted_ids.include?(c['id']) }
+          unread_data = fetch_unread_data(workspace)
 
           if @options[:json]
-            output_json({
-                          channels: unreads.map do |c|
-                            channel_hash = { id: c['id'], mentions: c['mention_count'] }
-                            channel_name = cache_store.get_channel_name(workspace.name, c['id'])
-                            channel_hash[:name] = channel_name if channel_name
-                            channel_hash
-                          end,
-                          dms: unread_ims.map do |i|
-                            dm_hash = { id: i['id'], mentions: i['mention_count'] }
-                            # Try to resolve DM user name
-                            user_id = i['user_id'] || i['user']
-                            if user_id
-                              user_name = cache_store.get_user(workspace.name, user_id)
-                              dm_hash[:user_name] = user_name if user_name
-                            end
-                            dm_hash
-                          end
-                        })
+            output_unread_json(workspace, unread_data)
           else
-            if unreads.empty? && unread_ims.empty?
-              puts 'No unread messages'
-            else
-              unreads.each do |channel|
-                name = cache_store.get_channel_name(workspace.name, channel['id']) || channel['id']
-                limit = @options[:limit]
-
-                puts
-                puts output.bold("##{name}") + " (showing last #{limit})"
-                puts
-                show_channel_messages(workspace, channel['id'], limit, conversations_api, formatter)
-              end
-            end
-
-            # Show threads
-            show_threads(workspace, formatter)
+            display_unread(workspace, unread_data)
           end
         end
 
         0
+      end
+
+      def fetch_unread_data(workspace)
+        client = runner.client_api(workspace.name)
+        counts = client.counts
+        muted_ids = @options[:muted] ? [] : runner.users_api(workspace.name).muted_channels
+
+        ims = counts['ims'] || []
+        channels = counts['channels'] || []
+
+        {
+          unread_ims: ims.select { |i| i['has_unreads'] },
+          unread_channels: channels
+            .select { |c| c['has_unreads'] || (c['mention_count'] || 0).positive? }
+            .reject { |c| muted_ids.include?(c['id']) }
+        }
+      end
+
+      def output_unread_json(workspace, data)
+        output_json({
+                      channels: data[:unread_channels].map { |c| format_channel_json(workspace, c) },
+                      dms: data[:unread_ims].map { |i| format_dm_json(workspace, i) }
+                    })
+      end
+
+      def format_channel_json(workspace, channel)
+        channel_hash = { id: channel['id'], mentions: channel['mention_count'] }
+        channel_name = cache_store.get_channel_name(workspace.name, channel['id'])
+        channel_hash[:name] = channel_name if channel_name
+        channel_hash
+      end
+
+      def format_dm_json(workspace, im)
+        dm_hash = { id: im['id'], mentions: im['mention_count'] }
+        user_id = im['user_id'] || im['user']
+        if user_id
+          user_name = cache_store.get_user(workspace.name, user_id)
+          dm_hash[:user_name] = user_name if user_name
+        end
+        dm_hash
+      end
+
+      def display_unread(workspace, data)
+        conversations_api = runner.conversations_api(workspace.name)
+        formatter = runner.message_formatter
+
+        display_unread_dms(workspace, data[:unread_ims], conversations_api, formatter)
+        display_unread_channels(workspace, data[:unread_channels], conversations_api, formatter)
+        show_threads(workspace, formatter)
+      end
+
+      def display_unread_dms(workspace, unread_ims, conversations_api, formatter)
+        unread_ims.each do |im|
+          mention_count = im['mention_count'] || 0
+          user_name = resolve_dm_user_name(workspace, im['id'], conversations_api)
+          puts
+          puts output.bold("@#{user_name}") + (mention_count.positive? ? " (#{mention_count} mentions)" : '')
+          puts
+          show_channel_messages(workspace, im['id'], @options[:limit], conversations_api, formatter)
+        end
+      end
+
+      def display_unread_channels(workspace, unreads, conversations_api, formatter)
+        if unreads.empty?
+          puts 'No unread messages' if unreads.empty?
+          return
+        end
+
+        unreads.each do |channel|
+          name = cache_store.get_channel_name(workspace.name, channel['id']) || channel['id']
+          puts
+          puts output.bold("##{name}") + " (showing last #{@options[:limit]})"
+          puts
+          show_channel_messages(workspace, channel['id'], @options[:limit], conversations_api, formatter)
+        end
       end
 
       def show_threads(workspace, formatter)
@@ -175,136 +192,89 @@ module SlackCli
         puts output.bold('🧵 Threads') + " (#{total_unreads} unread replies)"
         puts
 
-        format_options = {
-          no_emoji: @options[:no_emoji],
-          no_reactions: @options[:no_reactions],
-          reaction_names: @options[:reaction_names]
-        }
-
-        threads.each do |thread|
-          unread_replies = thread['unread_replies'] || []
-          next if unread_replies.empty?
-
-          root_msg = thread['root_msg'] || {}
-          channel_id = root_msg['channel']
-          conversation_label = resolve_conversation_label(workspace, channel_id)
-
-          # Get root user name
-          root_user = extract_user_from_message(root_msg, workspace)
-
-          puts "#{output.blue("  #{conversation_label}")} - thread by #{output.bold(root_user)}"
-
-          # Display unread replies (limit to @options[:limit])
-          unread_replies.first(@options[:limit]).each do |reply|
-            message = Models::Message.from_api(reply, channel_id: channel_id)
-            puts "    #{formatter.format_simple(message, workspace: workspace, options: format_options)}"
-          end
-
-          puts
-        end
+        threads.each { |thread| display_thread(workspace, thread, formatter) }
       end
 
-      def show_channel_messages(workspace, channel_id, limit, api, formatter)
-        history = api.history(channel: channel_id, limit: limit)
-        raw_messages = (history['messages'] || []).reverse
+      def display_thread(workspace, thread, formatter)
+        unread_replies = thread['unread_replies'] || []
+        return if unread_replies.empty?
 
-        # Convert to model objects
-        messages = raw_messages.map { |msg| Models::Message.from_api(msg, channel_id: channel_id) }
+        root_msg = thread['root_msg'] || {}
+        channel_id = root_msg['channel']
+        conversation_label = resolve_conversation_label(workspace, channel_id)
+        root_user = extract_user_from_message(root_msg, workspace)
 
-        # Enrich with reaction timestamps if requested
-        if @options[:reaction_timestamps]
-          enricher = Services::ReactionEnricher.new(activity_api: runner.activity_api(workspace.name))
-          messages = enricher.enrich_messages(messages, channel_id)
+        puts "#{output.blue("  #{conversation_label}")} - thread by #{output.bold(root_user)}"
+
+        format_options = format_options_hash
+        unread_replies.first(@options[:limit]).each do |reply|
+          message = Models::Message.from_api(reply, channel_id: channel_id)
+          puts "    #{formatter.format_simple(message, workspace: workspace, options: format_options)}"
         end
 
-        format_options = {
+        puts
+      end
+
+      def format_options_hash
+        {
           no_emoji: @options[:no_emoji],
           no_reactions: @options[:no_reactions],
           reaction_names: @options[:reaction_names],
           reaction_timestamps: @options[:reaction_timestamps]
         }
+      end
 
+      def show_channel_messages(workspace, channel_id, limit, api, formatter)
+        messages = fetch_channel_messages(workspace, channel_id, limit, api)
         messages.each do |message|
-          puts formatter.format_simple(message, workspace: workspace, options: format_options)
+          puts formatter.format_simple(message, workspace: workspace, options: format_options_hash)
         end
       rescue ApiError => e
         puts output.dim("  (Could not fetch messages: #{e.message})")
       end
 
+      def fetch_channel_messages(workspace, channel_id, limit, api)
+        history = api.history(channel: channel_id, limit: limit)
+        raw_messages = (history['messages'] || []).reverse
+        messages = raw_messages.map { |msg| Models::Message.from_api(msg, channel_id: channel_id) }
+
+        return messages unless @options[:reaction_timestamps]
+
+        enricher = Services::ReactionEnricher.new(activity_api: runner.activity_api(workspace.name))
+        enricher.enrich_messages(messages, channel_id)
+      end
+
       def clear_unread(channel_name)
         target_workspaces.each do |workspace|
+          marker = unread_marker(workspace)
+
           if channel_name
-            # Clear specific channel
-            channel_id = if channel_name.match?(/^[CDG][A-Z0-9]+$/)
-                           channel_name
-                         else
-                           name = channel_name.delete_prefix('#')
-                           cache_store.get_channel_id(workspace.name, name) ||
-                             resolve_channel(workspace, name)
-                         end
-
-            api = runner.conversations_api(workspace.name)
-            # Get latest message timestamp
-            history = api.history(channel: channel_id, limit: 1)
-            if (messages = history['messages']) && messages.any?
-              api.mark(channel: channel_id, ts: messages.first['ts'])
-              success("Marked ##{channel_name} as read on #{workspace.name}")
-            end
+            channel_id = resolve_channel_id(workspace, channel_name)
+            success("Marked ##{channel_name} as read on #{workspace.name}") if marker.mark_single_channel(channel_id)
           else
-            # Clear all
-            client = runner.client_api(workspace.name)
-            counts = client.counts
-
-            # Get muted channels from user prefs unless --muted flag is set
-            muted_ids = @options[:muted] ? [] : runner.users_api(workspace.name).muted_channels
-
-            channels = counts['channels'] || []
-            channels_cleared = 0
-            channels.each do |channel|
-              next unless channel['has_unreads']
-              next if muted_ids.include?(channel['id'])
-
-              api = runner.conversations_api(workspace.name)
-              begin
-                history = api.history(channel: channel['id'], limit: 1)
-                if (messages = history['messages']) && messages.any?
-                  api.mark(channel: channel['id'], ts: messages.first['ts'])
-                  channels_cleared += 1
-                end
-              rescue ApiError => e
-                debug("Could not clear channel #{channel['id']}: #{e.message}")
-              end
-            end
-
-            # Also clear threads
-            threads_api = runner.threads_api(workspace.name)
-            threads_response = threads_api.get_view(limit: 50)
-            threads_cleared = 0
-
-            if threads_response['ok']
-              (threads_response['threads'] || []).each do |thread|
-                unread_replies = thread['unread_replies'] || []
-                next if unread_replies.empty?
-
-                root_msg = thread['root_msg'] || {}
-                channel_id = root_msg['channel']
-                thread_ts = root_msg['thread_ts']
-                latest_ts = unread_replies.map { |r| r['ts'] }.max
-
-                begin
-                  threads_api.mark(channel: channel_id, thread_ts: thread_ts, ts: latest_ts)
-                  threads_cleared += 1
-                rescue ApiError => e
-                  debug("Could not mark thread #{thread_ts} in #{channel_id}: #{e.message}")
-                end
-              end
-            end
-
-            success("Cleared #{channels_cleared} channels and #{threads_cleared} threads on #{workspace.name}")
+            counts = marker.mark_all(options: { muted: @options[:muted] })
+            success("Cleared #{counts[:channels]} channels and #{counts[:threads]} threads on #{workspace.name}")
           end
         end
 
         0
+      end
+
+      def unread_marker(workspace)
+        Services::UnreadMarker.new(
+          conversations_api: runner.conversations_api(workspace.name),
+          threads_api: runner.threads_api(workspace.name),
+          client_api: runner.client_api(workspace.name),
+          users_api: runner.users_api(workspace.name),
+          on_debug: ->(msg) { debug(msg) }
+        )
+      end
+
+      def resolve_channel_id(workspace, channel_name)
+        return channel_name if channel_name.match?(/^[CDG][A-Z0-9]+$/)
+
+        name = channel_name.delete_prefix('#')
+        cache_store.get_channel_id(workspace.name, name) || resolve_channel(workspace, name)
       end
 
       def resolve_channel(workspace, name)
