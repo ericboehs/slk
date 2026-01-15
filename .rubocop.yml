@@ -2,7 +2,19 @@ AllCops:
   TargetRubyVersion: 3.2
   NewCops: enable
 
-# Test classes are naturally longer - allow up to 300 lines
+# Test files have longer methods due to fixture setup and assertions
 Metrics/ClassLength:
+  Exclude:
+    - 'test/**/*'
+
+Metrics/MethodLength:
+  Exclude:
+    - 'test/**/*'
+
+Metrics/AbcSize:
+  Exclude:
+    - 'test/**/*'
+
+Metrics/CyclomaticComplexity:
   Exclude:
     - 'test/**/*'

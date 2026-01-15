@@ -97,7 +97,7 @@ class MessagesCommandTest < Minitest::Test
     result = command.send(:deduplicate_and_sort, messages)
 
     assert_equal 3, result.length
-    assert_equal %w[1.1 1.2 1.3], result.map { |m| m['ts'] }
+    assert_equal(%w[1.1 1.2 1.3], result.map { |m| m['ts'] })
   end
 
   def test_adjust_timestamp_decrements_slightly
