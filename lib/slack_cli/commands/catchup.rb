@@ -105,56 +105,60 @@ module SlackCli
       end
 
       def process_workspace(workspace)
-        client = runner.client_api(workspace.name)
-        counts = client.counts
+        items = gather_unread_items(workspace)
 
-        # Get muted channels from user prefs unless --muted flag is set
-        muted_ids = @options[:muted] ? [] : runner.users_api(workspace.name).muted_channels
-
-        # Get unread DMs
-        ims = (counts['ims'] || [])
-              .select { |i| i['has_unreads'] }
-
-        # Get unread channels
-        channels = (counts['channels'] || [])
-                   .select { |c| c['has_unreads'] || (c['mention_count'] || 0).positive? }
-                   .reject { |c| muted_ids.include?(c['id']) }
-
-        # Check for unread threads
-        threads_api = runner.threads_api(workspace.name)
-        threads_response = threads_api.get_view(limit: 20)
-        has_threads = threads_response['ok'] && (threads_response['total_unread_replies'] || 0).positive?
-
-        total_items = ims.size + channels.size + (has_threads ? 1 : 0)
-
-        if ims.empty? && channels.empty? && !has_threads
+        if items[:empty]
           puts "No unread messages in #{workspace.name}"
           return :continue
         end
 
-        puts output.bold("\n#{workspace.name}: #{total_items} items with unreads\n")
+        puts output.bold("\n#{workspace.name}: #{items[:total]} items with unreads\n")
+        process_all_items(workspace, items)
+      end
 
+      def gather_unread_items(workspace)
+        client = runner.client_api(workspace.name)
+        counts = client.counts
+        muted_ids = @options[:muted] ? [] : runner.users_api(workspace.name).muted_channels
+
+        ims = (counts['ims'] || []).select { |i| i['has_unreads'] }
+        channels = (counts['channels'] || [])
+                   .select { |c| c['has_unreads'] || (c['mention_count'] || 0).positive? }
+                   .reject { |c| muted_ids.include?(c['id']) }
+
+        threads_api = runner.threads_api(workspace.name)
+        threads_response = threads_api.get_view(limit: 20)
+        has_threads = threads_response['ok'] && (threads_response['total_unread_replies'] || 0).positive?
+
+        {
+          ims: ims,
+          channels: channels,
+          threads_response: has_threads ? threads_response : nil,
+          total: ims.size + channels.size + (has_threads ? 1 : 0),
+          empty: ims.empty? && channels.empty? && !has_threads
+        }
+      end
+
+      def process_all_items(workspace, items)
         current_index = 0
+        total = items[:total]
 
-        # Process DMs first
-        ims.each do |im|
-          result = process_dm(workspace, im, current_index, total_items)
+        items[:ims].each do |im|
+          result = process_dm(workspace, im, current_index, total)
           return :quit if result == :quit
 
           current_index += 1
         end
 
-        # Process threads
-        if has_threads
-          result = process_threads(workspace, threads_response, current_index, total_items)
+        if items[:threads_response]
+          result = process_threads(workspace, items[:threads_response], current_index, total)
           return :quit if result == :quit
 
           current_index += 1
         end
 
-        # Process channels
-        channels.each do |channel|
-          result = process_channel(workspace, channel, current_index, total_items)
+        items[:channels].each do |channel|
+          result = process_channel(workspace, channel, current_index, total)
           return :quit if result == :quit
 
           current_index += 1
