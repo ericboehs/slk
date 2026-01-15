@@ -20,11 +20,12 @@ module Slk
       ].freeze
 
       attr_reader :call_count
-      attr_accessor :on_request
+      attr_accessor :on_request, :on_response
 
       def initialize
         @call_count = 0
         @on_request = nil
+        @on_response = nil
         @http_cache = {}
       end
 
@@ -76,6 +77,7 @@ module Slk
 
         http = get_http(uri)
         response = yield(uri, http)
+        log_response(method, response)
         handle_response(response, method)
       rescue *NETWORK_ERRORS => e
         raise ApiError, "Network error: #{e.message}"
@@ -89,6 +91,19 @@ module Slk
       def log_request(method)
         @call_count += 1
         @on_request&.call(method, @call_count)
+      end
+
+      def log_response(method, response)
+        return unless @on_response
+
+        headers = {
+          'X-RateLimit-Limit' => response['X-RateLimit-Limit'],
+          'X-RateLimit-Remaining' => response['X-RateLimit-Remaining'],
+          'X-RateLimit-Reset' => response['X-RateLimit-Reset'],
+          'Retry-After' => response['Retry-After']
+        }.compact
+
+        @on_response.call(method, response.code, headers)
       end
 
       # Get or create a persistent HTTP connection for the given URI

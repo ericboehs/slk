@@ -115,16 +115,27 @@ module Slk
     end
 
     def build_runner(args)
-      verbose = args.include?('-v') || args.include?('--verbose')
+      verbose = verbose_mode?(args)
+      very_verbose = args.include?('-vv') || args.include?('--very-verbose')
       output = Formatters::Output.new(verbose: verbose)
       runner = Runner.new(output: output)
       setup_verbose_logging(runner, output) if verbose
+      setup_very_verbose_logging(runner, output) if very_verbose
       runner
     end
 
     def setup_verbose_logging(runner, output)
       runner.api_client.on_request = lambda { |method, count|
         output.debug("[API ##{count}] #{method}")
+      }
+    end
+
+    def setup_very_verbose_logging(runner, output)
+      runner.api_client.on_response = lambda { |method, code, headers|
+        next if headers.empty?
+
+        parts = headers.map { |k, v| "#{k.sub('X-RateLimit-', '')}=#{v}" }
+        output.debug("  #{method} #{code}: #{parts.join(', ')}")
       }
     end
 
@@ -136,7 +147,8 @@ module Slk
     end
 
     def verbose_mode?(args)
-      args.include?('-v') || args.include?('--verbose')
+      args.include?('-v') || args.include?('--verbose') ||
+        args.include?('-vv') || args.include?('--very-verbose')
     end
 
     def log_api_call_count(runner)

@@ -69,6 +69,7 @@ module Slk
         when '--no-wrap' then @options[:width] = nil
         when '--all' then @options[:all] = true
         when '-v', '--verbose' then @options[:verbose] = true
+        when '-vv', '--very-verbose' then @options[:verbose] = @options[:very_verbose] = true
         when '-q', '--quiet' then @options[:quiet] = true
         when '--json' then @options[:json] = true
         when '-h', '--help' then @options[:help] = true
