@@ -26,10 +26,10 @@ module SlackCli
 
       def resolve_non_url(target, workspace)
         return build_result(workspace, target) if channel_id?(target)
-        return resolve_channel_target(workspace, target) unless target.start_with?('@')
         return resolve_dm_target(workspace, target) if target.start_with?('@')
 
-        raise ConfigError, "Could not resolve target: #{target}"
+        # Default: treat as channel name (with or without #)
+        resolve_channel_target(workspace, target)
       end
 
       def channel_id?(target)

@@ -31,6 +31,7 @@ module SlackCli
         when 'at_user', 'at_user_group', 'at_channel', 'at_everyone' then enrich_mention(item, workspace)
         when 'thread_v2' then enrich_thread(item, workspace)
         when 'bot_dm_bundle' then enrich_bot_dm(item, workspace)
+        else @on_debug&.call("Unknown activity type: #{type.inspect}") if type
         end
       end
 
