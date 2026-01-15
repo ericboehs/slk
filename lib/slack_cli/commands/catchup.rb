@@ -30,11 +30,7 @@ module SlackCli
           all: true, # Default to all workspaces
           batch: false,
           muted: false,
-          limit: 5,
-          no_emoji: false,
-          no_reactions: false,
-          reaction_names: false,
-          reaction_timestamps: false
+          limit: 5
         )
       end
 
@@ -46,14 +42,6 @@ module SlackCli
           @options[:muted] = true
         when '-n', '--limit'
           @options[:limit] = args.shift.to_i
-        when '--no-emoji'
-          @options[:no_emoji] = true
-        when '--no-reactions'
-          @options[:no_reactions] = true
-        when '--reaction-names'
-          @options[:reaction_names] = true
-        when '--reaction-timestamps'
-          @options[:reaction_timestamps] = true
         else
           super
         end
@@ -231,15 +219,6 @@ module SlackCli
       def enrich_messages(workspace, messages, channel_id)
         enricher = Services::ReactionEnricher.new(activity_api: runner.activity_api(workspace.name))
         enricher.enrich_messages(messages, channel_id)
-      end
-
-      def format_options
-        {
-          no_emoji: @options[:no_emoji],
-          no_reactions: @options[:no_reactions],
-          reaction_names: @options[:reaction_names],
-          reaction_timestamps: @options[:reaction_timestamps]
-        }
       end
 
       def prompt_conversation_action(workspace, channel_id, latest_ts)

@@ -33,7 +33,13 @@ module SlackCli
           verbose: false,
           quiet: false,
           json: false,
-          width: default_width
+          width: default_width,
+          # Common formatting options
+          no_emoji: false,
+          no_reactions: false,
+          no_names: false,
+          reaction_names: false,
+          reaction_timestamps: false
         }
       end
 
@@ -68,6 +74,17 @@ module SlackCli
             @options[:json] = true
           when '-h', '--help'
             @options[:help] = true
+          # Common formatting options
+          when '--no-emoji'
+            @options[:no_emoji] = true
+          when '--no-reactions'
+            @options[:no_reactions] = true
+          when '--no-names'
+            @options[:no_names] = true
+          when '--reaction-names'
+            @options[:reaction_names] = true
+          when '--reaction-timestamps'
+            @options[:reaction_timestamps] = true
           when /^-/
             # Let subclass handle unknown options
             handle_option(arg, args, remaining)
@@ -171,6 +188,19 @@ module SlackCli
       # JSON output helper
       def output_json(data)
         output.puts(JSON.pretty_generate(data))
+      end
+
+      # Build format options hash for message formatting
+      # Subclasses can override to add command-specific options
+      def format_options
+        {
+          no_emoji: @options[:no_emoji],
+          no_reactions: @options[:no_reactions],
+          no_names: @options[:no_names],
+          reaction_names: @options[:reaction_names],
+          reaction_timestamps: @options[:reaction_timestamps],
+          width: @options[:width]
+        }
       end
     end
   end

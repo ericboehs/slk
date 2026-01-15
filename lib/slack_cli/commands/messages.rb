@@ -45,12 +45,7 @@ module SlackCli
           limit: 500,
           limit_set: false,
           threads: false,
-          no_emoji: false,
-          no_reactions: false,
-          no_names: false,
-          workspace_emoji: false,
-          reaction_names: false,
-          reaction_timestamps: false
+          workspace_emoji: false
         )
       end
 
@@ -61,18 +56,8 @@ module SlackCli
           @options[:limit_set] = true
         when '--threads'
           @options[:threads] = true
-        when '--no-emoji'
-          @options[:no_emoji] = true
-        when '--no-reactions'
-          @options[:no_reactions] = true
-        when '--no-names'
-          @options[:no_names] = true
         when '--workspace-emoji'
           @options[:workspace_emoji] = true
-        when '--reaction-names'
-          @options[:reaction_names] = true
-        when '--reaction-timestamps'
-          @options[:reaction_timestamps] = true
         else
           super
         end

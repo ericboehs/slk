@@ -32,11 +32,7 @@ module SlackCli
         super.merge(
           all: true, # Default to all workspaces
           muted: false,
-          limit: 10,
-          no_emoji: false,
-          no_reactions: false,
-          reaction_names: false,
-          reaction_timestamps: false
+          limit: 10
         )
       end
 
@@ -46,14 +42,6 @@ module SlackCli
           @options[:muted] = true
         when '-n', '--limit'
           @options[:limit] = args.shift.to_i
-        when '--no-emoji'
-          @options[:no_emoji] = true
-        when '--no-reactions'
-          @options[:no_reactions] = true
-        when '--reaction-names'
-          @options[:reaction_names] = true
-        when '--reaction-timestamps'
-          @options[:reaction_timestamps] = true
         else
           super
         end
@@ -206,7 +194,6 @@ module SlackCli
 
         puts "#{output.blue("  #{conversation_label}")} - thread by #{output.bold(root_user)}"
 
-        format_options = format_options_hash
         unread_replies.first(@options[:limit]).each do |reply|
           message = Models::Message.from_api(reply, channel_id: channel_id)
           puts "    #{formatter.format_simple(message, workspace: workspace, options: format_options)}"
@@ -215,19 +202,10 @@ module SlackCli
         puts
       end
 
-      def format_options_hash
-        {
-          no_emoji: @options[:no_emoji],
-          no_reactions: @options[:no_reactions],
-          reaction_names: @options[:reaction_names],
-          reaction_timestamps: @options[:reaction_timestamps]
-        }
-      end
-
       def show_channel_messages(workspace, channel_id, limit, api, formatter)
         messages = fetch_channel_messages(workspace, channel_id, limit, api)
         messages.each do |message|
-          puts formatter.format_simple(message, workspace: workspace, options: format_options_hash)
+          puts formatter.format_simple(message, workspace: workspace, options: format_options)
         end
       rescue ApiError => e
         puts output.dim("  (Could not fetch messages: #{e.message})")
