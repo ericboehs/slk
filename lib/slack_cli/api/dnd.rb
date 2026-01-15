@@ -13,7 +13,7 @@ module SlackCli
         @api.post(@workspace, 'dnd.info')
       end
 
-      def set_snooze(duration)
+      def set_snooze(duration) # rubocop:disable Naming/AccessorMethodName
         minutes = duration.to_minutes
         @api.post(@workspace, 'dnd.setSnooze', { num_minutes: minutes })
       end

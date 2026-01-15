@@ -10,12 +10,12 @@ module SlackCli
         @on_debug = on_debug
       end
 
-      def get_profile
+      def get_profile # rubocop:disable Naming/AccessorMethodName
         response = @api.post(@workspace, 'users.profile.get')
         response['profile']
       end
 
-      def get_status
+      def get_status # rubocop:disable Naming/AccessorMethodName
         profile = get_profile
         Models::Status.new(
           text: profile['status_text'] || '',
@@ -40,7 +40,7 @@ module SlackCli
         set_status(text: '', emoji: '', duration: nil)
       end
 
-      def get_presence
+      def get_presence # rubocop:disable Naming/AccessorMethodName
         response = @api.post(@workspace, 'users.getPresence')
         {
           presence: response['presence'],
@@ -49,7 +49,7 @@ module SlackCli
         }
       end
 
-      def set_presence(presence)
+      def set_presence(presence) # rubocop:disable Naming/AccessorMethodName
         @api.post(@workspace, 'users.setPresence', { presence: presence })
       end
 
@@ -63,7 +63,7 @@ module SlackCli
         @api.post_form(@workspace, 'users.info', { user: user_id })
       end
 
-      def get_prefs
+      def get_prefs # rubocop:disable Naming/AccessorMethodName
         @api.post(@workspace, 'users.prefs.get')
       end
 

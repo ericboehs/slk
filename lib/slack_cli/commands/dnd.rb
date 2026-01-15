@@ -66,7 +66,7 @@ module SlackCli
 
       private
 
-      def get_status
+      def get_status # rubocop:disable Naming/AccessorMethodName
         # GET defaults to all workspaces unless -w specified
         workspaces = @options[:workspace] ? [runner.workspace(@options[:workspace])] : runner.all_workspaces
 
@@ -102,7 +102,7 @@ module SlackCli
         0
       end
 
-      def set_snooze(duration)
+      def set_snooze(duration) # rubocop:disable Naming/AccessorMethodName
         target_workspaces.each do |workspace|
           api = runner.dnd_api(workspace.name)
           api.set_snooze(duration)

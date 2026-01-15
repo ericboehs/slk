@@ -52,7 +52,7 @@ module SlackCli
 
       private
 
-      def get_presence
+      def get_presence # rubocop:disable Naming/AccessorMethodName
         # GET defaults to all workspaces unless -w specified
         workspaces = @options[:workspace] ? [runner.workspace(@options[:workspace])] : runner.all_workspaces
 
@@ -81,7 +81,7 @@ module SlackCli
         0
       end
 
-      def set_presence(presence)
+      def set_presence(presence) # rubocop:disable Naming/AccessorMethodName
         target_workspaces.each do |workspace|
           runner.users_api(workspace.name).set_presence(presence)
 

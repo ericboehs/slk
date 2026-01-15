@@ -70,7 +70,7 @@ module SlackCli
 
       private
 
-      def get_status
+      def get_status # rubocop:disable Naming/AccessorMethodName
         # GET defaults to all workspaces unless -w specified
         workspaces = @options[:workspace] ? [runner.workspace(@options[:workspace])] : runner.all_workspaces
 

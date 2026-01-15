@@ -133,7 +133,7 @@ module SlackCli
         0
       end
 
-      def set_primary(name)
+      def set_primary(name) # rubocop:disable Naming/AccessorMethodName
         return error("Workspace '#{name}' not found") unless token_store.exists?(name)
 
         config.primary_workspace = name
