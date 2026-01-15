@@ -5,6 +5,7 @@ require_relative '../support/help_formatter'
 module SlackCli
   module Commands
     # Views and manages unread messages across workspaces
+    # rubocop:disable Metrics/ClassLength
     class Unread < Base
       include Support::UserResolver
 
@@ -91,19 +92,27 @@ module SlackCli
       end
 
       def fetch_unread_data(workspace)
-        client = runner.client_api(workspace.name)
-        counts = client.counts
-        muted_ids = @options[:muted] ? [] : runner.users_api(workspace.name).muted_channels
-
-        ims = counts['ims'] || []
-        channels = counts['channels'] || []
+        counts = runner.client_api(workspace.name).counts
+        muted_ids = fetch_muted_ids(workspace)
 
         {
-          unread_ims: ims.select { |i| i['has_unreads'] },
-          unread_channels: channels
-            .select { |c| c['has_unreads'] || (c['mention_count'] || 0).positive? }
-            .reject { |c| muted_ids.include?(c['id']) }
+          unread_ims: filter_unread_ims(counts['ims'] || []),
+          unread_channels: filter_unread_channels(counts['channels'] || [], muted_ids)
         }
+      end
+
+      def fetch_muted_ids(workspace)
+        @options[:muted] ? [] : runner.users_api(workspace.name).muted_channels
+      end
+
+      def filter_unread_ims(ims)
+        ims.select { |i| i['has_unreads'] }
+      end
+
+      def filter_unread_channels(channels, muted_ids)
+        channels
+          .select { |c| c['has_unreads'] || (c['mention_count'] || 0).positive? }
+          .reject { |c| muted_ids.include?(c['id']) }
       end
 
       def output_unread_json(workspace, data)
@@ -151,55 +160,60 @@ module SlackCli
       end
 
       def display_unread_channels(workspace, unreads, conversations_api, formatter)
-        if unreads.empty?
-          puts 'No unread messages' if unreads.empty?
-          return
-        end
+        return puts('No unread messages') if unreads.empty?
 
-        unreads.each do |channel|
-          name = cache_store.get_channel_name(workspace.name, channel['id']) || channel['id']
-          puts
-          puts output.bold("##{name}") + " (showing last #{@options[:limit]})"
-          puts
-          show_channel_messages(workspace, channel['id'], @options[:limit], conversations_api, formatter)
-        end
+        unreads.each { |ch| display_channel(workspace, ch, conversations_api, formatter) }
+      end
+
+      def display_channel(workspace, channel, conversations_api, formatter)
+        name = cache_store.get_channel_name(workspace.name, channel['id']) || channel['id']
+        puts
+        puts "#{output.bold("##{name}")} (showing last #{@options[:limit]})"
+        puts
+        show_channel_messages(workspace, channel['id'], @options[:limit], conversations_api, formatter)
       end
 
       def show_threads(workspace, formatter)
-        threads_api = runner.threads_api(workspace.name)
-        threads_response = threads_api.get_view(limit: 20)
-
+        threads_response = runner.threads_api(workspace.name).get_view(limit: 20)
         return unless threads_response['ok']
 
         total_unreads = threads_response['total_unread_replies'] || 0
         return if total_unreads.zero?
 
-        threads = threads_response['threads'] || []
+        print_threads_header(total_unreads)
+        (threads_response['threads'] || []).each { |t| display_thread(workspace, t, formatter) }
+      end
 
+      def print_threads_header(total_unreads)
         puts
-        puts output.bold('🧵 Threads') + " (#{total_unreads} unread replies)"
+        puts "#{output.bold('🧵 Threads')} (#{total_unreads} unread replies)"
         puts
-
-        threads.each { |thread| display_thread(workspace, thread, formatter) }
       end
 
       def display_thread(workspace, thread, formatter)
         unread_replies = thread['unread_replies'] || []
         return if unread_replies.empty?
 
+        print_thread_header(workspace, thread)
+        print_thread_replies(workspace, thread, unread_replies, formatter)
+        puts
+      end
+
+      def print_thread_header(workspace, thread)
         root_msg = thread['root_msg'] || {}
         channel_id = root_msg['channel']
         conversation_label = resolve_conversation_label(workspace, channel_id)
         root_user = extract_user_from_message(root_msg, workspace)
 
         puts "#{output.blue("  #{conversation_label}")} - thread by #{output.bold(root_user)}"
+      end
 
+      def print_thread_replies(workspace, thread, unread_replies, formatter)
+        channel_id = (thread['root_msg'] || {})['channel']
         unread_replies.first(@options[:limit]).each do |reply|
           message = Models::Message.from_api(reply, channel_id: channel_id)
           puts "    #{formatter.format_simple(message, workspace: workspace, options: format_options)}"
         end
-
-        puts
       end
 
       def show_channel_messages(workspace, channel_id, limit, api, formatter)
@@ -223,19 +237,22 @@ module SlackCli
       end
 
       def clear_unread(channel_name)
-        target_workspaces.each do |workspace|
-          marker = unread_marker(workspace)
-
-          if channel_name
-            channel_id = resolve_channel_id(workspace, channel_name)
-            success("Marked ##{channel_name} as read on #{workspace.name}") if marker.mark_single_channel(channel_id)
-          else
-            counts = marker.mark_all(options: { muted: @options[:muted] })
-            success("Cleared #{counts[:channels]} channels and #{counts[:threads]} threads on #{workspace.name}")
-          end
+        target_workspaces.each do |ws|
+          channel_name ? clear_single_channel(ws, channel_name) : clear_all_channels(ws)
         end
-
         0
+      end
+
+      def clear_single_channel(workspace, channel_name)
+        channel_id = resolve_channel_id(workspace, channel_name)
+        return unless unread_marker(workspace).mark_single_channel(channel_id)
+
+        success("Marked ##{channel_name} as read on #{workspace.name}")
+      end
+
+      def clear_all_channels(workspace)
+        counts = unread_marker(workspace).mark_all(options: { muted: @options[:muted] })
+        success("Cleared #{counts[:channels]} channels and #{counts[:threads]} threads on #{workspace.name}")
       end
 
       def unread_marker(workspace)
@@ -263,5 +280,6 @@ module SlackCli
         channel&.dig('id') || raise(ConfigError, "Channel not found: ##{name}")
       end
     end
+    # rubocop:enable Metrics/ClassLength
   end
 end

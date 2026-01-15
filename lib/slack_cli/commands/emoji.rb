@@ -6,6 +6,7 @@ require_relative '../support/help_formatter'
 module SlackCli
   module Commands
     # Downloads and manages workspace custom emoji
+    # rubocop:disable Metrics/ClassLength
     class Emoji < Base
       include Support::InlineImages
 
@@ -13,26 +14,33 @@ module SlackCli
         result = validate_options
         return result if result
 
-        case positional_args
-        in ['status' | 'list'] | []
-          show_status
-        in ['sync-standard']
-          sync_standard
-        in ['download', *rest]
-          download_emoji(rest.first)
-        in ['clear', *rest]
-          clear_emoji(rest.first)
-        in ['search', query, *_]
-          search_emoji(query)
-        in ['search']
-          error('Usage: slk emoji search <query>')
-          1
-        else
-          error("Unknown action: #{positional_args.first}")
-          1
-        end
+        dispatch_action
       rescue ApiError => e
         error("Failed: #{e.message}")
+        1
+      end
+
+      private
+
+      def dispatch_action
+        case positional_args
+        in ['status' | 'list'] | [] then show_status
+        in ['sync-standard'] then sync_standard
+        in ['download', *rest] then download_emoji(rest.first)
+        in ['clear', *rest] then clear_emoji(rest.first)
+        in ['search', query, *_] then search_emoji(query)
+        in ['search'] then missing_search_query
+        else unknown_action
+        end
+      end
+
+      def missing_search_query
+        error('Usage: slk emoji search <query>')
+        1
+      end
+
+      def unknown_action
+        error("Unknown action: #{positional_args.first}")
         1
       end
 
@@ -329,5 +337,6 @@ module SlackCli
         0
       end
     end
+    # rubocop:enable Metrics/ClassLength
   end
 end

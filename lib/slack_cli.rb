@@ -62,6 +62,8 @@ module SlackCli
     autoload :ReactionFormatter, 'slack_cli/formatters/reaction_formatter'
     autoload :JsonMessageFormatter, 'slack_cli/formatters/json_message_formatter'
     autoload :ActivityFormatter, 'slack_cli/formatters/activity_formatter'
+    autoload :AttachmentFormatter, 'slack_cli/formatters/attachment_formatter'
+    autoload :BlockFormatter, 'slack_cli/formatters/block_formatter'
   end
 
   # CLI commands implementing user-facing functionality

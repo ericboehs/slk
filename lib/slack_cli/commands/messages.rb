@@ -20,7 +20,10 @@ module SlackCli
         end
 
         resolved = target_resolver.resolve(target, default_workspace: target_workspaces.first)
-        workspace, channel_id, thread_ts, msg_ts = resolved.to_a
+        workspace = resolved.workspace
+        channel_id = resolved.channel_id
+        thread_ts = resolved.thread_ts
+        msg_ts = resolved.msg_ts
 
         apply_default_limit(msg_ts)
         messages = fetch_messages(workspace, channel_id, thread_ts, oldest: msg_ts)

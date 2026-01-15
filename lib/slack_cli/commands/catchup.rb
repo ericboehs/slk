@@ -5,6 +5,7 @@ require_relative '../support/help_formatter'
 module SlackCli
   module Commands
     # Interactive review and dismissal of unread messages
+    # rubocop:disable Metrics/ClassLength
     class Catchup < Base
       include Support::UserResolver
       include Support::InteractivePrompt
@@ -76,21 +77,25 @@ module SlackCli
       private
 
       def batch_catchup
-        target_workspaces.each do |workspace|
-          marker = Services::UnreadMarker.new(
-            conversations_api: runner.conversations_api(workspace.name),
-            threads_api: runner.threads_api(workspace.name),
-            client_api: runner.client_api(workspace.name),
-            users_api: runner.users_api(workspace.name),
-            on_debug: ->(msg) { debug(msg) }
-          )
-
-          counts = marker.mark_all(options: { muted: @options[:muted] })
-          success("Marked #{counts[:dms]} DMs, #{counts[:channels]} channels, " \
-                  "and #{counts[:threads]} threads as read on #{workspace.name}")
-        end
-
+        target_workspaces.each { |ws| batch_mark_workspace(ws) }
         0
+      end
+
+      def batch_mark_workspace(workspace)
+        marker = build_unread_marker(workspace)
+        counts = marker.mark_all(options: { muted: @options[:muted] })
+        success("Marked #{counts[:dms]} DMs, #{counts[:channels]} channels, " \
+                "and #{counts[:threads]} threads as read on #{workspace.name}")
+      end
+
+      def build_unread_marker(workspace)
+        Services::UnreadMarker.new(
+          conversations_api: runner.conversations_api(workspace.name),
+          threads_api: runner.threads_api(workspace.name),
+          client_api: runner.client_api(workspace.name),
+          users_api: runner.users_api(workspace.name),
+          on_debug: ->(msg) { debug(msg) }
+        )
       end
 
       def interactive_catchup
@@ -117,55 +122,71 @@ module SlackCli
       end
 
       def gather_unread_items(workspace)
-        client = runner.client_api(workspace.name)
-        counts = client.counts
-        muted_ids = @options[:muted] ? [] : runner.users_api(workspace.name).muted_channels
-
-        ims = (counts['ims'] || []).select { |i| i['has_unreads'] }
-        channels = (counts['channels'] || [])
-                   .select { |c| c['has_unreads'] || (c['mention_count'] || 0).positive? }
-                   .reject { |c| muted_ids.include?(c['id']) }
-
-        threads_api = runner.threads_api(workspace.name)
-        threads_response = threads_api.get_view(limit: 20)
-        has_threads = threads_response['ok'] && (threads_response['total_unread_replies'] || 0).positive?
+        counts = runner.client_api(workspace.name).counts
+        ims = filter_unread_ims(counts['ims'] || [])
+        channels = filter_unread_channels(workspace, counts['channels'] || [])
+        threads_response = fetch_unread_threads(workspace)
 
         {
           ims: ims,
           channels: channels,
-          threads_response: has_threads ? threads_response : nil,
-          total: ims.size + channels.size + (has_threads ? 1 : 0),
-          empty: ims.empty? && channels.empty? && !has_threads
+          threads_response: threads_response,
+          total: ims.size + channels.size + (threads_response ? 1 : 0),
+          empty: ims.empty? && channels.empty? && !threads_response
         }
       end
 
+      def filter_unread_ims(ims)
+        ims.select { |i| i['has_unreads'] }
+      end
+
+      def filter_unread_channels(workspace, channels)
+        muted_ids = @options[:muted] ? [] : runner.users_api(workspace.name).muted_channels
+        channels
+          .select { |c| c['has_unreads'] || (c['mention_count'] || 0).positive? }
+          .reject { |c| muted_ids.include?(c['id']) }
+      end
+
+      def fetch_unread_threads(workspace)
+        response = runner.threads_api(workspace.name).get_view(limit: 20)
+        response if response['ok'] && (response['total_unread_replies'] || 0).positive?
+      end
+
       def process_all_items(workspace, items)
-        current_index = 0
-        total = items[:total]
+        index = { current: 0, total: items[:total] }
 
-        items[:ims].each do |im|
-          result = process_dm(workspace, im, current_index, total)
-          return :quit if result == :quit
-
-          current_index += 1
-        end
-
-        if items[:threads_response]
-          result = process_threads(workspace, items[:threads_response], current_index, total)
-          return :quit if result == :quit
-
-          current_index += 1
-        end
-
-        items[:channels].each do |channel|
-          result = process_channel(workspace, channel, current_index, total)
-          return :quit if result == :quit
-
-          current_index += 1
-        end
+        return :quit if process_dms(workspace, items[:ims], index)
+        return :quit if items[:threads_response] && process_threads_item(workspace, items[:threads_response], index)
+        return :quit if process_channels(workspace, items[:channels], index)
 
         :continue
       end
+
+      # rubocop:disable Naming/PredicateMethod
+      def process_dms(workspace, ims, index)
+        ims.each do |im|
+          return true if process_dm(workspace, im, index[:current], index[:total]) == :quit
+
+          index[:current] += 1
+        end
+        false
+      end
+
+      def process_channels(workspace, channels, index)
+        channels.each do |channel|
+          return true if process_channel(workspace, channel, index[:current], index[:total]) == :quit
+
+          index[:current] += 1
+        end
+        false
+      end
+
+      def process_threads_item(workspace, threads_response, index)
+        result = process_threads(workspace, threads_response, index[:current], index[:total])
+        index[:current] += 1
+        result == :quit
+      end
+      # rubocop:enable Naming/PredicateMethod
 
       def process_channel(workspace, channel, index, total)
         channel_id = channel['id']
@@ -237,28 +258,33 @@ module SlackCli
 
       def handle_channel_action(input, workspace, channel_id, latest_ts, conversations)
         case input&.downcase
-        when 's', "\r", "\n", nil
-          :next
-        when 'q', "\u0003", "\u0004" # q, Ctrl-C, Ctrl-D
-          :quit
-        when 'r'
-          # Mark as read using the latest message timestamp
-          if latest_ts
-            conversations.mark(channel: channel_id, timestamp: latest_ts)
-            success('Marked as read')
-          end
-          :next
-        when 'o'
-          # Open in Slack (macOS)
-          team_id = runner.client_api(workspace.name).team_id
-          url = "slack://channel?team=#{team_id}&id=#{channel_id}"
-          system('open', url)
-          success('Opened in Slack')
-          :next
+        when 's', "\r", "\n", nil then :next
+        when 'q', "\u0003", "\u0004" then :quit
+        when 'r' then mark_channel_read(conversations, channel_id, latest_ts)
+        when 'o' then open_channel_in_slack(workspace, channel_id)
         else
-          print "\r#{output.red('Invalid key')} - #{output.cyan('[s]kip  [r]ead  [o]pen  [q]uit')}"
-          nil # Return nil to continue loop
+          print_invalid_key
+          nil
         end
+      end
+
+      def mark_channel_read(conversations, channel_id, latest_ts)
+        if latest_ts
+          conversations.mark(channel: channel_id, timestamp: latest_ts)
+          success('Marked as read')
+        end
+        :next
+      end
+
+      def open_channel_in_slack(workspace, channel_id)
+        team_id = runner.client_api(workspace.name).team_id
+        system('open', "slack://channel?team=#{team_id}&id=#{channel_id}")
+        success('Opened in Slack')
+        :next
+      end
+
+      def print_invalid_key
+        print "\r#{output.red('Invalid key')} - #{output.cyan('[s]kip  [r]ead  [o]pen  [q]uit')}"
       end
 
       def process_threads(workspace, threads_response, index, total)
@@ -278,17 +304,25 @@ module SlackCli
         return nil if unread_replies.empty?
 
         root_msg = thread['root_msg'] || {}
-        channel_id = root_msg['channel']
-        thread_ts = root_msg['thread_ts']
-        conversation_label = resolve_conversation_label(workspace, channel_id)
-        root_user = extract_user_from_message(root_msg, workspace)
-
-        puts "#{output.blue("  #{conversation_label}")} - thread by #{output.bold(root_user)}"
-        display_thread_replies(workspace, unread_replies, channel_id)
+        print_thread_header(workspace, root_msg)
+        display_thread_replies(workspace, unread_replies, root_msg['channel'])
         puts
 
-        latest_ts = unread_replies.map { |r| r['ts'] }.max
-        { channel: channel_id, thread_ts: thread_ts, ts: latest_ts }
+        build_thread_mark_data(root_msg, unread_replies)
+      end
+
+      def print_thread_header(workspace, root_msg)
+        label = resolve_conversation_label(workspace, root_msg['channel'])
+        user = extract_user_from_message(root_msg, workspace)
+        puts "#{output.blue("  #{label}")} - thread by #{output.bold(user)}"
+      end
+
+      def build_thread_mark_data(root_msg, unread_replies)
+        {
+          channel: root_msg['channel'],
+          thread_ts: root_msg['thread_ts'],
+          ts: unread_replies.map { |r| r['ts'] }.max
+        }
       end
 
       def display_thread_replies(workspace, replies, channel_id)
@@ -312,10 +346,8 @@ module SlackCli
 
       def handle_threads_action(input, workspace, thread_mark_data)
         case input&.downcase
-        when 's', "\r", "\n", nil
-          :next
-        when 'q', "\u0003", "\u0004"
-          :quit
+        when 's', "\r", "\n", nil then :next
+        when 'q', "\u0003", "\u0004" then :quit
         when 'r'
           mark_threads_as_read(workspace, thread_mark_data)
           :next
@@ -323,7 +355,7 @@ module SlackCli
           open_first_thread(workspace, thread_mark_data)
           :next
         else
-          print "\r#{output.red('Invalid key')} - #{output.cyan('[s]kip  [r]ead  [o]pen  [q]uit')}"
+          print_invalid_key
           nil
         end
       end
@@ -350,5 +382,6 @@ module SlackCli
         success('Opened in Slack')
       end
     end
+    # rubocop:enable Metrics/ClassLength
   end
 end
