@@ -4,7 +4,7 @@ require 'test_helper'
 
 class ConfigurationTest < Minitest::Test
   def setup
-    @tmpdir = Dir.mktmpdir('slack-cli-test')
+    @tmpdir = Dir.mktmpdir('slk-test')
     @paths = MockPaths.new(@tmpdir)
   end
 
@@ -13,7 +13,7 @@ class ConfigurationTest < Minitest::Test
   end
 
   def test_returns_empty_hash_when_no_config_file
-    config = SlackCli::Services::Configuration.new(paths: @paths)
+    config = Slk::Services::Configuration.new(paths: @paths)
 
     assert_nil config.primary_workspace
     assert_nil config.ssh_key
@@ -22,14 +22,14 @@ class ConfigurationTest < Minitest::Test
 
   def test_loads_existing_config
     write_config('primary_workspace' => 'myworkspace', 'ssh_key' => '/path/to/key')
-    config = SlackCli::Services::Configuration.new(paths: @paths)
+    config = Slk::Services::Configuration.new(paths: @paths)
 
     assert_equal 'myworkspace', config.primary_workspace
     assert_equal '/path/to/key', config.ssh_key
   end
 
   def test_primary_workspace_setter
-    config = SlackCli::Services::Configuration.new(paths: @paths)
+    config = Slk::Services::Configuration.new(paths: @paths)
 
     config.primary_workspace = 'newworkspace'
     assert_equal 'newworkspace', config.primary_workspace
@@ -40,7 +40,7 @@ class ConfigurationTest < Minitest::Test
   end
 
   def test_ssh_key_setter
-    config = SlackCli::Services::Configuration.new(paths: @paths)
+    config = Slk::Services::Configuration.new(paths: @paths)
 
     config.ssh_key = '/new/path/to/key'
     assert_equal '/new/path/to/key', config.ssh_key
@@ -48,13 +48,13 @@ class ConfigurationTest < Minitest::Test
 
   def test_bracket_accessor
     write_config('custom_setting' => 'custom_value')
-    config = SlackCli::Services::Configuration.new(paths: @paths)
+    config = Slk::Services::Configuration.new(paths: @paths)
 
     assert_equal 'custom_value', config['custom_setting']
   end
 
   def test_bracket_setter
-    config = SlackCli::Services::Configuration.new(paths: @paths)
+    config = Slk::Services::Configuration.new(paths: @paths)
 
     config['new_key'] = 'new_value'
     assert_equal 'new_value', config['new_key']
@@ -62,7 +62,7 @@ class ConfigurationTest < Minitest::Test
 
   def test_to_h_returns_copy
     write_config('key' => 'value')
-    config = SlackCli::Services::Configuration.new(paths: @paths)
+    config = Slk::Services::Configuration.new(paths: @paths)
 
     hash = config.to_h
     hash['key'] = 'modified'
@@ -76,7 +76,7 @@ class ConfigurationTest < Minitest::Test
     File.write(@paths.config_file('config.json'), 'not valid json')
 
     warnings = []
-    config = SlackCli::Services::Configuration.new(paths: @paths)
+    config = Slk::Services::Configuration.new(paths: @paths)
     config.on_warning = ->(msg) { warnings << msg }
 
     # Access config to trigger loading
@@ -91,7 +91,7 @@ class ConfigurationTest < Minitest::Test
     File.write(@paths.config_file('config.json'), '{invalid')
 
     warning_received = nil
-    config = SlackCli::Services::Configuration.new(paths: @paths)
+    config = Slk::Services::Configuration.new(paths: @paths)
     config.on_warning = ->(msg) { warning_received = msg }
 
     # Trigger load
@@ -101,10 +101,10 @@ class ConfigurationTest < Minitest::Test
   end
 
   def test_creates_config_dir_on_save
-    config = SlackCli::Services::Configuration.new(paths: @paths)
+    config = Slk::Services::Configuration.new(paths: @paths)
 
     # Remove the config dir
-    FileUtils.rmdir(@paths.config_dir) if Dir.exist?(@paths.config_dir)
+    FileUtils.rm_f(@paths.config_dir)
 
     config.primary_workspace = 'test'
 
@@ -115,7 +115,7 @@ class ConfigurationTest < Minitest::Test
     write_config('primary_workspace' => 'lazy')
 
     # Modify file after creating config object but before accessing
-    config = SlackCli::Services::Configuration.new(paths: @paths)
+    config = Slk::Services::Configuration.new(paths: @paths)
     write_config('primary_workspace' => 'modified')
 
     # First access loads the modified value
@@ -136,13 +136,7 @@ class ConfigurationTest < Minitest::Test
       @cache_dir = File.join(tmpdir, 'cache')
     end
 
-    def config_dir
-      @config_dir
-    end
-
-    def cache_dir
-      @cache_dir
-    end
+    attr_reader :config_dir, :cache_dir
 
     def config_file(name)
       File.join(@config_dir, name)

@@ -6,27 +6,27 @@ class HelpCommandTest < Minitest::Test
   def setup
     @io = StringIO.new
     @err = StringIO.new
-    @output = SlackCli::Formatters::Output.new(io: @io, err: @err, color: false)
+    @output = Slk::Formatters::Output.new(io: @io, err: @err, color: false)
   end
 
   def create_runner
     config = Object.new
     config.define_singleton_method(:primary_workspace) { nil }
-    config.define_singleton_method(:on_warning=) { |_| }
+    config.define_singleton_method(:on_warning=) { |_| nil }
 
     token_store = Object.new
     token_store.define_singleton_method(:empty?) { true }
     token_store.define_singleton_method(:all_workspaces) { [] }
     token_store.define_singleton_method(:workspace_names) { [] }
-    token_store.define_singleton_method(:on_warning=) { |_| }
+    token_store.define_singleton_method(:on_warning=) { |_| nil }
 
     preset_store = Object.new
-    preset_store.define_singleton_method(:on_warning=) { |_| }
+    preset_store.define_singleton_method(:on_warning=) { |_| nil }
 
     cache_store = Object.new
-    cache_store.define_singleton_method(:on_warning=) { |_| }
+    cache_store.define_singleton_method(:on_warning=) { |_| nil }
 
-    SlackCli::Runner.new(
+    Slk::Runner.new(
       output: @output,
       config: config,
       token_store: token_store,
@@ -37,7 +37,7 @@ class HelpCommandTest < Minitest::Test
 
   def test_general_help_shows_all_commands
     runner = create_runner
-    command = SlackCli::Commands::Help.new([], runner: runner)
+    command = Slk::Commands::Help.new([], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -52,7 +52,7 @@ class HelpCommandTest < Minitest::Test
 
   def test_general_help_shows_global_options
     runner = create_runner
-    command = SlackCli::Commands::Help.new([], runner: runner)
+    command = Slk::Commands::Help.new([], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -64,7 +64,7 @@ class HelpCommandTest < Minitest::Test
 
   def test_general_help_shows_examples
     runner = create_runner
-    command = SlackCli::Commands::Help.new([], runner: runner)
+    command = Slk::Commands::Help.new([], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -75,7 +75,7 @@ class HelpCommandTest < Minitest::Test
 
   def test_command_specific_help_for_status
     runner = create_runner
-    command = SlackCli::Commands::Help.new(['status'], runner: runner)
+    command = Slk::Commands::Help.new(['status'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -84,7 +84,7 @@ class HelpCommandTest < Minitest::Test
 
   def test_command_specific_help_for_presence
     runner = create_runner
-    command = SlackCli::Commands::Help.new(['presence'], runner: runner)
+    command = Slk::Commands::Help.new(['presence'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -93,7 +93,7 @@ class HelpCommandTest < Minitest::Test
 
   def test_unknown_command_shows_error
     runner = create_runner
-    command = SlackCli::Commands::Help.new(['nonexistent'], runner: runner)
+    command = Slk::Commands::Help.new(['nonexistent'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -103,7 +103,7 @@ class HelpCommandTest < Minitest::Test
 
   def test_shows_version
     runner = create_runner
-    command = SlackCli::Commands::Help.new([], runner: runner)
+    command = Slk::Commands::Help.new([], runner: runner)
     result = command.execute
 
     assert_equal 0, result

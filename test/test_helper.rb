@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
-$LOAD_PATH.unshift File.expand_path("../lib", __dir__)
+$LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 
-require "minitest/autorun"
-require "slack_cli"
-require "stringio"
-require "tmpdir"
-require "json"
+require 'minitest/autorun'
+require 'slk'
+require 'stringio'
+require 'tmpdir'
+require 'json'
 
-module SlackCli
+module Slk
   module TestHelpers
     # Create a test output that captures to StringIO
     def test_output(color: false)
@@ -28,22 +28,22 @@ module SlackCli
 
     # Create a temporary config directory
     def with_temp_config
-      Dir.mktmpdir("slack-cli-test") do |dir|
-        old_config = ENV["XDG_CONFIG_HOME"]
-        old_cache = ENV["XDG_CACHE_HOME"]
-        ENV["XDG_CONFIG_HOME"] = dir
-        ENV["XDG_CACHE_HOME"] = "#{dir}/cache"
+      Dir.mktmpdir('slk-test') do |dir|
+        old_config = ENV.fetch('XDG_CONFIG_HOME', nil)
+        old_cache = ENV.fetch('XDG_CACHE_HOME', nil)
+        ENV['XDG_CONFIG_HOME'] = dir
+        ENV['XDG_CACHE_HOME'] = "#{dir}/cache"
 
         yield dir
       ensure
-        ENV["XDG_CONFIG_HOME"] = old_config
-        ENV["XDG_CACHE_HOME"] = old_cache
+        ENV['XDG_CONFIG_HOME'] = old_config
+        ENV['XDG_CACHE_HOME'] = old_cache
       end
     end
 
     # Load fixture JSON
     def fixture(path)
-      file = File.join(File.dirname(__FILE__), "fixtures", path)
+      file = File.join(File.dirname(__FILE__), 'fixtures', path)
       JSON.parse(File.read(file))
     end
 
@@ -62,12 +62,12 @@ module SlackCli
 
       def post(workspace, method, params = {})
         @calls << { workspace: workspace.name, method: method, params: params }
-        @responses[method] || { "ok" => true }
+        @responses[method] || { 'ok' => true }
       end
 
       def get(workspace, method, params = {})
         @calls << { workspace: workspace.name, method: method, params: params }
-        @responses[method] || { "ok" => true }
+        @responses[method] || { 'ok' => true }
       end
 
       def post_form(workspace, method, params = {})
@@ -76,12 +76,14 @@ module SlackCli
     end
 
     # Mock workspace
-    def mock_workspace(name = "test", token = "xoxb-test-token")
+    def mock_workspace(name = 'test', token = 'xoxb-test-token')
       Models::Workspace.new(name: name, token: token)
     end
   end
 end
 
-class Minitest::Test
-  include SlackCli::TestHelpers
+module Minitest
+  class Test
+    include Slk::TestHelpers
+  end
 end

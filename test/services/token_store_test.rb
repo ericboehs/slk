@@ -5,7 +5,7 @@ require 'test_helper'
 class TokenStoreTest < Minitest::Test
   def test_empty_returns_true_when_no_tokens
     with_temp_config do
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
       assert store.empty?
     end
   end
@@ -13,14 +13,14 @@ class TokenStoreTest < Minitest::Test
   def test_empty_returns_false_when_tokens_exist
     with_temp_config do |dir|
       write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-test' } })
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
       refute store.empty?
     end
   end
 
   def test_workspace_names_returns_empty_array_when_no_tokens
     with_temp_config do
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
       assert_equal [], store.workspace_names
     end
   end
@@ -28,17 +28,17 @@ class TokenStoreTest < Minitest::Test
   def test_workspace_names_returns_all_names
     with_temp_config do |dir|
       write_tokens_file(dir, {
-        'workspace1' => { 'token' => 'xoxb-test1' },
-        'workspace2' => { 'token' => 'xoxb-test2' }
-      })
-      store = SlackCli::Services::TokenStore.new
+                          'workspace1' => { 'token' => 'xoxb-test1' },
+                          'workspace2' => { 'token' => 'xoxb-test2' }
+                        })
+      store = Slk::Services::TokenStore.new
       assert_equal %w[workspace1 workspace2].sort, store.workspace_names.sort
     end
   end
 
   def test_exists_returns_false_for_unknown_workspace
     with_temp_config do
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
       refute store.exists?('nonexistent')
     end
   end
@@ -46,15 +46,15 @@ class TokenStoreTest < Minitest::Test
   def test_exists_returns_true_for_known_workspace
     with_temp_config do |dir|
       write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-test' } })
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
       assert store.exists?('myworkspace')
     end
   end
 
   def test_workspace_raises_for_unknown_workspace
     with_temp_config do
-      store = SlackCli::Services::TokenStore.new
-      error = assert_raises(SlackCli::WorkspaceNotFoundError) do
+      store = Slk::Services::TokenStore.new
+      error = assert_raises(Slk::WorkspaceNotFoundError) do
         store.workspace('nonexistent')
       end
       assert_equal "Workspace 'nonexistent' not found", error.message
@@ -64,10 +64,10 @@ class TokenStoreTest < Minitest::Test
   def test_workspace_returns_workspace_model
     with_temp_config do |dir|
       write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-test-token' } })
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
       workspace = store.workspace('myworkspace')
 
-      assert_kind_of SlackCli::Models::Workspace, workspace
+      assert_kind_of Slk::Models::Workspace, workspace
       assert_equal 'myworkspace', workspace.name
       assert_equal 'xoxb-test-token', workspace.token
     end
@@ -76,9 +76,9 @@ class TokenStoreTest < Minitest::Test
   def test_workspace_returns_workspace_with_cookie
     with_temp_config do |dir|
       write_tokens_file(dir, {
-        'myworkspace' => { 'token' => 'xoxc-test-token', 'cookie' => 'xoxd-cookie' }
-      })
-      store = SlackCli::Services::TokenStore.new
+                          'myworkspace' => { 'token' => 'xoxc-test-token', 'cookie' => 'xoxd-cookie' }
+                        })
+      store = Slk::Services::TokenStore.new
       workspace = store.workspace('myworkspace')
 
       assert_equal 'xoxc-test-token', workspace.token
@@ -88,7 +88,7 @@ class TokenStoreTest < Minitest::Test
 
   def test_all_workspaces_returns_empty_array_when_no_tokens
     with_temp_config do
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
       assert_equal [], store.all_workspaces
     end
   end
@@ -96,21 +96,21 @@ class TokenStoreTest < Minitest::Test
   def test_all_workspaces_returns_workspace_models
     with_temp_config do |dir|
       write_tokens_file(dir, {
-        'ws1' => { 'token' => 'xoxb-test1' },
-        'ws2' => { 'token' => 'xoxb-test2' }
-      })
-      store = SlackCli::Services::TokenStore.new
+                          'ws1' => { 'token' => 'xoxb-test1' },
+                          'ws2' => { 'token' => 'xoxb-test2' }
+                        })
+      store = Slk::Services::TokenStore.new
       workspaces = store.all_workspaces
 
       assert_equal 2, workspaces.size
-      assert workspaces.all? { |ws| ws.is_a?(SlackCli::Models::Workspace) }
+      assert(workspaces.all? { |ws| ws.is_a?(Slk::Models::Workspace) })
       assert_equal %w[ws1 ws2].sort, workspaces.map(&:name).sort
     end
   end
 
   def test_add_creates_new_workspace
     with_temp_config do
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
       store.add('newworkspace', 'xoxb-new-token')
 
       assert store.exists?('newworkspace')
@@ -121,7 +121,7 @@ class TokenStoreTest < Minitest::Test
 
   def test_add_with_cookie_stores_cookie
     with_temp_config do
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
       store.add('newworkspace', 'xoxc-new-token', 'xoxd-cookie')
 
       workspace = store.workspace('newworkspace')
@@ -132,11 +132,11 @@ class TokenStoreTest < Minitest::Test
 
   def test_add_persists_to_file
     with_temp_config do
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
       store.add('newworkspace', 'xoxb-new-token')
 
       # Create new store instance and verify data persisted
-      new_store = SlackCli::Services::TokenStore.new
+      new_store = Slk::Services::TokenStore.new
       assert new_store.exists?('newworkspace')
     end
   end
@@ -144,7 +144,7 @@ class TokenStoreTest < Minitest::Test
   def test_remove_returns_true_when_workspace_existed
     with_temp_config do |dir|
       write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-test' } })
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
 
       result = store.remove('myworkspace')
 
@@ -155,7 +155,7 @@ class TokenStoreTest < Minitest::Test
 
   def test_remove_returns_false_when_workspace_not_found
     with_temp_config do
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
       result = store.remove('nonexistent')
       refute result
     end
@@ -164,11 +164,11 @@ class TokenStoreTest < Minitest::Test
   def test_remove_persists_change
     with_temp_config do |dir|
       write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-test' } })
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
       store.remove('myworkspace')
 
       # Create new store instance and verify removal persisted
-      new_store = SlackCli::Services::TokenStore.new
+      new_store = Slk::Services::TokenStore.new
       refute new_store.exists?('myworkspace')
     end
   end
@@ -176,13 +176,13 @@ class TokenStoreTest < Minitest::Test
   # Corruption handling tests
   def test_corrupted_tokens_file_raises_error
     with_temp_config do |dir|
-      config_dir = "#{dir}/slack-cli"
+      config_dir = "#{dir}/slk"
       FileUtils.mkdir_p(config_dir)
       File.write("#{config_dir}/tokens.json", 'not valid json{')
 
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
 
-      error = assert_raises(SlackCli::TokenStoreError) do
+      error = assert_raises(Slk::TokenStoreError) do
         store.empty?
       end
 
@@ -191,7 +191,7 @@ class TokenStoreTest < Minitest::Test
   end
 
   def test_on_warning_callback_is_settable
-    store = SlackCli::Services::TokenStore.new
+    store = Slk::Services::TokenStore.new
     callback = ->(msg) { puts msg }
     store.on_warning = callback
     assert_equal callback, store.on_warning
@@ -200,10 +200,10 @@ class TokenStoreTest < Minitest::Test
   # File permissions test
   def test_add_creates_file_with_restricted_permissions
     with_temp_config do |dir|
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
       store.add('testws', 'xoxb-test')
 
-      config_dir = "#{dir}/slack-cli"
+      config_dir = "#{dir}/slk"
       tokens_file = "#{config_dir}/tokens.json"
 
       assert File.exist?(tokens_file)
@@ -216,7 +216,7 @@ class TokenStoreTest < Minitest::Test
   # Validation tests
   def test_add_validates_token_format
     with_temp_config do
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
 
       error = assert_raises(ArgumentError) do
         store.add('testws', 'invalid-token')
@@ -228,7 +228,7 @@ class TokenStoreTest < Minitest::Test
 
   def test_add_validates_name_not_empty
     with_temp_config do
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
 
       error = assert_raises(ArgumentError) do
         store.add('', 'xoxb-test')
@@ -240,7 +240,7 @@ class TokenStoreTest < Minitest::Test
 
   def test_add_validates_xoxc_requires_cookie
     with_temp_config do
-      store = SlackCli::Services::TokenStore.new
+      store = Slk::Services::TokenStore.new
 
       error = assert_raises(ArgumentError) do
         store.add('testws', 'xoxc-test')
@@ -253,7 +253,7 @@ class TokenStoreTest < Minitest::Test
   private
 
   def write_tokens_file(dir, tokens)
-    config_dir = "#{dir}/slack-cli"
+    config_dir = "#{dir}/slk"
     FileUtils.mkdir_p(config_dir)
     File.write("#{config_dir}/tokens.json", JSON.generate(tokens))
   end

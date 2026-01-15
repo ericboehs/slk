@@ -13,14 +13,14 @@ class RunnerTest < Minitest::Test
   end
 
   def test_initializes_with_defaults
-    runner = SlackCli::Runner.new
+    runner = Slk::Runner.new
 
-    assert_kind_of SlackCli::Formatters::Output, runner.output
-    assert_kind_of SlackCli::Services::Configuration, runner.config
-    assert_kind_of SlackCli::Services::TokenStore, runner.token_store
-    assert_kind_of SlackCli::Services::ApiClient, runner.api_client
-    assert_kind_of SlackCli::Services::CacheStore, runner.cache_store
-    assert_kind_of SlackCli::Services::PresetStore, runner.preset_store
+    assert_kind_of Slk::Formatters::Output, runner.output
+    assert_kind_of Slk::Services::Configuration, runner.config
+    assert_kind_of Slk::Services::TokenStore, runner.token_store
+    assert_kind_of Slk::Services::ApiClient, runner.api_client
+    assert_kind_of Slk::Services::CacheStore, runner.cache_store
+    assert_kind_of Slk::Services::PresetStore, runner.preset_store
   end
 
   def test_initializes_with_custom_dependencies
@@ -35,7 +35,7 @@ class RunnerTest < Minitest::Test
   end
 
   def test_workspace_returns_workspace_from_token_store
-    @token_store.workspaces['test'] = SlackCli::Models::Workspace.new(
+    @token_store.workspaces['test'] = Slk::Models::Workspace.new(
       name: 'test',
       token: 'xoxp-test-token'
     )
@@ -48,7 +48,7 @@ class RunnerTest < Minitest::Test
 
   def test_workspace_uses_primary_when_no_name_given
     @config.data['primary_workspace'] = 'primary'
-    @token_store.workspaces['primary'] = SlackCli::Models::Workspace.new(
+    @token_store.workspaces['primary'] = Slk::Models::Workspace.new(
       name: 'primary',
       token: 'xoxp-primary-token'
     )
@@ -62,14 +62,14 @@ class RunnerTest < Minitest::Test
     @config.data['primary_workspace'] = nil
     runner = create_runner
 
-    assert_raises(SlackCli::ConfigError) do
+    assert_raises(Slk::ConfigError) do
       runner.workspace
     end
   end
 
   def test_all_workspaces_returns_all_from_token_store
-    @token_store.workspaces['ws1'] = SlackCli::Models::Workspace.new(name: 'ws1', token: 'xoxp-1')
-    @token_store.workspaces['ws2'] = SlackCli::Models::Workspace.new(name: 'ws2', token: 'xoxp-2')
+    @token_store.workspaces['ws1'] = Slk::Models::Workspace.new(name: 'ws1', token: 'xoxp-1')
+    @token_store.workspaces['ws2'] = Slk::Models::Workspace.new(name: 'ws2', token: 'xoxp-2')
     runner = create_runner
 
     workspaces = runner.all_workspaces
@@ -77,8 +77,8 @@ class RunnerTest < Minitest::Test
   end
 
   def test_workspace_names_returns_names
-    @token_store.workspaces['alpha'] = SlackCli::Models::Workspace.new(name: 'alpha', token: 'xoxp-a')
-    @token_store.workspaces['beta'] = SlackCli::Models::Workspace.new(name: 'beta', token: 'xoxp-b')
+    @token_store.workspaces['alpha'] = Slk::Models::Workspace.new(name: 'alpha', token: 'xoxp-a')
+    @token_store.workspaces['beta'] = Slk::Models::Workspace.new(name: 'beta', token: 'xoxp-b')
     runner = create_runner
 
     names = runner.workspace_names
@@ -86,51 +86,51 @@ class RunnerTest < Minitest::Test
     assert_includes names, 'beta'
   end
 
-  def test_has_workspaces_returns_true_when_not_empty
-    @token_store.workspaces['test'] = SlackCli::Models::Workspace.new(name: 'test', token: 'xoxp-t')
+  def test_workspaces_predicate_returns_true_when_not_empty
+    @token_store.workspaces['test'] = Slk::Models::Workspace.new(name: 'test', token: 'xoxp-t')
     runner = create_runner
 
-    assert runner.has_workspaces?
+    assert runner.workspaces?
   end
 
-  def test_has_workspaces_returns_false_when_empty
+  def test_workspaces_predicate_returns_false_when_empty
     runner = create_runner
 
-    refute runner.has_workspaces?
+    refute runner.workspaces?
   end
 
   def test_users_api_returns_api_instance
     @config.data['primary_workspace'] = 'test'
-    @token_store.workspaces['test'] = SlackCli::Models::Workspace.new(name: 'test', token: 'xoxp-t')
+    @token_store.workspaces['test'] = Slk::Models::Workspace.new(name: 'test', token: 'xoxp-t')
     runner = create_runner
 
     api = runner.users_api
-    assert_kind_of SlackCli::Api::Users, api
+    assert_kind_of Slk::Api::Users, api
   end
 
   def test_conversations_api_returns_api_instance
     @config.data['primary_workspace'] = 'test'
-    @token_store.workspaces['test'] = SlackCli::Models::Workspace.new(name: 'test', token: 'xoxp-t')
+    @token_store.workspaces['test'] = Slk::Models::Workspace.new(name: 'test', token: 'xoxp-t')
     runner = create_runner
 
     api = runner.conversations_api
-    assert_kind_of SlackCli::Api::Conversations, api
+    assert_kind_of Slk::Api::Conversations, api
   end
 
   def test_dnd_api_returns_api_instance
     @config.data['primary_workspace'] = 'test'
-    @token_store.workspaces['test'] = SlackCli::Models::Workspace.new(name: 'test', token: 'xoxp-t')
+    @token_store.workspaces['test'] = Slk::Models::Workspace.new(name: 'test', token: 'xoxp-t')
     runner = create_runner
 
     api = runner.dnd_api
-    assert_kind_of SlackCli::Api::Dnd, api
+    assert_kind_of Slk::Api::Dnd, api
   end
 
   def test_message_formatter_returns_formatter
     runner = create_runner
 
     formatter = runner.message_formatter
-    assert_kind_of SlackCli::Formatters::MessageFormatter, formatter
+    assert_kind_of Slk::Formatters::MessageFormatter, formatter
   end
 
   def test_message_formatter_is_memoized
@@ -168,7 +168,7 @@ class RunnerTest < Minitest::Test
   private
 
   def create_runner
-    SlackCli::Runner.new(
+    Slk::Runner.new(
       output: @output,
       config: @config,
       token_store: @token_store,
@@ -185,7 +185,7 @@ class RunnerTest < Minitest::Test
     def error(msg); end
     def warn(msg); end
     def debug(msg); end
-    def verbose?; false; end
+    def verbose? = false
   end
 
   class MockConfig
@@ -210,7 +210,7 @@ class RunnerTest < Minitest::Test
     end
 
     def workspace(name)
-      @workspaces[name] or raise SlackCli::ConfigError, "Workspace not found: #{name}"
+      @workspaces[name] or raise Slk::ConfigError, "Workspace not found: #{name}"
     end
 
     def all_workspaces

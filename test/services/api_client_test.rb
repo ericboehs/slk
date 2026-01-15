@@ -5,7 +5,7 @@ require 'net/http'
 
 class ApiClientTest < Minitest::Test
   def setup
-    @client = SlackCli::Services::ApiClient.new
+    @client = Slk::Services::ApiClient.new
     @workspace = mock_workspace
   end
 
@@ -37,34 +37,34 @@ class ApiClientTest < Minitest::Test
 
   # NETWORK_ERRORS constant tests
   def test_network_errors_constant_exists
-    assert_kind_of Array, SlackCli::Services::ApiClient::NETWORK_ERRORS
+    assert_kind_of Array, Slk::Services::ApiClient::NETWORK_ERRORS
   end
 
   def test_network_errors_includes_socket_error
-    assert_includes SlackCli::Services::ApiClient::NETWORK_ERRORS, SocketError
+    assert_includes Slk::Services::ApiClient::NETWORK_ERRORS, SocketError
   end
 
   def test_network_errors_includes_connection_refused
-    assert_includes SlackCli::Services::ApiClient::NETWORK_ERRORS, Errno::ECONNREFUSED
+    assert_includes Slk::Services::ApiClient::NETWORK_ERRORS, Errno::ECONNREFUSED
   end
 
   def test_network_errors_includes_timeout_errors
-    assert_includes SlackCli::Services::ApiClient::NETWORK_ERRORS, Net::OpenTimeout
-    assert_includes SlackCli::Services::ApiClient::NETWORK_ERRORS, Net::ReadTimeout
+    assert_includes Slk::Services::ApiClient::NETWORK_ERRORS, Net::OpenTimeout
+    assert_includes Slk::Services::ApiClient::NETWORK_ERRORS, Net::ReadTimeout
   end
 
   def test_network_errors_includes_ssl_error
-    assert_includes SlackCli::Services::ApiClient::NETWORK_ERRORS, OpenSSL::SSL::SSLError
+    assert_includes Slk::Services::ApiClient::NETWORK_ERRORS, OpenSSL::SSL::SSLError
   end
 
   # BASE_URL tests
   def test_base_url_defaults_to_slack_api
     # Temporarily unset env var to test default
-    old_val = ENV['SLACK_API_BASE']
+    old_val = ENV.fetch('SLACK_API_BASE', nil)
     ENV.delete('SLACK_API_BASE')
 
     # Need to reload the constant - since we can't, just verify current value
-    assert_match %r{^https://}, SlackCli::Services::ApiClient::BASE_URL
+    assert_match %r{^https://}, Slk::Services::ApiClient::BASE_URL
   ensure
     ENV['SLACK_API_BASE'] = old_val if old_val
   end
@@ -83,7 +83,7 @@ end
 # Separate test class for response handling
 class ApiClientResponseHandlingTest < Minitest::Test
   def setup
-    @client = SlackCli::Services::ApiClient.new
+    @client = Slk::Services::ApiClient.new
   end
 
   def teardown
@@ -103,7 +103,7 @@ class ApiClientResponseHandlingTest < Minitest::Test
   def test_raises_api_error_when_ok_false
     response = build_response(Net::HTTPOK, '{"ok": false, "error": "channel_not_found"}')
 
-    error = assert_raises(SlackCli::ApiError) do
+    error = assert_raises(Slk::ApiError) do
       @client.send(:handle_response, response, 'test.method')
     end
 
@@ -113,7 +113,7 @@ class ApiClientResponseHandlingTest < Minitest::Test
   def test_raises_api_error_with_unknown_error_when_no_error_field
     response = build_response(Net::HTTPOK, '{"ok": false}')
 
-    error = assert_raises(SlackCli::ApiError) do
+    error = assert_raises(Slk::ApiError) do
       @client.send(:handle_response, response, 'test.method')
     end
 
@@ -123,7 +123,7 @@ class ApiClientResponseHandlingTest < Minitest::Test
   def test_raises_api_error_on_unauthorized
     response = build_response(Net::HTTPUnauthorized, '{}')
 
-    error = assert_raises(SlackCli::ApiError) do
+    error = assert_raises(Slk::ApiError) do
       @client.send(:handle_response, response, 'test.method')
     end
 
@@ -133,7 +133,7 @@ class ApiClientResponseHandlingTest < Minitest::Test
   def test_raises_api_error_on_rate_limit
     response = build_response(Net::HTTPTooManyRequests, '{}')
 
-    error = assert_raises(SlackCli::ApiError) do
+    error = assert_raises(Slk::ApiError) do
       @client.send(:handle_response, response, 'test.method')
     end
 
@@ -143,7 +143,7 @@ class ApiClientResponseHandlingTest < Minitest::Test
   def test_raises_api_error_on_other_http_errors
     response = build_response(Net::HTTPInternalServerError, '{}')
 
-    error = assert_raises(SlackCli::ApiError) do
+    error = assert_raises(Slk::ApiError) do
       @client.send(:handle_response, response, 'test.method')
     end
 
@@ -153,7 +153,7 @@ class ApiClientResponseHandlingTest < Minitest::Test
   def test_raises_api_error_on_invalid_json
     response = build_response(Net::HTTPOK, 'not valid json')
 
-    error = assert_raises(SlackCli::ApiError) do
+    error = assert_raises(Slk::ApiError) do
       @client.send(:handle_response, response, 'test.method')
     end
 
@@ -162,7 +162,7 @@ class ApiClientResponseHandlingTest < Minitest::Test
 
   # Tests for workspace headers
   def test_workspace_headers_are_used
-    workspace = SlackCli::Models::Workspace.new(
+    workspace = Slk::Models::Workspace.new(
       name: 'test',
       token: 'xoxb-test-token'
     )
@@ -172,7 +172,7 @@ class ApiClientResponseHandlingTest < Minitest::Test
   end
 
   def test_workspace_with_cookie_includes_cookie_header
-    workspace = SlackCli::Models::Workspace.new(
+    workspace = Slk::Models::Workspace.new(
       name: 'test',
       token: 'xoxc-test-token',
       cookie: 'xoxd-cookie-value'
@@ -195,7 +195,6 @@ class ApiClientResponseHandlingTest < Minitest::Test
 
   def response_code_for(response_class)
     case response_class.name
-    when /OK$/ then '200'
     when /Unauthorized$/ then '401'
     when /TooManyRequests$/ then '429'
     when /InternalServerError$/ then '500'

@@ -4,7 +4,7 @@ require 'test_helper'
 
 class EncryptionTest < Minitest::Test
   def setup
-    @encryption = SlackCli::Services::Encryption.new
+    @encryption = Slk::Services::Encryption.new
   end
 
   # available? tests
@@ -15,12 +15,12 @@ class EncryptionTest < Minitest::Test
 
   # encrypt tests
   def test_encrypt_raises_when_age_not_available
-    encryption = SlackCli::Services::Encryption.new
+    encryption = Slk::Services::Encryption.new
 
     # Stub available? to return false
     encryption.define_singleton_method(:available?) { false }
 
-    error = assert_raises(SlackCli::EncryptionError) do
+    error = assert_raises(Slk::EncryptionError) do
       encryption.encrypt('test content', '/path/to/key', '/path/to/output')
     end
 
@@ -34,7 +34,7 @@ class EncryptionTest < Minitest::Test
       key_path = "#{dir}/nonexistent"
       output_path = "#{dir}/output.age"
 
-      error = assert_raises(SlackCli::EncryptionError) do
+      error = assert_raises(Slk::EncryptionError) do
         @encryption.encrypt('test content', key_path, output_path)
       end
 
@@ -50,10 +50,10 @@ class EncryptionTest < Minitest::Test
       key_path = "#{dir}/key"
       File.write(key_path, 'dummy key')
 
-      encryption = SlackCli::Services::Encryption.new
+      encryption = Slk::Services::Encryption.new
       encryption.define_singleton_method(:available?) { false }
 
-      error = assert_raises(SlackCli::EncryptionError) do
+      error = assert_raises(Slk::EncryptionError) do
         encryption.decrypt(encrypted_path, key_path)
       end
 
@@ -81,7 +81,7 @@ class EncryptionTest < Minitest::Test
       File.write(encrypted_path, 'dummy encrypted content')
       key_path = "#{dir}/nonexistent_key"
 
-      error = assert_raises(SlackCli::EncryptionError) do
+      error = assert_raises(Slk::EncryptionError) do
         @encryption.decrypt(encrypted_path, key_path)
       end
 

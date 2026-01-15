@@ -6,14 +6,14 @@ class CacheStoreTest < Minitest::Test
   # User cache tests
   def test_get_user_returns_nil_for_unknown_user
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       assert_nil store.get_user('workspace1', 'U123')
     end
   end
 
   def test_set_and_get_user
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       store.set_user('workspace1', 'U123', 'John Doe')
       assert_equal 'John Doe', store.get_user('workspace1', 'U123')
     end
@@ -21,14 +21,14 @@ class CacheStoreTest < Minitest::Test
 
   def test_user_cached_returns_false_for_unknown_user
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       refute store.user_cached?('workspace1', 'U123')
     end
   end
 
   def test_user_cached_returns_true_after_set
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       store.set_user('workspace1', 'U123', 'John Doe')
       assert store.user_cached?('workspace1', 'U123')
     end
@@ -36,7 +36,7 @@ class CacheStoreTest < Minitest::Test
 
   def test_user_cache_size
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       assert_equal 0, store.user_cache_size('workspace1')
 
       store.set_user('workspace1', 'U123', 'John')
@@ -48,7 +48,7 @@ class CacheStoreTest < Minitest::Test
 
   def test_clear_user_cache_for_workspace
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       store.set_user('workspace1', 'U123', 'John')
       store.set_user('workspace2', 'U456', 'Jane')
 
@@ -62,14 +62,14 @@ class CacheStoreTest < Minitest::Test
   # Channel cache tests
   def test_get_channel_id_returns_nil_for_unknown_channel
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       assert_nil store.get_channel_id('workspace1', 'general')
     end
   end
 
   def test_set_and_get_channel_id
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       store.set_channel('workspace1', 'general', 'C123ABC')
       assert_equal 'C123ABC', store.get_channel_id('workspace1', 'general')
     end
@@ -77,7 +77,7 @@ class CacheStoreTest < Minitest::Test
 
   def test_get_channel_name_returns_name_for_id
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       store.set_channel('workspace1', 'general', 'C123ABC')
       assert_equal 'general', store.get_channel_name('workspace1', 'C123ABC')
     end
@@ -85,7 +85,7 @@ class CacheStoreTest < Minitest::Test
 
   def test_channel_cache_size
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       assert_equal 0, store.channel_cache_size('workspace1')
 
       store.set_channel('workspace1', 'general', 'C123')
@@ -97,7 +97,7 @@ class CacheStoreTest < Minitest::Test
 
   def test_clear_channel_cache_for_workspace
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       store.set_channel('workspace1', 'general', 'C123')
       store.set_channel('workspace2', 'random', 'C456')
 
@@ -111,22 +111,22 @@ class CacheStoreTest < Minitest::Test
   # Persistence tests
   def test_user_cache_persists_to_file
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       store.set_user('workspace1', 'U123', 'John', persist: true)
 
       # Create new store - should load from file
-      new_store = SlackCli::Services::CacheStore.new
+      new_store = Slk::Services::CacheStore.new
       assert_equal 'John', new_store.get_user('workspace1', 'U123')
     end
   end
 
   def test_channel_cache_persists_automatically
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       store.set_channel('workspace1', 'general', 'C123')
 
       # Create new store - should load from file
-      new_store = SlackCli::Services::CacheStore.new
+      new_store = Slk::Services::CacheStore.new
       assert_equal 'C123', new_store.get_channel_id('workspace1', 'general')
     end
   end
@@ -134,14 +134,14 @@ class CacheStoreTest < Minitest::Test
   # Subteam cache tests
   def test_get_subteam_returns_nil_for_unknown_subteam
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       assert_nil store.get_subteam('workspace1', 'S123')
     end
   end
 
   def test_set_and_get_subteam
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       store.set_subteam('workspace1', 'S123', 'platform-team')
       assert_equal 'platform-team', store.get_subteam('workspace1', 'S123')
     end
@@ -149,18 +149,18 @@ class CacheStoreTest < Minitest::Test
 
   def test_subteam_cache_persists_automatically
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       store.set_subteam('workspace1', 'S123', 'devops')
 
       # Create new store - should load from file
-      new_store = SlackCli::Services::CacheStore.new
+      new_store = Slk::Services::CacheStore.new
       assert_equal 'devops', new_store.get_subteam('workspace1', 'S123')
     end
   end
 
   def test_subteam_cache_isolates_workspaces
     with_temp_config do
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       store.set_subteam('workspace1', 'S123', 'team-a')
       store.set_subteam('workspace2', 'S123', 'team-b')
 
@@ -173,12 +173,12 @@ class CacheStoreTest < Minitest::Test
   def test_corrupted_user_cache_triggers_warning
     with_temp_config do |dir|
       # Create a corrupted cache file
-      cache_dir = "#{dir}/cache/slack-cli"
+      cache_dir = "#{dir}/cache/slk"
       FileUtils.mkdir_p(cache_dir)
-      File.write("#{cache_dir}/users-workspace1.json", "not valid json{")
+      File.write("#{cache_dir}/users-workspace1.json", 'not valid json{')
 
       warnings = []
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       store.on_warning = ->(msg) { warnings << msg }
 
       # Accessing the cache should trigger the warning
@@ -191,12 +191,12 @@ class CacheStoreTest < Minitest::Test
 
   def test_corrupted_channel_cache_triggers_warning
     with_temp_config do |dir|
-      cache_dir = "#{dir}/cache/slack-cli"
+      cache_dir = "#{dir}/cache/slk"
       FileUtils.mkdir_p(cache_dir)
-      File.write("#{cache_dir}/channels-workspace1.json", "not valid json{")
+      File.write("#{cache_dir}/channels-workspace1.json", 'not valid json{')
 
       warnings = []
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       store.on_warning = ->(msg) { warnings << msg }
 
       store.get_channel_id('workspace1', 'general')
@@ -208,12 +208,12 @@ class CacheStoreTest < Minitest::Test
 
   def test_corrupted_subteam_cache_triggers_warning
     with_temp_config do |dir|
-      cache_dir = "#{dir}/cache/slack-cli"
+      cache_dir = "#{dir}/cache/slk"
       FileUtils.mkdir_p(cache_dir)
-      File.write("#{cache_dir}/subteams-workspace1.json", "not valid json{")
+      File.write("#{cache_dir}/subteams-workspace1.json", 'not valid json{')
 
       warnings = []
-      store = SlackCli::Services::CacheStore.new
+      store = Slk::Services::CacheStore.new
       store.on_warning = ->(msg) { warnings << msg }
 
       store.get_subteam('workspace1', 'S123')

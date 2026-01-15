@@ -12,8 +12,8 @@ class ReactionEnricherTest < Minitest::Test
       @responses = []
     end
 
-    def feed(params)
-      @responses.shift || {'ok' => false}
+    def feed(_params)
+      @responses.shift || { 'ok' => false }
     end
 
     def expect_feed(response)
@@ -21,13 +21,13 @@ class ReactionEnricherTest < Minitest::Test
     end
 
     def verify
-      test_context.assert_equal 0, @responses.length, "Expected all mocked responses to be consumed"
+      test_context.assert_equal 0, @responses.length, 'Expected all mocked responses to be consumed'
     end
   end
 
   def setup
     @activity_api = MockActivityApi.new(self)
-    @enricher = SlackCli::Services::ReactionEnricher.new(activity_api: @activity_api)
+    @enricher = Slk::Services::ReactionEnricher.new(activity_api: @activity_api)
   end
 
   def test_enrich_messages_with_empty_array
@@ -36,7 +36,7 @@ class ReactionEnricherTest < Minitest::Test
   end
 
   def test_enrich_messages_with_no_reactions
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       text: 'Hello',
@@ -45,7 +45,7 @@ class ReactionEnricherTest < Minitest::Test
     )
 
     # Activity API should be called
-    @activity_api.expect_feed({'ok' => true, 'items' => []})
+    @activity_api.expect_feed({ 'ok' => true, 'items' => [] })
 
     result = @enricher.enrich_messages([message], 'C123')
 
@@ -55,13 +55,13 @@ class ReactionEnricherTest < Minitest::Test
   end
 
   def test_enrich_messages_with_reactions_and_timestamps
-    reaction = SlackCli::Models::Reaction.new(
+    reaction = Slk::Models::Reaction.new(
       name: 'thumbsup',
       count: 2,
       users: %w[U456 U789]
     )
 
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       text: 'Hello',
@@ -112,7 +112,7 @@ class ReactionEnricherTest < Minitest::Test
     assert_equal 1, result[0].reactions.length
 
     enriched_reaction = result[0].reactions[0]
-    assert enriched_reaction.has_timestamps?
+    assert enriched_reaction.timestamps?
     assert_equal '1767996268.000000', enriched_reaction.timestamp_for('U456')
     assert_equal '1767996300.000000', enriched_reaction.timestamp_for('U789')
 
@@ -121,13 +121,13 @@ class ReactionEnricherTest < Minitest::Test
 
   def test_enrich_messages_with_partial_timestamps
     # Some users have timestamps, some don't
-    reaction = SlackCli::Models::Reaction.new(
+    reaction = Slk::Models::Reaction.new(
       name: 'heart',
       count: 3,
       users: %w[U111 U222 U333]
     )
 
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       text: 'Hello',
@@ -161,7 +161,7 @@ class ReactionEnricherTest < Minitest::Test
     result = @enricher.enrich_messages([message], 'C123')
 
     enriched_reaction = result[0].reactions[0]
-    assert enriched_reaction.has_timestamps?
+    assert enriched_reaction.timestamps?
     assert_equal '1767996268.000000', enriched_reaction.timestamp_for('U111')
     assert_nil enriched_reaction.timestamp_for('U222')
     assert_nil enriched_reaction.timestamp_for('U333')
@@ -171,13 +171,13 @@ class ReactionEnricherTest < Minitest::Test
 
   def test_enrich_messages_filters_by_message_timestamp
     # Activity includes reactions for messages we don't care about
-    reaction = SlackCli::Models::Reaction.new(
+    reaction = Slk::Models::Reaction.new(
       name: 'fire',
       count: 1,
       users: %w[U456]
     )
 
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       text: 'Hello',
@@ -226,26 +226,26 @@ class ReactionEnricherTest < Minitest::Test
     result = @enricher.enrich_messages([message], 'C123')
 
     enriched_reaction = result[0].reactions[0]
-    assert enriched_reaction.has_timestamps?
+    assert enriched_reaction.timestamps?
     assert_equal '1767996268.000000', enriched_reaction.timestamp_for('U456')
 
     @activity_api.verify
   end
 
   def test_enrich_messages_with_multiple_messages
-    reaction1 = SlackCli::Models::Reaction.new(
+    reaction1 = Slk::Models::Reaction.new(
       name: 'thumbsup',
       count: 1,
       users: %w[U456]
     )
 
-    reaction2 = SlackCli::Models::Reaction.new(
+    reaction2 = Slk::Models::Reaction.new(
       name: 'heart',
       count: 1,
       users: %w[U789]
     )
 
-    message1 = SlackCli::Models::Message.new(
+    message1 = Slk::Models::Message.new(
       ts: '1234567890.111111',
       user_id: 'U123',
       text: 'First',
@@ -253,7 +253,7 @@ class ReactionEnricherTest < Minitest::Test
       channel_id: 'C123'
     )
 
-    message2 = SlackCli::Models::Message.new(
+    message2 = Slk::Models::Message.new(
       ts: '1234567890.222222',
       user_id: 'U123',
       text: 'Second',
@@ -307,7 +307,7 @@ class ReactionEnricherTest < Minitest::Test
   end
 
   def test_enrich_messages_handles_api_failure
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       text: 'Hello',
@@ -316,7 +316,7 @@ class ReactionEnricherTest < Minitest::Test
     )
 
     # API returns error
-    @activity_api.expect_feed({'ok' => false, 'error' => 'some_error'})
+    @activity_api.expect_feed({ 'ok' => false, 'error' => 'some_error' })
 
     result = @enricher.enrich_messages([message], 'C123')
 
@@ -329,13 +329,13 @@ class ReactionEnricherTest < Minitest::Test
 
   def test_enrich_messages_preserves_reactions_without_timestamps
     # Reactions that don't have any matching timestamps should remain unchanged
-    reaction = SlackCli::Models::Reaction.new(
+    reaction = Slk::Models::Reaction.new(
       name: 'wave',
       count: 1,
       users: %w[U999]
     )
 
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       text: 'Hello',
@@ -344,13 +344,13 @@ class ReactionEnricherTest < Minitest::Test
     )
 
     # Activity has no matching reactions
-    @activity_api.expect_feed({'ok' => true, 'items' => []})
+    @activity_api.expect_feed({ 'ok' => true, 'items' => [] })
 
     result = @enricher.enrich_messages([message], 'C123')
 
     # Reaction should be preserved but without timestamps
     enriched_reaction = result[0].reactions[0]
-    refute enriched_reaction.has_timestamps?
+    refute enriched_reaction.timestamps?
     assert_equal 'wave', enriched_reaction.name
     assert_equal 1, enriched_reaction.count
 

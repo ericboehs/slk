@@ -1,19 +1,19 @@
 # frozen_string_literal: true
 
-require "test_helper"
+require 'test_helper'
 
 class MentionReplacerTest < Minitest::Test
   def setup
-    @cache = SlackCli::Services::CacheStore.new(paths: mock_paths)
-    @replacer = SlackCli::Formatters::MentionReplacer.new(cache_store: @cache)
-    @workspace = SlackCli::Models::Workspace.new(name: "test", token: "xoxp-test")
+    @cache = Slk::Services::CacheStore.new(paths: mock_paths)
+    @replacer = Slk::Formatters::MentionReplacer.new(cache_store: @cache)
+    @workspace = Slk::Models::Workspace.new(name: 'test', token: 'xoxp-test')
   end
 
   def mock_paths
     @mock_paths ||= begin
       paths = Object.new
       def paths.cache_dir
-        @tmpdir ||= Dir.mktmpdir
+        @cache_dir ||= Dir.mktmpdir
       end
       def paths.cache_file(name)
         File.join(cache_dir, name)
@@ -30,333 +30,333 @@ class MentionReplacerTest < Minitest::Test
   end
 
   def test_replaces_user_mention_with_display_name
-    text = "<@U123ABC|john.doe>"
+    text = '<@U123ABC|john.doe>'
     result = @replacer.replace(text, @workspace)
-    assert_equal "@john.doe", result
+    assert_equal '@john.doe', result
   end
 
   def test_keeps_raw_user_id_when_no_name
-    text = "<@U123ABC>"
+    text = '<@U123ABC>'
     result = @replacer.replace(text, @workspace)
-    assert_equal "@U123ABC", result
+    assert_equal '@U123ABC', result
   end
 
   def test_replaces_channel_mention_with_name
-    text = "<#C123ABC|general>"
+    text = '<#C123ABC|general>'
     result = @replacer.replace(text, @workspace)
-    assert_equal "#general", result
+    assert_equal '#general', result
   end
 
   def test_keeps_channel_id_when_no_name
-    text = "<#C123ABC>"
+    text = '<#C123ABC>'
     result = @replacer.replace(text, @workspace)
-    assert_equal "#C123ABC", result
+    assert_equal '#C123ABC', result
   end
 
   def test_replaces_links_with_label
-    text = "<https://example.com|Example Site>"
+    text = '<https://example.com|Example Site>'
     result = @replacer.replace(text, @workspace)
-    assert_equal "Example Site", result
+    assert_equal 'Example Site', result
   end
 
   def test_replaces_links_without_label
-    text = "<https://example.com/path>"
+    text = '<https://example.com/path>'
     result = @replacer.replace(text, @workspace)
-    assert_equal "https://example.com/path", result
+    assert_equal 'https://example.com/path', result
   end
 
   def test_replaces_here_mention
-    text = "Hey <!here>, check this out"
+    text = 'Hey <!here>, check this out'
     result = @replacer.replace(text, @workspace)
-    assert_equal "Hey @here, check this out", result
+    assert_equal 'Hey @here, check this out', result
   end
 
   def test_replaces_channel_mention_special
-    text = "Attention <!channel>!"
+    text = 'Attention <!channel>!'
     result = @replacer.replace(text, @workspace)
-    assert_equal "Attention @channel!", result
+    assert_equal 'Attention @channel!', result
   end
 
   def test_replaces_everyone_mention
-    text = "<!everyone> please read"
+    text = '<!everyone> please read'
     result = @replacer.replace(text, @workspace)
-    assert_equal "@everyone please read", result
+    assert_equal '@everyone please read', result
   end
 
   def test_handles_multiple_mentions
-    text = "<@U123|alice> and <@U456|bob> joined <#C789|random>"
+    text = '<@U123|alice> and <@U456|bob> joined <#C789|random>'
     result = @replacer.replace(text, @workspace)
-    assert_equal "@alice and @bob joined #random", result
+    assert_equal '@alice and @bob joined #random', result
   end
 
   def test_handles_text_without_mentions
-    text = "Just regular text with no mentions"
+    text = 'Just regular text with no mentions'
     result = @replacer.replace(text, @workspace)
     assert_equal text, result
   end
 
   def test_handles_empty_text
-    result = @replacer.replace("", @workspace)
-    assert_equal "", result
+    result = @replacer.replace('', @workspace)
+    assert_equal '', result
   end
 
   def test_uses_cached_user_name
     # Prime the cache
-    @cache.set_user("test", "U999", "cached_user")
+    @cache.set_user('test', 'U999', 'cached_user')
 
-    text = "<@U999>"
+    text = '<@U999>'
     result = @replacer.replace(text, @workspace)
-    assert_equal "@cached_user", result
+    assert_equal '@cached_user', result
   end
 
   def test_uses_cached_channel_name
     # Prime the cache
-    @cache.set_channel("test", "cached_channel", "C999")
+    @cache.set_channel('test', 'cached_channel', 'C999')
 
-    text = "<#C999>"
+    text = '<#C999>'
     result = @replacer.replace(text, @workspace)
-    assert_equal "#cached_channel", result
+    assert_equal '#cached_channel', result
   end
 
   def test_user_regex_matches_u_prefix
-    regex = SlackCli::Formatters::MentionReplacer::USER_MENTION_REGEX
-    assert_match regex, "<@U12345>"
-    assert_match regex, "<@U12345|name>"
+    regex = Slk::Formatters::MentionReplacer::USER_MENTION_REGEX
+    assert_match regex, '<@U12345>'
+    assert_match regex, '<@U12345|name>'
   end
 
   def test_user_regex_matches_w_prefix
-    regex = SlackCli::Formatters::MentionReplacer::USER_MENTION_REGEX
-    assert_match regex, "<@W12345>"
-    assert_match regex, "<@W12345|name>"
+    regex = Slk::Formatters::MentionReplacer::USER_MENTION_REGEX
+    assert_match regex, '<@W12345>'
+    assert_match regex, '<@W12345|name>'
   end
 
   def test_channel_regex_matches_c_prefix
-    regex = SlackCli::Formatters::MentionReplacer::CHANNEL_MENTION_REGEX
-    assert_match regex, "<#C12345>"
-    assert_match regex, "<#C12345|name>"
+    regex = Slk::Formatters::MentionReplacer::CHANNEL_MENTION_REGEX
+    assert_match regex, '<#C12345>'
+    assert_match regex, '<#C12345|name>'
   end
 
   # Subteam mention tests
 
   def test_replaces_subteam_with_handle
-    text = "<!subteam^S04K2C97GEM|@platform-team>"
+    text = '<!subteam^S04K2C97GEM|@platform-team>'
     result = @replacer.replace(text, @workspace)
-    assert_equal "@platform-team", result
+    assert_equal '@platform-team', result
   end
 
   def test_replaces_subteam_without_at_in_handle
-    text = "<!subteam^S04K2C97GEM|platform-team>"
+    text = '<!subteam^S04K2C97GEM|platform-team>'
     result = @replacer.replace(text, @workspace)
-    assert_equal "@platform-team", result
+    assert_equal '@platform-team', result
   end
 
   def test_replaces_subteam_without_handle
-    text = "<!subteam^S04K2C97GEM>"
+    text = '<!subteam^S04K2C97GEM>'
     result = @replacer.replace(text, @workspace)
-    assert_equal "@S04K2C97GEM", result
+    assert_equal '@S04K2C97GEM', result
   end
 
   def test_subteam_regex_matches
-    regex = SlackCli::Formatters::MentionReplacer::SUBTEAM_MENTION_REGEX
-    assert_match regex, "<!subteam^S12345>"
-    assert_match regex, "<!subteam^S12345|team>"
-    assert_match regex, "<!subteam^S12345|@team>"
+    regex = Slk::Formatters::MentionReplacer::SUBTEAM_MENTION_REGEX
+    assert_match regex, '<!subteam^S12345>'
+    assert_match regex, '<!subteam^S12345|team>'
+    assert_match regex, '<!subteam^S12345|@team>'
   end
 
   # API Fallback Tests
 
   def test_api_lookup_for_user_without_cache
     mock_api = MockApiClient.new
-    mock_api.stub("users.info", {
-      "ok" => true,
-      "user" => {
-        "id" => "U777",
-        "name" => "john.doe",
-        "profile" => {
-          "display_name" => "John Doe",
-          "real_name" => "John D"
-        }
-      }
-    })
+    mock_api.stub('users.info', {
+                    'ok' => true,
+                    'user' => {
+                      'id' => 'U777',
+                      'name' => 'john.doe',
+                      'profile' => {
+                        'display_name' => 'John Doe',
+                        'real_name' => 'John D'
+                      }
+                    }
+                  })
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: mock_api
     )
 
-    text = "<@U777>"
+    text = '<@U777>'
     result = replacer.replace(text, @workspace)
-    assert_equal "@John Doe", result
+    assert_equal '@John Doe', result
 
     # Verify it was cached
-    assert_equal "John Doe", @cache.get_user("test", "U777")
+    assert_equal 'John Doe', @cache.get_user('test', 'U777')
   end
 
   def test_api_lookup_fallback_to_real_name
     mock_api = MockApiClient.new
-    mock_api.stub("users.info", {
-      "ok" => true,
-      "user" => {
-        "id" => "U888",
-        "name" => "jane.doe",
-        "profile" => {
-          "display_name" => "",
-          "real_name" => "Jane Doe"
-        }
-      }
-    })
+    mock_api.stub('users.info', {
+                    'ok' => true,
+                    'user' => {
+                      'id' => 'U888',
+                      'name' => 'jane.doe',
+                      'profile' => {
+                        'display_name' => '',
+                        'real_name' => 'Jane Doe'
+                      }
+                    }
+                  })
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: mock_api
     )
 
-    text = "<@U888>"
+    text = '<@U888>'
     result = replacer.replace(text, @workspace)
-    assert_equal "@Jane Doe", result
+    assert_equal '@Jane Doe', result
   end
 
   def test_api_error_falls_back_gracefully
     api_client = Object.new
     api_client.define_singleton_method(:post) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, "user_not_found"
+      raise Slk::ApiError, 'user_not_found'
     end
     api_client.define_singleton_method(:post_form) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, "user_not_found"
+      raise Slk::ApiError, 'user_not_found'
     end
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: api_client
     )
 
-    text = "<@UNOTFOUND>"
+    text = '<@UNOTFOUND>'
     result = replacer.replace(text, @workspace)
     # Should fall back to showing the ID with @ prefix
-    assert_equal "@UNOTFOUND", result
+    assert_equal '@UNOTFOUND', result
   end
 
   def test_api_lookup_for_channel_without_cache
     mock_api = MockApiClient.new
-    mock_api.stub("conversations.info", {
-      "ok" => true,
-      "channel" => {
-        "id" => "C888",
-        "name" => "engineering"
-      }
-    })
+    mock_api.stub('conversations.info', {
+                    'ok' => true,
+                    'channel' => {
+                      'id' => 'C888',
+                      'name' => 'engineering'
+                    }
+                  })
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: mock_api
     )
 
-    text = "<#C888>"
+    text = '<#C888>'
     result = replacer.replace(text, @workspace)
-    assert_equal "#engineering", result
+    assert_equal '#engineering', result
 
     # Verify it was cached
-    assert_equal "engineering", @cache.get_channel_name("test", "C888")
+    assert_equal 'engineering', @cache.get_channel_name('test', 'C888')
   end
 
   def test_channel_api_error_falls_back_gracefully
     api_client = Object.new
     api_client.define_singleton_method(:get) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, "channel_not_found"
+      raise Slk::ApiError, 'channel_not_found'
     end
     api_client.define_singleton_method(:post_form) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, "channel_not_found"
+      raise Slk::ApiError, 'channel_not_found'
     end
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: api_client
     )
 
-    text = "<#CNOTFOUND>"
+    text = '<#CNOTFOUND>'
     result = replacer.replace(text, @workspace)
     # Should fall back to showing just the ID
-    assert_equal "#CNOTFOUND", result
+    assert_equal '#CNOTFOUND', result
   end
 
   def test_no_api_client_returns_raw_id
     # Replacer without API client
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: nil
     )
 
-    text = "<@UNOAPI>"
+    text = '<@UNOAPI>'
     result = replacer.replace(text, @workspace)
-    assert_equal "@UNOAPI", result
+    assert_equal '@UNOAPI', result
   end
 
   def test_api_lookup_for_subteam_without_cache
     mock_api = MockApiClient.new
-    mock_api.stub("usergroups.list", {
-      "ok" => true,
-      "usergroups" => [
-        { "id" => "S123", "handle" => "platform-team" },
-        { "id" => "S456", "handle" => "devops" }
-      ]
-    })
+    mock_api.stub('usergroups.list', {
+                    'ok' => true,
+                    'usergroups' => [
+                      { 'id' => 'S123', 'handle' => 'platform-team' },
+                      { 'id' => 'S456', 'handle' => 'devops' }
+                    ]
+                  })
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: mock_api
     )
 
-    text = "<!subteam^S123>"
+    text = '<!subteam^S123>'
     result = replacer.replace(text, @workspace)
-    assert_equal "@platform-team", result
+    assert_equal '@platform-team', result
 
     # Verify it was cached
-    assert_equal "platform-team", @cache.get_subteam("test", "S123")
+    assert_equal 'platform-team', @cache.get_subteam('test', 'S123')
   end
 
   def test_uses_cached_subteam_handle
     # Prime the cache
-    @cache.set_subteam("test", "S999", "cached-team")
+    @cache.set_subteam('test', 'S999', 'cached-team')
 
-    text = "<!subteam^S999>"
+    text = '<!subteam^S999>'
     result = @replacer.replace(text, @workspace)
-    assert_equal "@cached-team", result
+    assert_equal '@cached-team', result
   end
 
   def test_subteam_api_error_falls_back_gracefully
     api_client = Object.new
     api_client.define_singleton_method(:post) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, "not_allowed"
+      raise Slk::ApiError, 'not_allowed'
     end
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: api_client
     )
 
-    text = "<!subteam^SNOTFOUND>"
+    text = '<!subteam^SNOTFOUND>'
     result = replacer.replace(text, @workspace)
     # Should fall back to showing the ID with @ prefix
-    assert_equal "@SNOTFOUND", result
+    assert_equal '@SNOTFOUND', result
   end
 
   def test_subteam_not_found_in_list_returns_id
     mock_api = MockApiClient.new
-    mock_api.stub("usergroups.list", {
-      "ok" => true,
-      "usergroups" => [
-        { "id" => "S123", "handle" => "some-other-team" }
-      ]
-    })
+    mock_api.stub('usergroups.list', {
+                    'ok' => true,
+                    'usergroups' => [
+                      { 'id' => 'S123', 'handle' => 'some-other-team' }
+                    ]
+                  })
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: mock_api
     )
 
-    text = "<!subteam^S999>"
+    text = '<!subteam^S999>'
     result = replacer.replace(text, @workspace)
-    assert_equal "@S999", result
+    assert_equal '@S999', result
   end
 
   # Debug callback tests
@@ -365,19 +365,19 @@ class MentionReplacerTest < Minitest::Test
     debug_messages = []
     api_client = Object.new
     api_client.define_singleton_method(:post) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, "user_not_found"
+      raise Slk::ApiError, 'user_not_found'
     end
     api_client.define_singleton_method(:post_form) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, "user_not_found"
+      raise Slk::ApiError, 'user_not_found'
     end
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: api_client,
       on_debug: ->(msg) { debug_messages << msg }
     )
 
-    replacer.replace("<@UFAIL>", @workspace)
+    replacer.replace('<@UFAIL>', @workspace)
 
     assert_equal 1, debug_messages.size
     assert_match(/User lookup failed for UFAIL/, debug_messages.first)

@@ -151,17 +151,17 @@ Optionally encrypt your tokens with [age](https://github.com/FiloSottile/age) us
 slk config set ssh_key ~/.ssh/id_ed25519
 ```
 
-Tokens will be stored encrypted in `~/.config/slack-cli/tokens.age`.
+Tokens will be stored encrypted in `~/.config/slk/tokens.age`.
 
 ## Configuration
 
 Files are stored in XDG-compliant locations:
 
-- **Config**: `~/.config/slack-cli/`
+- **Config**: `~/.config/slk/`
   - `config.json` - Settings
   - `tokens.json` or `tokens.age` - Workspace tokens
   - `presets.json` - Status presets
-- **Cache**: `~/.cache/slack-cli/`
+- **Cache**: `~/.cache/slk/`
   - `users-{workspace}.json` - User cache
   - `channels-{workspace}.json` - Channel cache
 
@@ -169,8 +169,8 @@ Files are stored in XDG-compliant locations:
 
 ```bash
 # Clone the repo
-git clone https://github.com/ericboehs/slack-cli.git
-cd slack-cli
+git clone https://github.com/ericboehs/slk.git
+cd slk
 
 # Run from source
 ruby -Ilib bin/slk --version
