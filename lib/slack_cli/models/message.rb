@@ -2,6 +2,12 @@
 
 module SlackCli
   module Models
+    # Minimum text length before we extract content from Block Kit blocks.
+    # Slack sometimes sends minimal text (like a link preview) with the full
+    # content in blocks. 20 chars catches most of these cases without
+    # unnecessarily processing blocks for normal messages.
+    MESSAGE_BLOCK_TEXT_THRESHOLD = 20
+
     Message = Data.define(
       :ts,
       :user_id,
@@ -18,18 +24,12 @@ module SlackCli
       :subtype,
       :channel_id
     ) do
-      # Minimum text length before we extract content from Block Kit blocks.
-      # Slack sometimes sends minimal text (like a link preview) with the full
-      # content in blocks. 20 chars catches most of these cases without
-      # unnecessarily processing blocks for normal messages.
-      BLOCK_TEXT_THRESHOLD = 20
-
       def self.from_api(data, channel_id: nil)
         text = data['text'] || ''
         blocks = data['blocks'] || []
 
         # Extract text from Block Kit blocks if text is empty or minimal
-        if text.length < BLOCK_TEXT_THRESHOLD
+        if text.length < MESSAGE_BLOCK_TEXT_THRESHOLD
           blocks_text = extract_block_text(blocks)
           text = blocks_text unless blocks_text.empty?
         end
@@ -143,23 +143,23 @@ module SlackCli
         Time.at(ts.to_f)
       end
 
-      def has_thread?
+      def thread?
         reply_count.positive?
       end
 
-      def is_reply?
+      def reply?
         thread_ts && thread_ts != ts
       end
 
-      def has_reactions?
+      def reactions?
         !reactions.empty?
       end
 
-      def has_files?
+      def files?
         !files.empty?
       end
 
-      def has_blocks?
+      def blocks?
         !blocks.empty?
       end
 

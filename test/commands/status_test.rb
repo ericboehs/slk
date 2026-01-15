@@ -134,7 +134,7 @@ class StatusCommandTest < Minitest::Test
     assert_includes @io.string, 'OPTIONS'
   end
 
-  def test_api_error_returns_1
+  def test_api_error_returns_one
     # Make the API raise an error by redefining get
     api_client = Object.new
     api_client.define_singleton_method(:get) do |_workspace, _method, _params = {}|

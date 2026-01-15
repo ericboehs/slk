@@ -40,7 +40,7 @@ module SlackCli
       @token_store.workspace_names
     end
 
-    def has_workspaces?
+    def workspaces?
       !@token_store.empty?
     end
 

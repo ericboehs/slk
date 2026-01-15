@@ -2,10 +2,10 @@
 
 module SlackCli
   module Models
-    Workspace = Data.define(:name, :token, :cookie) do
-      # Valid token prefixes for Slack tokens
-      VALID_TOKEN_PREFIXES = %w[xoxb- xoxc- xoxp-].freeze
+    # Valid token prefixes for Slack tokens
+    VALID_TOKEN_PREFIXES = %w[xoxb- xoxc- xoxp-].freeze
 
+    Workspace = Data.define(:name, :token, :cookie) do
       def initialize(name:, token:, cookie: nil)
         name_str = name.to_s.strip
         token_str = token.to_s

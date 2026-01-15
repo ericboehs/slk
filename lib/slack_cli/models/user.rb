@@ -2,6 +2,9 @@
 
 module SlackCli
   module Models
+    # Slack user IDs start with U or W (enterprise grid)
+    USER_ID_PATTERN = /\A[UW][A-Z0-9]+\z/
+
     User = Data.define(:id, :name, :real_name, :display_name, :is_bot) do
       def self.from_api(data)
         profile = data['profile'] || {}
@@ -14,9 +17,6 @@ module SlackCli
           is_bot: data['is_bot'] || false
         )
       end
-
-      # Slack user IDs start with U or W (enterprise grid)
-      USER_ID_PATTERN = /\A[UW][A-Z0-9]+\z/
 
       def initialize(id:, name: nil, real_name: nil, display_name: nil, is_bot: false)
         id_str = id.to_s.strip

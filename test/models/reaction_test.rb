@@ -88,20 +88,20 @@ class ReactionTest < Minitest::Test
     assert_equal timestamps, enriched.timestamps
   end
 
-  def test_has_timestamps_with_nil
+  def test_timestamps_predicate_with_nil
     reaction = SlackCli::Models::Reaction.new(name: 'wave', count: 1)
-    assert_equal false, reaction.has_timestamps?
+    assert_equal false, reaction.timestamps?
   end
 
-  def test_has_timestamps_with_empty_hash
+  def test_timestamps_predicate_with_empty_hash
     reaction = SlackCli::Models::Reaction.new(name: 'wave', count: 1, timestamps: {})
-    assert_equal false, reaction.has_timestamps?
+    assert_equal false, reaction.timestamps?
   end
 
-  def test_has_timestamps_with_timestamps
+  def test_timestamps_predicate_with_timestamps
     timestamps = { 'U123' => '1767996268.000000' }
     reaction = SlackCli::Models::Reaction.new(name: 'wave', count: 1, timestamps: timestamps)
-    assert_equal true, reaction.has_timestamps?
+    assert_equal true, reaction.timestamps?
   end
 
   def test_timestamp_for_user

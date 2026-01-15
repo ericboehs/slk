@@ -343,7 +343,7 @@ module SlackCli
         case input&.downcase
         when 's', "\r", "\n", nil
           :next
-        when "\u0003", "\u0004" # Ctrl-C, Ctrl-D
+        when 'q', "\u0003", "\u0004" # q, Ctrl-C, Ctrl-D
           :quit
         when 'r'
           # Mark as read using the latest message timestamp
@@ -359,8 +359,6 @@ module SlackCli
           system('open', url)
           success('Opened in Slack')
           :next
-        when 'q'
-          :quit
         else
           print "\r#{output.red('Invalid key')} - #{output.cyan('[s]kip  [r]ead  [o]pen  [q]uit')}"
           nil # Return nil to continue loop
@@ -435,7 +433,7 @@ module SlackCli
         case input&.downcase
         when 's', "\r", "\n", nil
           :next
-        when "\u0003", "\u0004" # Ctrl-C, Ctrl-D
+        when 'q', "\u0003", "\u0004" # q, Ctrl-C, Ctrl-D
           :quit
         when 'r'
           # Mark all threads as read
@@ -459,8 +457,6 @@ module SlackCli
             success('Opened in Slack')
           end
           :next
-        when 'q'
-          :quit
         else
           print "\r#{output.red('Invalid key')} - #{output.cyan('[s]kip  [r]ead  [o]pen  [q]uit')}"
           nil # Return nil to continue loop

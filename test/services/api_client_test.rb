@@ -195,7 +195,6 @@ class ApiClientResponseHandlingTest < Minitest::Test
 
   def response_code_for(response_class)
     case response_class.name
-    when /OK$/ then '200'
     when /Unauthorized$/ then '401'
     when /TooManyRequests$/ then '429'
     when /InternalServerError$/ then '500'

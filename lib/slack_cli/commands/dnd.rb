@@ -11,7 +11,7 @@ module SlackCli
         return result if result
 
         case positional_args
-        in ['status' | 'info']
+        in ['status' | 'info'] | []
           get_status
         in ['on' | 'snooze', *rest]
           duration = Models::Duration.parse(rest.first || '1h')
@@ -21,8 +21,6 @@ module SlackCli
         in [duration_str] if duration_str.match?(/^\d+[hms]?$/)
           duration = Models::Duration.parse(duration_str)
           set_snooze(duration)
-        in []
-          get_status
         else
           error("Unknown action: #{positional_args.first}")
           error('Valid actions: status, on, off, or a duration (e.g., 1h)')

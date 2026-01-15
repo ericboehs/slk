@@ -37,7 +37,7 @@ module SlackCli
 
       # Check if there are unread threads
       # @return [Boolean]
-      def has_unreads?
+      def unreads?
         unread_count.positive?
       end
     end

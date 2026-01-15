@@ -9,7 +9,8 @@ Gem::Specification.new do |spec|
   spec.email = ['ericboehs@gmail.com']
 
   spec.summary = 'A command-line interface for Slack'
-  spec.description = 'Manage your Slack status, presence, DND, read messages, and more from the terminal. Pure Ruby, no dependencies.'
+  spec.description = 'Manage your Slack status, presence, DND, read messages, and more ' \
+                     'from the terminal. Pure Ruby, no dependencies.'
   spec.homepage = 'https://github.com/ericboehs/slk'
   spec.license = 'MIT'
   spec.required_ruby_version = '>= 3.2.0'

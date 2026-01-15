@@ -112,7 +112,7 @@ class ReactionEnricherTest < Minitest::Test
     assert_equal 1, result[0].reactions.length
 
     enriched_reaction = result[0].reactions[0]
-    assert enriched_reaction.has_timestamps?
+    assert enriched_reaction.timestamps?
     assert_equal '1767996268.000000', enriched_reaction.timestamp_for('U456')
     assert_equal '1767996300.000000', enriched_reaction.timestamp_for('U789')
 
@@ -161,7 +161,7 @@ class ReactionEnricherTest < Minitest::Test
     result = @enricher.enrich_messages([message], 'C123')
 
     enriched_reaction = result[0].reactions[0]
-    assert enriched_reaction.has_timestamps?
+    assert enriched_reaction.timestamps?
     assert_equal '1767996268.000000', enriched_reaction.timestamp_for('U111')
     assert_nil enriched_reaction.timestamp_for('U222')
     assert_nil enriched_reaction.timestamp_for('U333')
@@ -226,7 +226,7 @@ class ReactionEnricherTest < Minitest::Test
     result = @enricher.enrich_messages([message], 'C123')
 
     enriched_reaction = result[0].reactions[0]
-    assert enriched_reaction.has_timestamps?
+    assert enriched_reaction.timestamps?
     assert_equal '1767996268.000000', enriched_reaction.timestamp_for('U456')
 
     @activity_api.verify
@@ -350,7 +350,7 @@ class ReactionEnricherTest < Minitest::Test
 
     # Reaction should be preserved but without timestamps
     enriched_reaction = result[0].reactions[0]
-    refute enriched_reaction.has_timestamps?
+    refute enriched_reaction.timestamps?
     assert_equal 'wave', enriched_reaction.name
     assert_equal 1, enriched_reaction.count
 

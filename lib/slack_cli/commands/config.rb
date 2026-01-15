@@ -13,14 +13,12 @@ module SlackCli
         case positional_args
         in ['show'] | []
           show_config
-        in ['setup']
+        in ['setup'] | [_]
           run_setup
         in ['get', key]
           get_value(key)
         in ['set', key, value]
           set_value(key, value)
-        else
-          run_setup
         end
       end
 
@@ -73,7 +71,7 @@ module SlackCli
         puts
 
         # Check for existing config
-        if runner.has_workspaces?
+        if runner.workspaces?
           puts 'You already have workspaces configured.'
           print 'Add another workspace? (y/n): '
           answer = $stdin.gets&.chomp&.downcase

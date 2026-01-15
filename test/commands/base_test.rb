@@ -9,7 +9,7 @@ class BaseCommandTest < Minitest::Test
     @output = SlackCli::Formatters::Output.new(io: @io, err: @err, color: false)
   end
 
-  def test_error_returns_exit_code_1
+  def test_error_returns_exit_code_one
     command = create_test_command([])
     result = command.send(:error, 'Something went wrong')
 

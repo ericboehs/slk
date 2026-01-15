@@ -34,7 +34,7 @@ module SlackCli
         end
 
         # If no text but there are files, put first file inline with header
-        if display_text.empty? && message.has_files? && !options[:no_files]
+        if display_text.empty? && message.files? && !options[:no_files]
           first_file = message.files.first
           file_name = first_file['name'] || 'file'
           display_text = @output.blue("[File: #{file_name}]")
@@ -92,7 +92,7 @@ module SlackCli
             end
 
             # Add timestamp if available
-            if r.has_timestamps?
+            if r.timestamps?
               timestamp = r.timestamp_for(user_id)
               if timestamp
                 user_hash[:reacted_at] = timestamp
@@ -255,7 +255,7 @@ module SlackCli
         parts << @output.blue("[#{timestamp}]")
         parts << @output.bold(username)
 
-        parts << @output.cyan('(reply)') if message.is_reply? && !options[:in_thread]
+        parts << @output.cyan('(reply)') if message.reply? && !options[:in_thread]
 
         parts.join(' ')
       end
@@ -309,7 +309,7 @@ module SlackCli
       end
 
       def format_blocks(message, lines, workspace, options)
-        return unless message.has_blocks?
+        return unless message.blocks?
         return if options[:no_blocks]
 
         # Extract text content from blocks (skip if it duplicates the main text)
@@ -376,7 +376,7 @@ module SlackCli
         return if options[:no_reactions]
 
         # Check if we should show timestamps and if any reactions have them
-        if options[:reaction_timestamps] && message.reactions.any?(&:has_timestamps?)
+        if options[:reaction_timestamps] && message.reactions.any?(&:timestamps?)
           format_reactions_with_timestamps(message, lines, workspace, options)
         else
           # Standard reaction display
@@ -431,7 +431,7 @@ module SlackCli
       end
 
       def format_thread_indicator(message, lines, options)
-        return unless message.has_thread?
+        return unless message.thread?
         return if options[:in_thread]
         return if options[:no_threads]
 

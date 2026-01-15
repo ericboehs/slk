@@ -184,7 +184,7 @@ class DndCommandTest < Minitest::Test
     assert_includes @io.string, 'DURATION'
   end
 
-  def test_api_error_returns_1
+  def test_api_error_returns_one
     api_client = Object.new
     api_client.define_singleton_method(:get) do |_workspace, _method, _params = {}|
       raise SlackCli::ApiError, 'invalid_auth'

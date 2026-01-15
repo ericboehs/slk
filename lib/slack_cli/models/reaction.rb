@@ -34,7 +34,7 @@ module SlackCli
         )
       end
 
-      def has_timestamps?
+      def timestamps?
         !timestamps.nil? && !timestamps.empty?
       end
 

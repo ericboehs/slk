@@ -1,3 +1,32 @@
 AllCops:
   TargetRubyVersion: 3.2
   NewCops: enable
+
+# These are false positives - these methods aren't predicates
+Naming/PredicateMethod:
+  AllowedMethods:
+    - encrypt
+    - remove
+    - handle_option
+    - print_inline_image_with_text
+
+# Allow short parameter names that are domain-specific (Slack API uses ts, ws, id)
+Naming/MethodParameterName:
+  AllowedNames:
+    - ts
+    - ws
+    - im
+    - io
+    - id
+
+# These methods aren't simple attribute accessors - they're API operations
+# that perform network calls. The get/set prefix clarifies their behavior.
+# Unfortunately this cop doesn't support AllowedMethods, so we exclude files.
+Naming/AccessorMethodName:
+  Exclude:
+    - 'lib/slack_cli/api/dnd.rb'
+    - 'lib/slack_cli/api/users.rb'
+    - 'lib/slack_cli/commands/dnd.rb'
+    - 'lib/slack_cli/commands/presence.rb'
+    - 'lib/slack_cli/commands/status.rb'
+    - 'lib/slack_cli/commands/workspaces.rb'

@@ -86,17 +86,17 @@ class RunnerTest < Minitest::Test
     assert_includes names, 'beta'
   end
 
-  def test_has_workspaces_returns_true_when_not_empty
+  def test_workspaces_predicate_returns_true_when_not_empty
     @token_store.workspaces['test'] = SlackCli::Models::Workspace.new(name: 'test', token: 'xoxp-t')
     runner = create_runner
 
-    assert runner.has_workspaces?
+    assert runner.workspaces?
   end
 
-  def test_has_workspaces_returns_false_when_empty
+  def test_workspaces_predicate_returns_false_when_empty
     runner = create_runner
 
-    refute runner.has_workspaces?
+    refute runner.workspaces?
   end
 
   def test_users_api_returns_api_instance

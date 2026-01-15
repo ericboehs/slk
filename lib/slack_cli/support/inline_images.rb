@@ -36,11 +36,12 @@ module SlackCli
 
         if in_tmux?
           # tmux passthrough: \n + space required for image to render
-          printf "\ePtmux;\e\e]1337;File=inline=1;preserveAspectRatio=0;size=%d;height=%d:%s\a\e\\\n ",
-                 encoded.length, height, encoded
+          fmt = "\ePtmux;\e\e]1337;File=inline=1;preserveAspectRatio=0;" \
+                "size=%<size>d;height=%<height>d:%<data>s\a\e\\\n "
+          printf fmt, size: encoded.length, height: height, data: encoded
         else
           # Standard iTerm2 format
-          printf "\e]1337;File=inline=1;height=%d:%s\a", height, encoded
+          printf "\e]1337;File=inline=1;height=%<height>d:%<data>s\a", height: height, data: encoded
         end
       end
 

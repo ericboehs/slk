@@ -100,7 +100,7 @@ module SlackCli
       end
 
       # Returns true if there are unknown options
-      def has_unknown_options?
+      def unknown_options?
         @unknown_options&.any?
       end
 
@@ -129,7 +129,7 @@ module SlackCli
       # Returns exit code if should return early, nil otherwise
       def validate_options
         return show_help if show_help?
-        return check_unknown_options if has_unknown_options?
+        return check_unknown_options if unknown_options?
 
         nil
       end

@@ -96,34 +96,34 @@ class MessageTest < Minitest::Test
     assert_equal 'Longer block text with more content', message.text
   end
 
-  def test_has_thread_returns_true_when_reply_count_positive
+  def test_thread_returns_true_when_reply_count_positive
     message = SlackCli::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       reply_count: 5
     )
 
-    assert message.has_thread?
+    assert message.thread?
   end
 
-  def test_has_thread_returns_false_when_reply_count_zero
+  def test_thread_returns_false_when_reply_count_zero
     message = SlackCli::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       reply_count: 0
     )
 
-    refute message.has_thread?
+    refute message.thread?
   end
 
-  def test_is_reply_when_thread_ts_differs_from_ts
+  def test_reply_when_thread_ts_differs_from_ts
     message = SlackCli::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       thread_ts: '1234567890.000000'
     )
 
-    assert message.is_reply?
+    assert message.reply?
   end
 
   def test_is_not_reply_when_thread_ts_equals_ts
@@ -133,7 +133,7 @@ class MessageTest < Minitest::Test
       thread_ts: '1234567890.123456'
     )
 
-    refute message.is_reply?
+    refute message.reply?
   end
 
   def test_bot_detection
@@ -192,7 +192,7 @@ class MessageTest < Minitest::Test
     assert_equal 'MyBot', message.embedded_username
   end
 
-  def test_has_blocks_returns_true_when_blocks_present
+  def test_blocks_returns_true_when_blocks_present
     message = SlackCli::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
@@ -201,26 +201,26 @@ class MessageTest < Minitest::Test
       ]
     )
 
-    assert message.has_blocks?
+    assert message.blocks?
   end
 
-  def test_has_blocks_returns_false_when_blocks_empty
+  def test_blocks_returns_false_when_blocks_empty
     message = SlackCli::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       blocks: []
     )
 
-    refute message.has_blocks?
+    refute message.blocks?
   end
 
-  def test_has_blocks_returns_false_when_blocks_default
+  def test_blocks_returns_false_when_blocks_default
     message = SlackCli::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123'
     )
 
-    refute message.has_blocks?
+    refute message.blocks?
   end
 
   def test_blocks_field_preserved_in_message
@@ -251,32 +251,32 @@ class MessageTest < Minitest::Test
 
     message = SlackCli::Models::Message.from_api(data)
 
-    assert message.has_blocks?
+    assert message.blocks?
     assert_equal 1, message.blocks.size
     assert_equal 'section', message.blocks[0]['type']
   end
 
-  def test_has_files_returns_true_when_files_present
+  def test_files_returns_true_when_files_present
     message = SlackCli::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       files: [{ 'id' => 'F123', 'name' => 'file.txt' }]
     )
 
-    assert message.has_files?
+    assert message.files?
   end
 
-  def test_has_files_returns_false_when_files_empty
+  def test_files_returns_false_when_files_empty
     message = SlackCli::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       files: []
     )
 
-    refute message.has_files?
+    refute message.files?
   end
 
-  def test_has_reactions_returns_true_when_reactions_present
+  def test_reactions_returns_true_when_reactions_present
     reaction = SlackCli::Models::Reaction.new(name: 'thumbsup', count: 3, users: [])
     message = SlackCli::Models::Message.new(
       ts: '1234567890.123456',
@@ -284,17 +284,17 @@ class MessageTest < Minitest::Test
       reactions: [reaction]
     )
 
-    assert message.has_reactions?
+    assert message.reactions?
   end
 
-  def test_has_reactions_returns_false_when_reactions_empty
+  def test_reactions_returns_false_when_reactions_empty
     message = SlackCli::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       reactions: []
     )
 
-    refute message.has_reactions?
+    refute message.reactions?
   end
 
   # Validation tests

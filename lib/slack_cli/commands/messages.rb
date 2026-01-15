@@ -288,7 +288,7 @@ module SlackCli
           puts if index < messages.length - 1
 
           # Show thread replies if requested
-          if @options[:threads] && message.has_thread? && !message.is_reply?
+          if @options[:threads] && message.thread? && !message.reply?
             show_thread_replies(workspace, channel_id, message, format_options)
           end
         end
