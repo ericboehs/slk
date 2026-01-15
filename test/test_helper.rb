@@ -3,12 +3,12 @@
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 
 require 'minitest/autorun'
-require 'slack_cli'
+require 'slk'
 require 'stringio'
 require 'tmpdir'
 require 'json'
 
-module SlackCli
+module Slk
   module TestHelpers
     # Create a test output that captures to StringIO
     def test_output(color: false)
@@ -84,6 +84,6 @@ end
 
 module Minitest
   class Test
-    include SlackCli::TestHelpers
+    include Slk::TestHelpers
   end
 end

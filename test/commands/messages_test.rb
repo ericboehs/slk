@@ -6,7 +6,7 @@ class MessagesCommandTest < Minitest::Test
   def setup
     @io = StringIO.new
     @err = StringIO.new
-    @output = SlackCli::Formatters::Output.new(io: @io, err: @err, color: false)
+    @output = Slk::Formatters::Output.new(io: @io, err: @err, color: false)
     @mock_client = MockApiClient.new
     @workspace = mock_workspace('test')
     @cache = MockCache.new
@@ -35,8 +35,8 @@ class MessagesCommandTest < Minitest::Test
     # Mock the target resolver
     command.define_singleton_method(:target_resolver) do
       resolver = Object.new
-      ws = SlackCli::Models::Workspace.new(name: 'test', token: 'xoxb-test')
-      result = SlackCli::Services::TargetResolver::Result.new(
+      ws = Slk::Models::Workspace.new(name: 'test', token: 'xoxb-test')
+      result = Slk::Services::TargetResolver::Result.new(
         workspace: ws, channel_id: 'C123', thread_ts: nil, msg_ts: nil
       )
       resolver.define_singleton_method(:resolve) { |_target, **_opts| result }
@@ -120,8 +120,8 @@ class MessagesCommandTest < Minitest::Test
 
     command.define_singleton_method(:target_resolver) do
       resolver = Object.new
-      ws = SlackCli::Models::Workspace.new(name: 'test', token: 'xoxb-test')
-      result = SlackCli::Services::TargetResolver::Result.new(
+      ws = Slk::Models::Workspace.new(name: 'test', token: 'xoxb-test')
+      result = Slk::Services::TargetResolver::Result.new(
         workspace: ws, channel_id: 'C123', thread_ts: nil, msg_ts: nil
       )
       resolver.define_singleton_method(:resolve) { |_target, **_opts| result }
@@ -140,7 +140,7 @@ class MessagesCommandTest < Minitest::Test
 
   def build_command(args)
     runner = build_runner
-    SlackCli::Commands::Messages.new(args, runner: runner)
+    Slk::Commands::Messages.new(args, runner: runner)
   end
 
   def build_runner
@@ -167,7 +167,7 @@ class MessagesCommandTest < Minitest::Test
     preset_store = Object.new
     preset_store.define_singleton_method(:on_warning=) { |_| nil }
 
-    SlackCli::Runner.new(
+    Slk::Runner.new(
       output: @output,
       config: config,
       token_store: token_store,

@@ -6,7 +6,7 @@ class BaseCommandTest < Minitest::Test
   def setup
     @io = StringIO.new
     @err = StringIO.new
-    @output = SlackCli::Formatters::Output.new(io: @io, err: @err, color: false)
+    @output = Slk::Formatters::Output.new(io: @io, err: @err, color: false)
   end
 
   def test_error_returns_exit_code_one
@@ -77,7 +77,7 @@ class BaseCommandTest < Minitest::Test
     preset_store = Object.new
     preset_store.define_singleton_method(:on_warning=) { |_| nil }
 
-    runner = SlackCli::Runner.new(
+    runner = Slk::Runner.new(
       output: @output,
       config: config,
       token_store: token_store,
@@ -89,7 +89,7 @@ class BaseCommandTest < Minitest::Test
   end
 
   # Minimal concrete command for testing Base behavior
-  class TestCommand < SlackCli::Commands::Base
+  class TestCommand < Slk::Commands::Base
     def execute
       result = validate_options
       return result if result

@@ -4,7 +4,7 @@ require 'test_helper'
 
 class DurationFormatterTest < Minitest::Test
   def setup
-    @formatter = SlackCli::Formatters::DurationFormatter.new
+    @formatter = Slk::Formatters::DurationFormatter.new
   end
 
   def test_format_nil_duration
@@ -12,12 +12,12 @@ class DurationFormatterTest < Minitest::Test
   end
 
   def test_format_zero_duration
-    duration = SlackCli::Models::Duration.new(seconds: 0)
+    duration = Slk::Models::Duration.new(seconds: 0)
     assert_equal '', @formatter.format(duration)
   end
 
   def test_format_duration
-    duration = SlackCli::Models::Duration.new(seconds: 3600)
+    duration = Slk::Models::Duration.new(seconds: 3600)
     result = @formatter.format(duration)
     refute_empty result
     assert_includes result, '1h'

@@ -7,7 +7,7 @@ class PresetCommandTest < Minitest::Test
     @mock_client = MockApiClient.new
     @io = StringIO.new
     @err = StringIO.new
-    @output = SlackCli::Formatters::Output.new(io: @io, err: @err, color: false)
+    @output = Slk::Formatters::Output.new(io: @io, err: @err, color: false)
     @preset_store = MockPresetStore.new
   end
 
@@ -35,7 +35,7 @@ class PresetCommandTest < Minitest::Test
     ps = preset_store || @preset_store
     ps.define_singleton_method(:on_warning=) { |_| nil } unless ps.respond_to?(:on_warning=)
 
-    SlackCli::Runner.new(
+    Slk::Runner.new(
       output: @output,
       config: config,
       token_store: token_store,
@@ -48,7 +48,7 @@ class PresetCommandTest < Minitest::Test
   def test_list_presets_empty
     @preset_store.presets = {}
     runner = create_runner
-    command = SlackCli::Commands::Preset.new(['list'], runner: runner)
+    command = Slk::Commands::Preset.new(['list'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -61,7 +61,7 @@ class PresetCommandTest < Minitest::Test
                      'dnd' => '' }
     }
     runner = create_runner
-    command = SlackCli::Commands::Preset.new(['list'], runner: runner)
+    command = Slk::Commands::Preset.new(['list'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -72,7 +72,7 @@ class PresetCommandTest < Minitest::Test
   def test_list_presets_default_action
     @preset_store.presets = {}
     runner = create_runner
-    command = SlackCli::Commands::Preset.new([], runner: runner)
+    command = Slk::Commands::Preset.new([], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -82,7 +82,7 @@ class PresetCommandTest < Minitest::Test
   def test_ls_alias
     @preset_store.presets = {}
     runner = create_runner
-    command = SlackCli::Commands::Preset.new(['ls'], runner: runner)
+    command = Slk::Commands::Preset.new(['ls'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -96,7 +96,7 @@ class PresetCommandTest < Minitest::Test
     @mock_client.stub('users.setPresence', { 'ok' => true })
 
     runner = create_runner
-    command = SlackCli::Commands::Preset.new(['lunch'], runner: runner)
+    command = Slk::Commands::Preset.new(['lunch'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -106,7 +106,7 @@ class PresetCommandTest < Minitest::Test
   def test_apply_preset_not_found
     @preset_store.presets = {}
     runner = create_runner
-    command = SlackCli::Commands::Preset.new(['nonexistent'], runner: runner)
+    command = Slk::Commands::Preset.new(['nonexistent'], runner: runner)
     command.execute
 
     assert_includes @err.string, 'not found'
@@ -115,7 +115,7 @@ class PresetCommandTest < Minitest::Test
   def test_delete_preset
     @preset_store.presets = { 'lunch' => {} }
     runner = create_runner
-    command = SlackCli::Commands::Preset.new(%w[delete lunch], runner: runner)
+    command = Slk::Commands::Preset.new(%w[delete lunch], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -125,7 +125,7 @@ class PresetCommandTest < Minitest::Test
   def test_delete_preset_rm_alias
     @preset_store.presets = { 'lunch' => {} }
     runner = create_runner
-    command = SlackCli::Commands::Preset.new(%w[rm lunch], runner: runner)
+    command = Slk::Commands::Preset.new(%w[rm lunch], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -135,7 +135,7 @@ class PresetCommandTest < Minitest::Test
   def test_delete_preset_not_found
     @preset_store.presets = {}
     runner = create_runner
-    command = SlackCli::Commands::Preset.new(%w[delete nonexistent], runner: runner)
+    command = Slk::Commands::Preset.new(%w[delete nonexistent], runner: runner)
     command.execute
 
     assert_includes @err.string, 'not found'
@@ -143,7 +143,7 @@ class PresetCommandTest < Minitest::Test
 
   def test_help_option
     runner = create_runner
-    command = SlackCli::Commands::Preset.new(['--help'], runner: runner)
+    command = Slk::Commands::Preset.new(['--help'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -160,13 +160,13 @@ class PresetCommandTest < Minitest::Test
     end
 
     def all
-      @presets.map { |name, data| SlackCli::Models::Preset.from_hash(name, data) }
+      @presets.map { |name, data| Slk::Models::Preset.from_hash(name, data) }
     end
 
     def get(name)
       return nil unless @presets[name]
 
-      SlackCli::Models::Preset.from_hash(name, @presets[name])
+      Slk::Models::Preset.from_hash(name, @presets[name])
     end
 
     def exists?(name)

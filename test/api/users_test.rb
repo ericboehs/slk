@@ -6,7 +6,7 @@ class UsersApiTest < Minitest::Test
   def setup
     @mock_client = MockApiClient.new
     @workspace = mock_workspace('test')
-    @api = SlackCli::Api::Users.new(@mock_client, @workspace)
+    @api = Slk::Api::Users.new(@mock_client, @workspace)
   end
 
   def test_get_profile_calls_api
@@ -39,7 +39,7 @@ class UsersApiTest < Minitest::Test
                       })
 
     status = @api.get_status
-    assert_kind_of SlackCli::Models::Status, status
+    assert_kind_of Slk::Models::Status, status
     assert_equal 'Lunch', status.text
     assert_equal ':fork_and_knife:', status.emoji
     assert status.expires?
@@ -48,7 +48,7 @@ class UsersApiTest < Minitest::Test
   def test_set_status_sends_profile
     @mock_client.stub('users.profile.set', { 'ok' => true })
 
-    duration = SlackCli::Models::Duration.new(seconds: 3600)
+    duration = Slk::Models::Duration.new(seconds: 3600)
     @api.set_status(text: 'Meeting', emoji: ':calendar:', duration: duration)
 
     call = @mock_client.calls.last

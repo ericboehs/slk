@@ -27,7 +27,7 @@ class ReactionEnricherTest < Minitest::Test
 
   def setup
     @activity_api = MockActivityApi.new(self)
-    @enricher = SlackCli::Services::ReactionEnricher.new(activity_api: @activity_api)
+    @enricher = Slk::Services::ReactionEnricher.new(activity_api: @activity_api)
   end
 
   def test_enrich_messages_with_empty_array
@@ -36,7 +36,7 @@ class ReactionEnricherTest < Minitest::Test
   end
 
   def test_enrich_messages_with_no_reactions
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       text: 'Hello',
@@ -55,13 +55,13 @@ class ReactionEnricherTest < Minitest::Test
   end
 
   def test_enrich_messages_with_reactions_and_timestamps
-    reaction = SlackCli::Models::Reaction.new(
+    reaction = Slk::Models::Reaction.new(
       name: 'thumbsup',
       count: 2,
       users: %w[U456 U789]
     )
 
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       text: 'Hello',
@@ -121,13 +121,13 @@ class ReactionEnricherTest < Minitest::Test
 
   def test_enrich_messages_with_partial_timestamps
     # Some users have timestamps, some don't
-    reaction = SlackCli::Models::Reaction.new(
+    reaction = Slk::Models::Reaction.new(
       name: 'heart',
       count: 3,
       users: %w[U111 U222 U333]
     )
 
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       text: 'Hello',
@@ -171,13 +171,13 @@ class ReactionEnricherTest < Minitest::Test
 
   def test_enrich_messages_filters_by_message_timestamp
     # Activity includes reactions for messages we don't care about
-    reaction = SlackCli::Models::Reaction.new(
+    reaction = Slk::Models::Reaction.new(
       name: 'fire',
       count: 1,
       users: %w[U456]
     )
 
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       text: 'Hello',
@@ -233,19 +233,19 @@ class ReactionEnricherTest < Minitest::Test
   end
 
   def test_enrich_messages_with_multiple_messages
-    reaction1 = SlackCli::Models::Reaction.new(
+    reaction1 = Slk::Models::Reaction.new(
       name: 'thumbsup',
       count: 1,
       users: %w[U456]
     )
 
-    reaction2 = SlackCli::Models::Reaction.new(
+    reaction2 = Slk::Models::Reaction.new(
       name: 'heart',
       count: 1,
       users: %w[U789]
     )
 
-    message1 = SlackCli::Models::Message.new(
+    message1 = Slk::Models::Message.new(
       ts: '1234567890.111111',
       user_id: 'U123',
       text: 'First',
@@ -253,7 +253,7 @@ class ReactionEnricherTest < Minitest::Test
       channel_id: 'C123'
     )
 
-    message2 = SlackCli::Models::Message.new(
+    message2 = Slk::Models::Message.new(
       ts: '1234567890.222222',
       user_id: 'U123',
       text: 'Second',
@@ -307,7 +307,7 @@ class ReactionEnricherTest < Minitest::Test
   end
 
   def test_enrich_messages_handles_api_failure
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       text: 'Hello',
@@ -329,13 +329,13 @@ class ReactionEnricherTest < Minitest::Test
 
   def test_enrich_messages_preserves_reactions_without_timestamps
     # Reactions that don't have any matching timestamps should remain unchanged
-    reaction = SlackCli::Models::Reaction.new(
+    reaction = Slk::Models::Reaction.new(
       name: 'wave',
       count: 1,
       users: %w[U999]
     )
 
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       text: 'Hello',

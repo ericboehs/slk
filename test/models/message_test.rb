@@ -10,7 +10,7 @@ class MessageTest < Minitest::Test
       'text' => 'Hello world'
     }
 
-    message = SlackCli::Models::Message.from_api(data)
+    message = Slk::Models::Message.from_api(data)
 
     assert_equal 'Hello world', message.text
     assert_equal 'U123', message.user_id
@@ -29,7 +29,7 @@ class MessageTest < Minitest::Test
       ]
     }
 
-    message = SlackCli::Models::Message.from_api(data)
+    message = Slk::Models::Message.from_api(data)
 
     assert_equal 'Block Kit section text', message.text
   end
@@ -55,7 +55,7 @@ class MessageTest < Minitest::Test
       ]
     }
 
-    message = SlackCli::Models::Message.from_api(data)
+    message = Slk::Models::Message.from_api(data)
 
     assert_equal 'Rich text content', message.text
   end
@@ -73,7 +73,7 @@ class MessageTest < Minitest::Test
       ]
     }
 
-    message = SlackCli::Models::Message.from_api(data)
+    message = Slk::Models::Message.from_api(data)
 
     assert_equal 'This is a sufficiently long message text that should be used', message.text
   end
@@ -91,13 +91,13 @@ class MessageTest < Minitest::Test
       ]
     }
 
-    message = SlackCli::Models::Message.from_api(data)
+    message = Slk::Models::Message.from_api(data)
 
     assert_equal 'Longer block text with more content', message.text
   end
 
   def test_thread_returns_true_when_reply_count_positive
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       reply_count: 5
@@ -107,7 +107,7 @@ class MessageTest < Minitest::Test
   end
 
   def test_thread_returns_false_when_reply_count_zero
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       reply_count: 0
@@ -117,7 +117,7 @@ class MessageTest < Minitest::Test
   end
 
   def test_reply_when_thread_ts_differs_from_ts
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       thread_ts: '1234567890.000000'
@@ -127,7 +127,7 @@ class MessageTest < Minitest::Test
   end
 
   def test_is_not_reply_when_thread_ts_equals_ts
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       thread_ts: '1234567890.123456'
@@ -137,7 +137,7 @@ class MessageTest < Minitest::Test
   end
 
   def test_bot_detection
-    bot_message = SlackCli::Models::Message.new(
+    bot_message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'B123',
       subtype: nil
@@ -145,7 +145,7 @@ class MessageTest < Minitest::Test
 
     assert bot_message.bot?
 
-    bot_subtype_message = SlackCli::Models::Message.new(
+    bot_subtype_message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       subtype: 'bot_message'
@@ -153,7 +153,7 @@ class MessageTest < Minitest::Test
 
     assert bot_subtype_message.bot?
 
-    regular_message = SlackCli::Models::Message.new(
+    regular_message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       subtype: nil
@@ -163,7 +163,7 @@ class MessageTest < Minitest::Test
   end
 
   def test_embedded_username_from_user_profile
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       user_profile: { 'display_name' => 'johnd', 'real_name' => 'John Doe' }
@@ -173,7 +173,7 @@ class MessageTest < Minitest::Test
   end
 
   def test_embedded_username_falls_back_to_real_name
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       user_profile: { 'display_name' => '', 'real_name' => 'John Doe' }
@@ -183,7 +183,7 @@ class MessageTest < Minitest::Test
   end
 
   def test_embedded_username_from_bot_profile
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'B123',
       bot_profile: { 'name' => 'MyBot' }
@@ -193,7 +193,7 @@ class MessageTest < Minitest::Test
   end
 
   def test_blocks_returns_true_when_blocks_present
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       blocks: [
@@ -205,7 +205,7 @@ class MessageTest < Minitest::Test
   end
 
   def test_blocks_returns_false_when_blocks_empty
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       blocks: []
@@ -215,7 +215,7 @@ class MessageTest < Minitest::Test
   end
 
   def test_blocks_returns_false_when_blocks_default
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123'
     )
@@ -229,7 +229,7 @@ class MessageTest < Minitest::Test
       { 'type' => 'section', 'text' => { 'text' => 'Second block' } }
     ]
 
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       blocks: blocks
@@ -249,7 +249,7 @@ class MessageTest < Minitest::Test
       ]
     }
 
-    message = SlackCli::Models::Message.from_api(data)
+    message = Slk::Models::Message.from_api(data)
 
     assert message.blocks?
     assert_equal 1, message.blocks.size
@@ -257,7 +257,7 @@ class MessageTest < Minitest::Test
   end
 
   def test_files_returns_true_when_files_present
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       files: [{ 'id' => 'F123', 'name' => 'file.txt' }]
@@ -267,7 +267,7 @@ class MessageTest < Minitest::Test
   end
 
   def test_files_returns_false_when_files_empty
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       files: []
@@ -277,8 +277,8 @@ class MessageTest < Minitest::Test
   end
 
   def test_reactions_returns_true_when_reactions_present
-    reaction = SlackCli::Models::Reaction.new(name: 'thumbsup', count: 3, users: [])
-    message = SlackCli::Models::Message.new(
+    reaction = Slk::Models::Reaction.new(name: 'thumbsup', count: 3, users: [])
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       reactions: [reaction]
@@ -288,7 +288,7 @@ class MessageTest < Minitest::Test
   end
 
   def test_reactions_returns_false_when_reactions_empty
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       reactions: []
@@ -300,28 +300,28 @@ class MessageTest < Minitest::Test
   # Validation tests
   def test_raises_when_ts_empty
     error = assert_raises(ArgumentError) do
-      SlackCli::Models::Message.new(ts: '', user_id: 'U123')
+      Slk::Models::Message.new(ts: '', user_id: 'U123')
     end
     assert_equal 'ts cannot be empty', error.message
   end
 
   def test_raises_when_ts_whitespace_only
     error = assert_raises(ArgumentError) do
-      SlackCli::Models::Message.new(ts: '   ', user_id: 'U123')
+      Slk::Models::Message.new(ts: '   ', user_id: 'U123')
     end
     assert_equal 'ts cannot be empty', error.message
   end
 
   def test_raises_when_user_id_empty
     error = assert_raises(ArgumentError) do
-      SlackCli::Models::Message.new(ts: '1234567890.123456', user_id: '')
+      Slk::Models::Message.new(ts: '1234567890.123456', user_id: '')
     end
     assert_equal 'user_id cannot be empty', error.message
   end
 
   def test_raises_when_user_id_whitespace_only
     error = assert_raises(ArgumentError) do
-      SlackCli::Models::Message.new(ts: '1234567890.123456', user_id: '   ')
+      Slk::Models::Message.new(ts: '1234567890.123456', user_id: '   ')
     end
     assert_equal 'user_id cannot be empty', error.message
   end
@@ -329,7 +329,7 @@ class MessageTest < Minitest::Test
   # Deep freeze tests
   def test_user_profile_is_deeply_frozen
     profile = { 'display_name' => 'johnd', 'nested' => { 'key' => 'value' } }
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       user_profile: profile
@@ -343,7 +343,7 @@ class MessageTest < Minitest::Test
     blocks = [
       { 'type' => 'section', 'text' => { 'text' => 'Hello' } }
     ]
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       blocks: blocks
@@ -356,7 +356,7 @@ class MessageTest < Minitest::Test
 
   def test_files_are_deeply_frozen
     files = [{ 'id' => 'F123', 'metadata' => { 'size' => 100 } }]
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       files: files
@@ -369,7 +369,7 @@ class MessageTest < Minitest::Test
 
   def test_attachments_are_deeply_frozen
     attachments = [{ 'text' => 'attached', 'fields' => [{ 'title' => 'Field' }] }]
-    message = SlackCli::Models::Message.new(
+    message = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       attachments: attachments
@@ -388,7 +388,7 @@ class MessageTest < Minitest::Test
       'text' => 'Hello world'
     }
 
-    message = SlackCli::Models::Message.from_api(data, channel_id: 'C123ABC')
+    message = Slk::Models::Message.from_api(data, channel_id: 'C123ABC')
 
     assert_equal 'C123ABC', message.channel_id
   end
@@ -400,16 +400,16 @@ class MessageTest < Minitest::Test
       'text' => 'Hello world'
     }
 
-    message = SlackCli::Models::Message.from_api(data)
+    message = Slk::Models::Message.from_api(data)
 
     assert_nil message.channel_id
   end
 
   def test_with_reactions_preserves_channel_id
-    reaction1 = SlackCli::Models::Reaction.new(name: 'thumbsup', count: 1)
-    reaction2 = SlackCli::Models::Reaction.new(name: 'heart', count: 2)
+    reaction1 = Slk::Models::Reaction.new(name: 'thumbsup', count: 1)
+    reaction2 = Slk::Models::Reaction.new(name: 'heart', count: 2)
 
-    original = SlackCli::Models::Message.new(
+    original = Slk::Models::Message.new(
       ts: '1234567890.123456',
       user_id: 'U123',
       text: 'Hello',

@@ -6,7 +6,7 @@ class ConversationsApiTest < Minitest::Test
   def setup
     @mock_client = MockApiClient.new
     @workspace = mock_workspace('test')
-    @api = SlackCli::Api::Conversations.new(@mock_client, @workspace)
+    @api = Slk::Api::Conversations.new(@mock_client, @workspace)
   end
 
   def test_list_calls_api

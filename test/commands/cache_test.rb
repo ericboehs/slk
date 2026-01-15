@@ -7,7 +7,7 @@ class CacheCommandTest < Minitest::Test
     @mock_client = MockApiClient.new
     @io = StringIO.new
     @err = StringIO.new
-    @output = SlackCli::Formatters::Output.new(io: @io, err: @err, color: false)
+    @output = Slk::Formatters::Output.new(io: @io, err: @err, color: false)
     @cache_store = MockCacheStore.new
   end
 
@@ -30,7 +30,7 @@ class CacheCommandTest < Minitest::Test
     preset_store = Object.new
     preset_store.define_singleton_method(:on_warning=) { |_| nil }
 
-    SlackCli::Runner.new(
+    Slk::Runner.new(
       output: @output,
       config: config,
       token_store: token_store,
@@ -42,7 +42,7 @@ class CacheCommandTest < Minitest::Test
 
   def test_status_shows_cache_info
     runner = create_runner
-    command = SlackCli::Commands::Cache.new(['status'], runner: runner)
+    command = Slk::Commands::Cache.new(['status'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -52,7 +52,7 @@ class CacheCommandTest < Minitest::Test
 
   def test_status_default_action
     runner = create_runner
-    command = SlackCli::Commands::Cache.new([], runner: runner)
+    command = Slk::Commands::Cache.new([], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -61,7 +61,7 @@ class CacheCommandTest < Minitest::Test
 
   def test_info_alias
     runner = create_runner
-    command = SlackCli::Commands::Cache.new(['info'], runner: runner)
+    command = Slk::Commands::Cache.new(['info'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -69,7 +69,7 @@ class CacheCommandTest < Minitest::Test
 
   def test_clear_all
     runner = create_runner
-    command = SlackCli::Commands::Cache.new(['clear'], runner: runner)
+    command = Slk::Commands::Cache.new(['clear'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -80,7 +80,7 @@ class CacheCommandTest < Minitest::Test
 
   def test_clear_specific_workspace
     runner = create_runner
-    command = SlackCli::Commands::Cache.new(%w[clear myworkspace], runner: runner)
+    command = Slk::Commands::Cache.new(%w[clear myworkspace], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -90,7 +90,7 @@ class CacheCommandTest < Minitest::Test
 
   def test_unknown_action
     runner = create_runner
-    command = SlackCli::Commands::Cache.new(['invalid'], runner: runner)
+    command = Slk::Commands::Cache.new(['invalid'], runner: runner)
     result = command.execute
 
     assert_equal 1, result
@@ -99,7 +99,7 @@ class CacheCommandTest < Minitest::Test
 
   def test_help_option
     runner = create_runner
-    command = SlackCli::Commands::Cache.new(['--help'], runner: runner)
+    command = Slk::Commands::Cache.new(['--help'], runner: runner)
     result = command.execute
 
     assert_equal 0, result

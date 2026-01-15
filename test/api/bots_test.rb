@@ -18,7 +18,7 @@ class BotsApiTest < Minitest::Test
                         }
                       })
 
-    api = SlackCli::Api::Bots.new(@mock_client, @workspace)
+    api = Slk::Api::Bots.new(@mock_client, @workspace)
     result = api.info('B123')
 
     assert_equal 'B123', result['id']
@@ -34,7 +34,7 @@ class BotsApiTest < Minitest::Test
                         'error' => 'bot_not_found'
                       })
 
-    api = SlackCli::Api::Bots.new(@mock_client, @workspace)
+    api = Slk::Api::Bots.new(@mock_client, @workspace)
     result = api.info('B999')
 
     assert_nil result
@@ -49,7 +49,7 @@ class BotsApiTest < Minitest::Test
                         }
                       })
 
-    api = SlackCli::Api::Bots.new(@mock_client, @workspace)
+    api = Slk::Api::Bots.new(@mock_client, @workspace)
     name = api.get_name('B123')
 
     assert_equal 'TestBot', name
@@ -61,7 +61,7 @@ class BotsApiTest < Minitest::Test
                         'error' => 'bot_not_found'
                       })
 
-    api = SlackCli::Api::Bots.new(@mock_client, @workspace)
+    api = Slk::Api::Bots.new(@mock_client, @workspace)
     name = api.get_name('B999')
 
     assert_nil name
@@ -70,10 +70,10 @@ class BotsApiTest < Minitest::Test
   def test_info_returns_nil_on_api_error
     api_client = Object.new
     api_client.define_singleton_method(:post_form) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, 'network_error'
+      raise Slk::ApiError, 'network_error'
     end
 
-    api = SlackCli::Api::Bots.new(api_client, @workspace)
+    api = Slk::Api::Bots.new(api_client, @workspace)
     result = api.info('B123')
 
     assert_nil result
@@ -83,10 +83,10 @@ class BotsApiTest < Minitest::Test
     debug_messages = []
     api_client = Object.new
     api_client.define_singleton_method(:post_form) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, 'bot_not_found'
+      raise Slk::ApiError, 'bot_not_found'
     end
 
-    api = SlackCli::Api::Bots.new(
+    api = Slk::Api::Bots.new(
       api_client,
       @workspace,
       on_debug: ->(msg) { debug_messages << msg }

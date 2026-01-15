@@ -4,7 +4,7 @@ require 'test_helper'
 
 class EmojiReplacerTest < Minitest::Test
   def setup
-    @replacer = SlackCli::Formatters::EmojiReplacer.new
+    @replacer = Slk::Formatters::EmojiReplacer.new
   end
 
   def test_replaces_common_emoji
@@ -70,7 +70,7 @@ class EmojiReplacerTest < Minitest::Test
   end
 
   def test_emoji_regex_matches_valid_codes
-    regex = SlackCli::Formatters::EmojiReplacer::EMOJI_REGEX
+    regex = Slk::Formatters::EmojiReplacer::EMOJI_REGEX
     assert_match regex, ':smile:'
     assert_match regex, ':+1:'
     assert_match regex, ':raised_hands:'
@@ -78,7 +78,7 @@ class EmojiReplacerTest < Minitest::Test
   end
 
   def test_emoji_regex_does_not_match_invalid
-    regex = SlackCli::Formatters::EmojiReplacer::EMOJI_REGEX
+    regex = Slk::Formatters::EmojiReplacer::EMOJI_REGEX
     refute_match regex, 'smile'
     refute_match regex, ':'
     refute_match regex, '::'

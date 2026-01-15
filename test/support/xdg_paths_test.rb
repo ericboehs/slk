@@ -4,14 +4,14 @@ require 'test_helper'
 
 class XdgPathsTest < Minitest::Test
   def setup
-    @paths = SlackCli::Support::XdgPaths.new
+    @paths = Slk::Support::XdgPaths.new
   end
 
   def test_config_dir_uses_xdg_config_home_if_set
     original = ENV.fetch('XDG_CONFIG_HOME', nil)
     begin
       ENV['XDG_CONFIG_HOME'] = '/custom/config'
-      paths = SlackCli::Support::XdgPaths.new
+      paths = Slk::Support::XdgPaths.new
       assert_equal '/custom/config/slk', paths.config_dir
     ensure
       ENV['XDG_CONFIG_HOME'] = original
@@ -22,7 +22,7 @@ class XdgPathsTest < Minitest::Test
     original = ENV.fetch('XDG_CONFIG_HOME', nil)
     begin
       ENV.delete('XDG_CONFIG_HOME')
-      paths = SlackCli::Support::XdgPaths.new
+      paths = Slk::Support::XdgPaths.new
       expected = File.join(Dir.home, '.config', 'slk')
       assert_equal expected, paths.config_dir
     ensure
@@ -34,7 +34,7 @@ class XdgPathsTest < Minitest::Test
     original = ENV.fetch('XDG_CACHE_HOME', nil)
     begin
       ENV['XDG_CACHE_HOME'] = '/custom/cache'
-      paths = SlackCli::Support::XdgPaths.new
+      paths = Slk::Support::XdgPaths.new
       assert_equal '/custom/cache/slk', paths.cache_dir
     ensure
       ENV['XDG_CACHE_HOME'] = original
@@ -45,7 +45,7 @@ class XdgPathsTest < Minitest::Test
     original = ENV.fetch('XDG_CACHE_HOME', nil)
     begin
       ENV.delete('XDG_CACHE_HOME')
-      paths = SlackCli::Support::XdgPaths.new
+      paths = Slk::Support::XdgPaths.new
       expected = File.join(Dir.home, '.cache', 'slk')
       assert_equal expected, paths.cache_dir
     ensure
@@ -68,7 +68,7 @@ class XdgPathsTest < Minitest::Test
       original = ENV.fetch('XDG_CONFIG_HOME', nil)
       begin
         ENV['XDG_CONFIG_HOME'] = tmpdir
-        paths = SlackCli::Support::XdgPaths.new
+        paths = Slk::Support::XdgPaths.new
         config_path = paths.config_dir
 
         refute File.exist?(config_path)
@@ -85,7 +85,7 @@ class XdgPathsTest < Minitest::Test
       original = ENV.fetch('XDG_CACHE_HOME', nil)
       begin
         ENV['XDG_CACHE_HOME'] = tmpdir
-        paths = SlackCli::Support::XdgPaths.new
+        paths = Slk::Support::XdgPaths.new
         cache_path = paths.cache_dir
 
         refute File.exist?(cache_path)

@@ -2,6 +2,6 @@
 # frozen_string_literal: true
 
 $LOAD_PATH.unshift(File.expand_path('../lib', __dir__))
-require 'slack_cli'
+require 'slk'
 
-exit SlackCli::CLI.new(ARGV).run
+exit Slk::CLI.new(ARGV).run

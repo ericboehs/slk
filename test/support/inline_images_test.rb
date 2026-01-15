@@ -4,7 +4,7 @@ require 'test_helper'
 require 'tmpdir'
 
 class InlineImagesTest < Minitest::Test
-  include SlackCli::Support::InlineImages
+  include Slk::Support::InlineImages
 
   def test_inline_images_supported_with_iterm
     with_env('TERM_PROGRAM' => 'iTerm.app') do

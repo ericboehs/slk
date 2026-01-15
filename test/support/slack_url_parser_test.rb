@@ -4,7 +4,7 @@ require 'test_helper'
 
 class SlackUrlParserTest < Minitest::Test
   def setup
-    @parser = SlackCli::Support::SlackUrlParser.new
+    @parser = Slk::Support::SlackUrlParser.new
   end
 
   def test_parses_channel_only_url

@@ -6,7 +6,7 @@ class DndApiTest < Minitest::Test
   def setup
     @mock_client = MockApiClient.new
     @workspace = mock_workspace('test')
-    @api = SlackCli::Api::Dnd.new(@mock_client, @workspace)
+    @api = Slk::Api::Dnd.new(@mock_client, @workspace)
   end
 
   def test_info_calls_api
@@ -33,7 +33,7 @@ class DndApiTest < Minitest::Test
                         'snooze_endtime' => Time.now.to_i + 3600
                       })
 
-    duration = SlackCli::Models::Duration.new(seconds: 3600)
+    duration = Slk::Models::Duration.new(seconds: 3600)
     result = @api.set_snooze(duration)
     assert result['snooze_enabled']
 
@@ -78,7 +78,7 @@ class DndApiTest < Minitest::Test
                       })
 
     remaining = @api.snooze_remaining
-    assert_kind_of SlackCli::Models::Duration, remaining
+    assert_kind_of Slk::Models::Duration, remaining
   end
 
   def test_snooze_remaining_returns_nil_when_not_snoozing

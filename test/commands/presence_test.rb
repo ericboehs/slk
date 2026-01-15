@@ -7,7 +7,7 @@ class PresenceCommandTest < Minitest::Test
     @mock_client = MockApiClient.new
     @io = StringIO.new
     @err = StringIO.new
-    @output = SlackCli::Formatters::Output.new(io: @io, err: @err, color: false)
+    @output = Slk::Formatters::Output.new(io: @io, err: @err, color: false)
   end
 
   def create_runner(workspaces: nil)
@@ -32,7 +32,7 @@ class PresenceCommandTest < Minitest::Test
     cache_store = Object.new
     cache_store.define_singleton_method(:on_warning=) { |_| nil }
 
-    SlackCli::Runner.new(
+    Slk::Runner.new(
       output: @output,
       config: config,
       token_store: token_store,
@@ -50,7 +50,7 @@ class PresenceCommandTest < Minitest::Test
                       })
 
     runner = create_runner
-    command = SlackCli::Commands::Presence.new([], runner: runner)
+    command = Slk::Commands::Presence.new([], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -66,7 +66,7 @@ class PresenceCommandTest < Minitest::Test
                       })
 
     runner = create_runner
-    command = SlackCli::Commands::Presence.new([], runner: runner)
+    command = Slk::Commands::Presence.new([], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -77,7 +77,7 @@ class PresenceCommandTest < Minitest::Test
     @mock_client.stub('users.setPresence', { 'ok' => true })
 
     runner = create_runner
-    command = SlackCli::Commands::Presence.new(['away'], runner: runner)
+    command = Slk::Commands::Presence.new(['away'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -91,7 +91,7 @@ class PresenceCommandTest < Minitest::Test
     @mock_client.stub('users.setPresence', { 'ok' => true })
 
     runner = create_runner
-    command = SlackCli::Commands::Presence.new(['auto'], runner: runner)
+    command = Slk::Commands::Presence.new(['auto'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -105,7 +105,7 @@ class PresenceCommandTest < Minitest::Test
     @mock_client.stub('users.setPresence', { 'ok' => true })
 
     runner = create_runner
-    command = SlackCli::Commands::Presence.new(['active'], runner: runner)
+    command = Slk::Commands::Presence.new(['active'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -117,7 +117,7 @@ class PresenceCommandTest < Minitest::Test
 
   def test_invalid_presence_returns_error
     runner = create_runner
-    command = SlackCli::Commands::Presence.new(['invalid'], runner: runner)
+    command = Slk::Commands::Presence.new(['invalid'], runner: runner)
     result = command.execute
 
     assert_equal 1, result
@@ -126,7 +126,7 @@ class PresenceCommandTest < Minitest::Test
 
   def test_help_option
     runner = create_runner
-    command = SlackCli::Commands::Presence.new(['--help'], runner: runner)
+    command = Slk::Commands::Presence.new(['--help'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -138,16 +138,16 @@ class PresenceCommandTest < Minitest::Test
   def test_api_error_returns_one
     api_client = Object.new
     api_client.define_singleton_method(:get) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, 'user_not_found'
+      raise Slk::ApiError, 'user_not_found'
     end
     api_client.define_singleton_method(:post) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, 'user_not_found'
+      raise Slk::ApiError, 'user_not_found'
     end
 
     runner = create_runner
     runner.instance_variable_set(:@api_client, api_client)
 
-    command = SlackCli::Commands::Presence.new([], runner: runner)
+    command = Slk::Commands::Presence.new([], runner: runner)
     result = command.execute
 
     assert_equal 1, result
@@ -167,7 +167,7 @@ class PresenceCommandTest < Minitest::Test
                       })
 
     runner = create_runner(workspaces: workspaces)
-    command = SlackCli::Commands::Presence.new([], runner: runner)
+    command = Slk::Commands::Presence.new([], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -177,7 +177,7 @@ class PresenceCommandTest < Minitest::Test
 
   def test_unknown_option_returns_error
     runner = create_runner
-    command = SlackCli::Commands::Presence.new(['--invalid-option'], runner: runner)
+    command = Slk::Commands::Presence.new(['--invalid-option'], runner: runner)
     result = command.execute
 
     assert_equal 1, result
@@ -187,7 +187,7 @@ class PresenceCommandTest < Minitest::Test
 
   def test_unknown_short_option_returns_error
     runner = create_runner
-    command = SlackCli::Commands::Presence.new(['-z'], runner: runner)
+    command = Slk::Commands::Presence.new(['-z'], runner: runner)
     result = command.execute
 
     assert_equal 1, result

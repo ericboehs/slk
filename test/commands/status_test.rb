@@ -7,7 +7,7 @@ class StatusCommandTest < Minitest::Test
     @mock_client = MockApiClient.new
     @io = StringIO.new
     @err = StringIO.new
-    @output = SlackCli::Formatters::Output.new(io: @io, err: @err, color: false)
+    @output = Slk::Formatters::Output.new(io: @io, err: @err, color: false)
   end
 
   def create_runner(workspaces: nil)
@@ -33,7 +33,7 @@ class StatusCommandTest < Minitest::Test
     preset_store = Object.new
     preset_store.define_singleton_method(:on_warning=) { |_| nil }
 
-    SlackCli::Runner.new(
+    Slk::Runner.new(
       output: @output,
       config: config,
       token_store: token_store,
@@ -53,7 +53,7 @@ class StatusCommandTest < Minitest::Test
                       })
 
     runner = create_runner
-    command = SlackCli::Commands::Status.new([], runner: runner)
+    command = Slk::Commands::Status.new([], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -72,7 +72,7 @@ class StatusCommandTest < Minitest::Test
                       })
 
     runner = create_runner
-    command = SlackCli::Commands::Status.new([], runner: runner)
+    command = Slk::Commands::Status.new([], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -83,7 +83,7 @@ class StatusCommandTest < Minitest::Test
     @mock_client.stub('users.profile.set', { 'ok' => true })
 
     runner = create_runner
-    command = SlackCli::Commands::Status.new(['Working from home', ':house:'], runner: runner)
+    command = Slk::Commands::Status.new(['Working from home', ':house:'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -98,7 +98,7 @@ class StatusCommandTest < Minitest::Test
     @mock_client.stub('users.profile.set', { 'ok' => true })
 
     runner = create_runner
-    command = SlackCli::Commands::Status.new(['Meeting', ':calendar:', '1h'], runner: runner)
+    command = Slk::Commands::Status.new(['Meeting', ':calendar:', '1h'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -113,7 +113,7 @@ class StatusCommandTest < Minitest::Test
     @mock_client.stub('users.profile.set', { 'ok' => true })
 
     runner = create_runner
-    command = SlackCli::Commands::Status.new(['clear'], runner: runner)
+    command = Slk::Commands::Status.new(['clear'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -126,7 +126,7 @@ class StatusCommandTest < Minitest::Test
 
   def test_help_option
     runner = create_runner
-    command = SlackCli::Commands::Status.new(['--help'], runner: runner)
+    command = Slk::Commands::Status.new(['--help'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -138,17 +138,17 @@ class StatusCommandTest < Minitest::Test
     # Make the API raise an error by redefining get
     api_client = Object.new
     api_client.define_singleton_method(:get) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, 'channel_not_found'
+      raise Slk::ApiError, 'channel_not_found'
     end
     api_client.define_singleton_method(:post) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, 'channel_not_found'
+      raise Slk::ApiError, 'channel_not_found'
     end
 
     runner = create_runner
     # Replace the api_client
     runner.instance_variable_set(:@api_client, api_client)
 
-    command = SlackCli::Commands::Status.new([], runner: runner)
+    command = Slk::Commands::Status.new([], runner: runner)
     result = command.execute
 
     assert_equal 1, result
@@ -160,7 +160,7 @@ class StatusCommandTest < Minitest::Test
     @mock_client.stub('users.setPresence', { 'ok' => true })
 
     runner = create_runner
-    command = SlackCli::Commands::Status.new(['Working', ':computer:', '-p', 'away'], runner: runner)
+    command = Slk::Commands::Status.new(['Working', ':computer:', '-p', 'away'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -175,7 +175,7 @@ class StatusCommandTest < Minitest::Test
     @mock_client.stub('dnd.setSnooze', { 'ok' => true, 'snooze_enabled' => true })
 
     runner = create_runner
-    command = SlackCli::Commands::Status.new(['Focus', ':headphones:', '-d', '2h'], runner: runner)
+    command = Slk::Commands::Status.new(['Focus', ':headphones:', '-d', '2h'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -190,7 +190,7 @@ class StatusCommandTest < Minitest::Test
     @mock_client.stub('dnd.endSnooze', { 'ok' => true })
 
     runner = create_runner
-    command = SlackCli::Commands::Status.new(['Working', ':computer:', '-d', 'off'], runner: runner)
+    command = Slk::Commands::Status.new(['Working', ':computer:', '-d', 'off'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -201,7 +201,7 @@ class StatusCommandTest < Minitest::Test
 
   def test_unknown_option_returns_error
     runner = create_runner
-    command = SlackCli::Commands::Status.new(['--invalid-option'], runner: runner)
+    command = Slk::Commands::Status.new(['--invalid-option'], runner: runner)
     result = command.execute
 
     assert_equal 1, result
@@ -215,7 +215,7 @@ class StatusCommandTest < Minitest::Test
 
     runner = create_runner
     # Test valid options -p and -d
-    command = SlackCli::Commands::Status.new(['Working', '-p', 'away'], runner: runner)
+    command = Slk::Commands::Status.new(['Working', '-p', 'away'], runner: runner)
     result = command.execute
 
     assert_equal 0, result

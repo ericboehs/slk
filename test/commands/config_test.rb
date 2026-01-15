@@ -6,7 +6,7 @@ class ConfigCommandTest < Minitest::Test
   def setup
     @io = StringIO.new
     @err = StringIO.new
-    @output = SlackCli::Formatters::Output.new(io: @io, err: @err, color: false)
+    @output = Slk::Formatters::Output.new(io: @io, err: @err, color: false)
     @config = MockConfig.new
   end
 
@@ -29,7 +29,7 @@ class ConfigCommandTest < Minitest::Test
     cache_store = Object.new
     cache_store.define_singleton_method(:on_warning=) { |_| nil }
 
-    SlackCli::Runner.new(
+    Slk::Runner.new(
       output: @output,
       config: @config,
       token_store: token_store,
@@ -43,7 +43,7 @@ class ConfigCommandTest < Minitest::Test
     @config.data['ssh_key'] = '/path/to/key'
 
     runner = create_runner
-    command = SlackCli::Commands::Config.new(['show'], runner: runner)
+    command = Slk::Commands::Config.new(['show'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -53,7 +53,7 @@ class ConfigCommandTest < Minitest::Test
 
   def test_show_default_action
     runner = create_runner
-    command = SlackCli::Commands::Config.new([], runner: runner)
+    command = Slk::Commands::Config.new([], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -64,7 +64,7 @@ class ConfigCommandTest < Minitest::Test
     @config.data['emoji_dir'] = '/custom/emoji'
 
     runner = create_runner
-    command = SlackCli::Commands::Config.new(%w[get emoji_dir], runner: runner)
+    command = Slk::Commands::Config.new(%w[get emoji_dir], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -73,7 +73,7 @@ class ConfigCommandTest < Minitest::Test
 
   def test_get_value_not_set
     runner = create_runner
-    command = SlackCli::Commands::Config.new(%w[get nonexistent], runner: runner)
+    command = Slk::Commands::Config.new(%w[get nonexistent], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -82,7 +82,7 @@ class ConfigCommandTest < Minitest::Test
 
   def test_set_value
     runner = create_runner
-    command = SlackCli::Commands::Config.new(['set', 'emoji_dir', '/new/path'], runner: runner)
+    command = Slk::Commands::Config.new(['set', 'emoji_dir', '/new/path'], runner: runner)
     result = command.execute
 
     assert_equal 0, result
@@ -92,7 +92,7 @@ class ConfigCommandTest < Minitest::Test
 
   def test_help_option
     runner = create_runner
-    command = SlackCli::Commands::Config.new(['--help'], runner: runner)
+    command = Slk::Commands::Config.new(['--help'], runner: runner)
     result = command.execute
 
     assert_equal 0, result

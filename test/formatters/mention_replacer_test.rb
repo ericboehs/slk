@@ -4,9 +4,9 @@ require 'test_helper'
 
 class MentionReplacerTest < Minitest::Test
   def setup
-    @cache = SlackCli::Services::CacheStore.new(paths: mock_paths)
-    @replacer = SlackCli::Formatters::MentionReplacer.new(cache_store: @cache)
-    @workspace = SlackCli::Models::Workspace.new(name: 'test', token: 'xoxp-test')
+    @cache = Slk::Services::CacheStore.new(paths: mock_paths)
+    @replacer = Slk::Formatters::MentionReplacer.new(cache_store: @cache)
+    @workspace = Slk::Models::Workspace.new(name: 'test', token: 'xoxp-test')
   end
 
   def mock_paths
@@ -119,19 +119,19 @@ class MentionReplacerTest < Minitest::Test
   end
 
   def test_user_regex_matches_u_prefix
-    regex = SlackCli::Formatters::MentionReplacer::USER_MENTION_REGEX
+    regex = Slk::Formatters::MentionReplacer::USER_MENTION_REGEX
     assert_match regex, '<@U12345>'
     assert_match regex, '<@U12345|name>'
   end
 
   def test_user_regex_matches_w_prefix
-    regex = SlackCli::Formatters::MentionReplacer::USER_MENTION_REGEX
+    regex = Slk::Formatters::MentionReplacer::USER_MENTION_REGEX
     assert_match regex, '<@W12345>'
     assert_match regex, '<@W12345|name>'
   end
 
   def test_channel_regex_matches_c_prefix
-    regex = SlackCli::Formatters::MentionReplacer::CHANNEL_MENTION_REGEX
+    regex = Slk::Formatters::MentionReplacer::CHANNEL_MENTION_REGEX
     assert_match regex, '<#C12345>'
     assert_match regex, '<#C12345|name>'
   end
@@ -157,7 +157,7 @@ class MentionReplacerTest < Minitest::Test
   end
 
   def test_subteam_regex_matches
-    regex = SlackCli::Formatters::MentionReplacer::SUBTEAM_MENTION_REGEX
+    regex = Slk::Formatters::MentionReplacer::SUBTEAM_MENTION_REGEX
     assert_match regex, '<!subteam^S12345>'
     assert_match regex, '<!subteam^S12345|team>'
     assert_match regex, '<!subteam^S12345|@team>'
@@ -179,7 +179,7 @@ class MentionReplacerTest < Minitest::Test
                     }
                   })
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: mock_api
     )
@@ -206,7 +206,7 @@ class MentionReplacerTest < Minitest::Test
                     }
                   })
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: mock_api
     )
@@ -219,13 +219,13 @@ class MentionReplacerTest < Minitest::Test
   def test_api_error_falls_back_gracefully
     api_client = Object.new
     api_client.define_singleton_method(:post) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, 'user_not_found'
+      raise Slk::ApiError, 'user_not_found'
     end
     api_client.define_singleton_method(:post_form) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, 'user_not_found'
+      raise Slk::ApiError, 'user_not_found'
     end
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: api_client
     )
@@ -246,7 +246,7 @@ class MentionReplacerTest < Minitest::Test
                     }
                   })
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: mock_api
     )
@@ -262,13 +262,13 @@ class MentionReplacerTest < Minitest::Test
   def test_channel_api_error_falls_back_gracefully
     api_client = Object.new
     api_client.define_singleton_method(:get) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, 'channel_not_found'
+      raise Slk::ApiError, 'channel_not_found'
     end
     api_client.define_singleton_method(:post_form) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, 'channel_not_found'
+      raise Slk::ApiError, 'channel_not_found'
     end
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: api_client
     )
@@ -281,7 +281,7 @@ class MentionReplacerTest < Minitest::Test
 
   def test_no_api_client_returns_raw_id
     # Replacer without API client
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: nil
     )
@@ -301,7 +301,7 @@ class MentionReplacerTest < Minitest::Test
                     ]
                   })
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: mock_api
     )
@@ -326,10 +326,10 @@ class MentionReplacerTest < Minitest::Test
   def test_subteam_api_error_falls_back_gracefully
     api_client = Object.new
     api_client.define_singleton_method(:post) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, 'not_allowed'
+      raise Slk::ApiError, 'not_allowed'
     end
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: api_client
     )
@@ -349,7 +349,7 @@ class MentionReplacerTest < Minitest::Test
                     ]
                   })
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: mock_api
     )
@@ -365,13 +365,13 @@ class MentionReplacerTest < Minitest::Test
     debug_messages = []
     api_client = Object.new
     api_client.define_singleton_method(:post) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, 'user_not_found'
+      raise Slk::ApiError, 'user_not_found'
     end
     api_client.define_singleton_method(:post_form) do |_workspace, _method, _params = {}|
-      raise SlackCli::ApiError, 'user_not_found'
+      raise Slk::ApiError, 'user_not_found'
     end
 
-    replacer = SlackCli::Formatters::MentionReplacer.new(
+    replacer = Slk::Formatters::MentionReplacer.new(
       cache_store: @cache,
       api_client: api_client,
       on_debug: ->(msg) { debug_messages << msg }

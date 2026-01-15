@@ -6,11 +6,11 @@ class MessageFormatterTest < Minitest::Test
   def setup
     @io = StringIO.new
     @err = StringIO.new
-    @output = SlackCli::Formatters::Output.new(io: @io, err: @err, color: false)
-    @mention_replacer = SlackCli::Formatters::MentionReplacer.new(cache_store: MockCache.new)
-    @emoji_replacer = SlackCli::Formatters::EmojiReplacer.new
+    @output = Slk::Formatters::Output.new(io: @io, err: @err, color: false)
+    @mention_replacer = Slk::Formatters::MentionReplacer.new(cache_store: MockCache.new)
+    @emoji_replacer = Slk::Formatters::EmojiReplacer.new
     @cache = MockCache.new
-    @formatter = SlackCli::Formatters::MessageFormatter.new(
+    @formatter = Slk::Formatters::MessageFormatter.new(
       output: @output,
       mention_replacer: @mention_replacer,
       emoji_replacer: @emoji_replacer,
@@ -139,7 +139,7 @@ class MessageFormatterTest < Minitest::Test
       'text' => text,
       'thread_ts' => thread_ts
     }
-    SlackCli::Models::Message.from_api(data)
+    Slk::Models::Message.from_api(data)
   end
   # rubocop:enable Naming/MethodParameterName
 
@@ -150,7 +150,7 @@ class MessageFormatterTest < Minitest::Test
       'text' => text,
       'reactions' => reactions
     }
-    SlackCli::Models::Message.from_api(data)
+    Slk::Models::Message.from_api(data)
   end
 
   # rubocop:disable Naming/MethodParameterName
@@ -162,18 +162,18 @@ class MessageFormatterTest < Minitest::Test
       'thread_ts' => thread_ts,
       'reply_count' => reply_count
     }
-    SlackCli::Models::Message.from_api(data)
+    Slk::Models::Message.from_api(data)
   end
   # rubocop:enable Naming/MethodParameterName
 
   def create_message_with_reaction_timestamps(text:, reactions:)
     # Build reactions with timestamps using with_timestamps
     built_reactions = reactions.map do |r|
-      reaction = SlackCli::Models::Reaction.from_api({
-                                                       'name' => r['name'],
-                                                       'count' => r['count'],
-                                                       'users' => r['users']
-                                                     })
+      reaction = Slk::Models::Reaction.from_api({
+                                                  'name' => r['name'],
+                                                  'count' => r['count'],
+                                                  'users' => r['users']
+                                                })
       reaction = reaction.with_timestamps(r['user_timestamps']) if r['user_timestamps']
       reaction
     end
@@ -185,10 +185,10 @@ class MessageFormatterTest < Minitest::Test
       'text' => text,
       'reactions' => []
     }
-    base_message = SlackCli::Models::Message.from_api(data)
+    base_message = Slk::Models::Message.from_api(data)
 
     # Return new message with our custom reactions
-    SlackCli::Models::Message.new(
+    Slk::Models::Message.new(
       ts: base_message.ts,
       user_id: base_message.user_id,
       text: base_message.text,

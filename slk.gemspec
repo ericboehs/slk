@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require_relative 'lib/slack_cli/version'
+require_relative 'lib/slk/version'
 
 Gem::Specification.new do |spec|
   spec.name = 'slk'
-  spec.version = SlackCli::VERSION
+  spec.version = Slk::VERSION
   spec.authors = ['Eric Boehs']
   spec.email = ['ericboehs@gmail.com']
 
