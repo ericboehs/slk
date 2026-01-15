@@ -78,7 +78,7 @@ module SlackCli
         end.join
       end
 
-      # rubocop:disable Metrics/ParameterLists
+      # rubocop:disable Metrics/ParameterLists, Naming/MethodParameterName
       def initialize(
         ts:,
         user_id:,
@@ -118,7 +118,7 @@ module SlackCli
           channel_id: channel_id&.freeze
         )
       end
-      # rubocop:enable Metrics/ParameterLists
+      # rubocop:enable Metrics/ParameterLists, Naming/MethodParameterName
 
       # Recursively freeze nested structures (arrays and hashes)
       def self.deep_freeze(obj)

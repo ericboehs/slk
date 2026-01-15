@@ -120,9 +120,9 @@ module SlackCli
         channel_hash
       end
 
-      def format_dm_json(workspace, im)
-        dm_hash = { id: im['id'], mentions: im['mention_count'] }
-        user_id = im['user_id'] || im['user']
+      def format_dm_json(workspace, dm_item)
+        dm_hash = { id: dm_item['id'], mentions: dm_item['mention_count'] }
+        user_id = dm_item['user_id'] || dm_item['user']
         if user_id
           user_name = cache_store.get_user(workspace.name, user_id)
           dm_hash[:user_name] = user_name if user_name

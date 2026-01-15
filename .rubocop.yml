@@ -1,12 +1,3 @@
 AllCops:
   TargetRubyVersion: 3.2
   NewCops: enable
-
-# Allow short parameter names that are domain-specific (Slack API uses ts, ws, id)
-Naming/MethodParameterName:
-  AllowedNames:
-    - ts
-    - ws
-    - im
-    - io
-    - id

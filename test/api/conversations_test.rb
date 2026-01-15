@@ -78,7 +78,7 @@ class ConversationsApiTest < Minitest::Test
                         ]
                       })
 
-    result = @api.replies(channel: 'C123', ts: '1234.0000')
+    result = @api.replies(channel: 'C123', timestamp: '1234.0000')
     assert_equal 2, result['messages'].size
 
     call = @mock_client.calls.last
@@ -113,7 +113,7 @@ class ConversationsApiTest < Minitest::Test
   def test_mark_calls_api
     @mock_client.stub('conversations.mark', { 'ok' => true })
 
-    @api.mark(channel: 'C123', ts: '1234.5678')
+    @api.mark(channel: 'C123', timestamp: '1234.5678')
 
     call = @mock_client.calls.last
     assert_equal 'conversations.mark', call[:method]

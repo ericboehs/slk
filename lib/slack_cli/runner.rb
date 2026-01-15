@@ -47,36 +47,36 @@ module SlackCli
     end
 
     # API helpers - create API instances bound to workspace
-    def users_api(ws = nil)
-      Api::Users.new(@api_client, workspace(ws), on_debug: ->(msg) { @output.debug(msg) })
+    def users_api(workspace_name = nil)
+      Api::Users.new(@api_client, workspace(workspace_name), on_debug: ->(msg) { @output.debug(msg) })
     end
 
-    def conversations_api(ws = nil)
-      Api::Conversations.new(@api_client, workspace(ws))
+    def conversations_api(workspace_name = nil)
+      Api::Conversations.new(@api_client, workspace(workspace_name))
     end
 
-    def dnd_api(ws = nil)
-      Api::Dnd.new(@api_client, workspace(ws))
+    def dnd_api(workspace_name = nil)
+      Api::Dnd.new(@api_client, workspace(workspace_name))
     end
 
-    def client_api(ws = nil)
-      Api::Client.new(@api_client, workspace(ws))
+    def client_api(workspace_name = nil)
+      Api::Client.new(@api_client, workspace(workspace_name))
     end
 
-    def emoji_api(ws = nil)
-      Api::Emoji.new(@api_client, workspace(ws))
+    def emoji_api(workspace_name = nil)
+      Api::Emoji.new(@api_client, workspace(workspace_name))
     end
 
-    def bots_api(ws = nil)
-      Api::Bots.new(@api_client, workspace(ws), on_debug: ->(msg) { @output.debug(msg) })
+    def bots_api(workspace_name = nil)
+      Api::Bots.new(@api_client, workspace(workspace_name), on_debug: ->(msg) { @output.debug(msg) })
     end
 
-    def threads_api(ws = nil)
-      Api::Threads.new(@api_client, workspace(ws))
+    def threads_api(workspace_name = nil)
+      Api::Threads.new(@api_client, workspace(workspace_name))
     end
 
-    def activity_api(ws = nil)
-      Api::Activity.new(@api_client, workspace(ws))
+    def activity_api(workspace_name = nil)
+      Api::Activity.new(@api_client, workspace(workspace_name))
     end
 
     # Formatter helpers

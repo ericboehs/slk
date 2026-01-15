@@ -151,9 +151,9 @@ module SlackCli
       end
 
       # Adjust a Slack timestamp by a small amount while preserving precision
-      def adjust_timestamp(ts, delta)
+      def adjust_timestamp(timestamp, delta)
         require 'bigdecimal'
-        (BigDecimal(ts) + BigDecimal(delta.to_s)).to_s('F')
+        (BigDecimal(timestamp) + BigDecimal(delta.to_s)).to_s('F')
       end
 
       def fetch_all_thread_replies(api, channel_id, thread_ts)
@@ -161,7 +161,7 @@ module SlackCli
         cursor = nil
 
         loop do
-          response = api.replies(channel: channel_id, ts: thread_ts, limit: 200, cursor: cursor)
+          response = api.replies(channel: channel_id, timestamp: thread_ts, limit: 200, cursor: cursor)
           page_messages = response['messages'] || []
           all_messages.concat(page_messages)
 

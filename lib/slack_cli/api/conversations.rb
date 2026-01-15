@@ -23,8 +23,8 @@ module SlackCli
         @api.post(@workspace, 'conversations.history', params)
       end
 
-      def replies(channel:, ts:, limit: 100, cursor: nil)
-        params = { channel: channel, ts: ts, limit: limit }
+      def replies(channel:, timestamp:, limit: 100, cursor: nil)
+        params = { channel: channel, ts: timestamp, limit: limit }
         params[:cursor] = cursor if cursor
         # Use form encoding - some workspaces (Enterprise Grid) require it
         @api.post_form(@workspace, 'conversations.replies', params)
@@ -35,8 +35,8 @@ module SlackCli
         @api.post(@workspace, 'conversations.open', { users: user_list })
       end
 
-      def mark(channel:, ts:)
-        @api.post(@workspace, 'conversations.mark', { channel: channel, ts: ts })
+      def mark(channel:, timestamp:)
+        @api.post(@workspace, 'conversations.mark', { channel: channel, ts: timestamp })
       end
 
       def info(channel:)

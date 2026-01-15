@@ -19,12 +19,12 @@ module SlackCli
       # Mark a thread as read
       # @param channel [String] Channel ID
       # @param thread_ts [String] Thread timestamp
-      # @param ts [String] Latest reply timestamp to mark as read
-      def mark(channel:, thread_ts:, ts:)
+      # @param timestamp [String] Latest reply timestamp to mark as read
+      def mark(channel:, thread_ts:, timestamp:)
         @api.post_form(@workspace, 'subscriptions.thread.mark', {
                          channel: channel,
                          thread_ts: thread_ts,
-                         ts: ts
+                         ts: timestamp
                        })
       end
 

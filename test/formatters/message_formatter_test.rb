@@ -131,6 +131,7 @@ class MessageFormatterTest < Minitest::Test
 
   private
 
+  # rubocop:disable Naming/MethodParameterName
   def create_message(ts: '1234567890.123456', user: 'U123ABC', text: 'Hello', thread_ts: nil)
     data = {
       'ts' => ts,
@@ -140,6 +141,7 @@ class MessageFormatterTest < Minitest::Test
     }
     SlackCli::Models::Message.from_api(data)
   end
+  # rubocop:enable Naming/MethodParameterName
 
   def create_message_with_reactions(text:, reactions:)
     data = {
@@ -151,6 +153,7 @@ class MessageFormatterTest < Minitest::Test
     SlackCli::Models::Message.from_api(data)
   end
 
+  # rubocop:disable Naming/MethodParameterName
   def create_message_with_thread(ts:, thread_ts:, text:, reply_count:)
     data = {
       'ts' => ts,
@@ -161,6 +164,7 @@ class MessageFormatterTest < Minitest::Test
     }
     SlackCli::Models::Message.from_api(data)
   end
+  # rubocop:enable Naming/MethodParameterName
 
   def create_message_with_reaction_timestamps(text:, reactions:)
     # Build reactions with timestamps using with_timestamps

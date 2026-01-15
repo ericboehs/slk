@@ -62,7 +62,7 @@ module SlackCli
         messages = history['messages']
         return false unless messages&.any?
 
-        @conversations.mark(channel: channel_id, ts: messages.first['ts'])
+        @conversations.mark(channel: channel_id, timestamp: messages.first['ts'])
         true
       rescue ApiError => e
         @on_debug&.call("Could not mark #{channel_id}: #{e.message}")
@@ -89,7 +89,7 @@ module SlackCli
         thread_ts = root_msg['thread_ts']
         latest_ts = unread_replies.map { |r| r['ts'] }.max
 
-        @threads.mark(channel: channel_id, thread_ts: thread_ts, ts: latest_ts)
+        @threads.mark(channel: channel_id, thread_ts: thread_ts, timestamp: latest_ts)
         true
       rescue ApiError => e
         @on_debug&.call("Could not mark thread #{thread_ts} in #{channel_id}: #{e.message}")

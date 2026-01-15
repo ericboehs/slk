@@ -175,13 +175,13 @@ module SlackCli
         process_conversation(workspace, channel, index, total, label)
       end
 
-      def process_dm(workspace, im, index, total)
-        channel_id = im['id']
+      def process_dm(workspace, dm_item, index, total)
+        channel_id = dm_item['id']
         conversations = runner.conversations_api(workspace.name)
         user_name = resolve_dm_user_name(workspace, channel_id, conversations)
         label = "@#{user_name}"
 
-        process_conversation(workspace, im, index, total, label)
+        process_conversation(workspace, dm_item, index, total, label)
       end
 
       def process_conversation(workspace, item, index, total, label)
@@ -244,7 +244,7 @@ module SlackCli
         when 'r'
           # Mark as read using the latest message timestamp
           if latest_ts
-            conversations.mark(channel: channel_id, ts: latest_ts)
+            conversations.mark(channel: channel_id, timestamp: latest_ts)
             success('Marked as read')
           end
           :next
@@ -332,7 +332,7 @@ module SlackCli
         threads_api = runner.threads_api(workspace.name)
         marked = 0
         thread_mark_data.each do |data|
-          threads_api.mark(channel: data[:channel], thread_ts: data[:thread_ts], ts: data[:ts])
+          threads_api.mark(channel: data[:channel], thread_ts: data[:thread_ts], timestamp: data[:ts])
           marked += 1
         rescue ApiError => e
           debug("Could not mark thread #{data[:thread_ts]} in #{data[:channel]}: #{e.message}")
