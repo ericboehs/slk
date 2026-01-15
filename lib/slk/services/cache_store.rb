@@ -21,6 +21,13 @@ module Slk
         @user_cache.dig(workspace_name, user_id)
       end
 
+      def get_user_id_by_name(workspace_name, name)
+        load_user_cache(workspace_name)
+        cache = @user_cache[workspace_name] || {}
+        # Reverse lookup: find user_id where display_name matches
+        cache.find { |_id, display_name| display_name == name }&.first
+      end
+
       def set_user(workspace_name, user_id, display_name, persist: false)
         load_user_cache(workspace_name)
         @user_cache[workspace_name] ||= {}

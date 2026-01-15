@@ -126,8 +126,17 @@ module Slk
         case response
         when Net::HTTPSuccess then parse_success_response(response)
         when Net::HTTPUnauthorized then raise ApiError, 'Invalid token or session expired'
-        when Net::HTTPTooManyRequests then raise ApiError, 'Rate limited - please wait and try again'
+        when Net::HTTPTooManyRequests then handle_rate_limit(response)
         else raise ApiError, "HTTP #{response.code}: #{response.message}"
+        end
+      end
+
+      def handle_rate_limit(response)
+        retry_after = response['Retry-After']
+        if retry_after
+          raise ApiError, "Rate limited - retry after #{retry_after} seconds"
+        else
+          raise ApiError, 'Rate limited - please wait and try again'
         end
       end
 

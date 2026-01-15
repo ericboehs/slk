@@ -91,6 +91,15 @@ module Slk
       end
 
       def find_user_id(workspace, username)
+        # Check cache first (reverse lookup by name)
+        cached_id = @cache.get_user_id_by_name(workspace.name, username)
+        return cached_id if cached_id
+
+        # Fall back to API call
+        fetch_user_id_from_api(workspace, username)
+      end
+
+      def fetch_user_id_from_api(workspace, username)
         api = @runner.users_api(workspace.name)
         response = api.list
         users = response['members'] || []
@@ -99,6 +108,14 @@ module Slk
           u['name'] == username ||
             u.dig('profile', 'display_name') == username ||
             u.dig('profile', 'real_name') == username
+        end
+
+        # Cache the result if found
+        if user
+          display_name = user.dig('profile', 'display_name').to_s.strip
+          display_name = user.dig('profile', 'real_name') if display_name.empty?
+          display_name = user['name'] if display_name.to_s.empty?
+          @cache.set_user(workspace.name, user['id'], display_name, persist: true)
         end
 
         user&.dig('id')
