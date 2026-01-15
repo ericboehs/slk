@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- TODO: Remove post_install_message from slk.gemspec before releasing 0.3.0 -->
 
+## [0.2.0] - 2025-01-15
+
 ### Added
 
 - `--workspace-emoji` flag for messages command to display custom workspace emoji as inline images (experimental, requires iTerm2/WezTerm/Mintty)
@@ -61,4 +63,5 @@ Initial release of the Ruby rewrite. Pure Ruby, no external dependencies.
   - Pure Ruby stdlib - no gem dependencies
   - Ruby 3.2+ with modern features (Data.define, pattern matching)
 
+[0.2.0]: https://github.com/ericboehs/slk/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ericboehs/slk/releases/tag/v0.1.0
