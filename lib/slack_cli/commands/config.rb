@@ -66,72 +66,13 @@ module SlackCli
       end
 
       def run_setup
-        puts 'Slack CLI Setup'
-        puts '==============='
-        puts
-
-        # Check for existing config
-        if runner.workspaces?
-          puts 'You already have workspaces configured.'
-          print 'Add another workspace? (y/n): '
-          answer = $stdin.gets&.chomp&.downcase
-          return 0 unless answer == 'y'
-        end
-
-        # Setup encryption
-        if config.ssh_key.nil?
-          puts
-          puts 'Encryption Setup (optional)'
-          puts '----------------------------'
-          puts 'You can encrypt your tokens with age using an SSH key.'
-          print 'SSH key path (or press Enter to skip): '
-          ssh_key = $stdin.gets&.chomp
-
-          unless ssh_key.nil? || ssh_key.empty?
-            if File.exist?(ssh_key)
-              config.ssh_key = ssh_key
-              success('SSH key configured')
-            else
-              warn("File not found: #{ssh_key}")
-            end
-          end
-        end
-
-        # Add workspace
-        puts
-        puts 'Workspace Setup'
-        puts '---------------'
-
-        print 'Workspace name: '
-        name = $stdin.gets&.chomp
-        return error('Name is required') if name.nil? || name.empty?
-
-        print 'Token (xoxb-... or xoxc-...): '
-        token = $stdin.gets&.chomp
-        return error('Token is required') if token.nil? || token.empty?
-
-        cookie = nil
-        if token.start_with?('xoxc-')
-          puts
-          puts 'xoxc tokens require a cookie for authentication.'
-          print 'Cookie (d=...): '
-          cookie = $stdin.gets&.chomp
-        end
-
-        token_store.add(name, token, cookie)
-
-        # Set as primary if first
-        config.primary_workspace = name if config.primary_workspace.nil?
-
-        puts
-        success('Setup complete!')
-        puts
-        puts 'Try these commands:'
-        puts '  slack status           - View your status'
-        puts '  slack messages #general - Read channel messages'
-        puts '  slack help             - See all commands'
-
-        0
+        wizard = Services::SetupWizard.new(
+          runner: runner,
+          config: config,
+          token_store: token_store,
+          output: output
+        )
+        wizard.run
       end
 
       def get_value(key)
