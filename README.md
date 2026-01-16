@@ -12,6 +12,22 @@ gem install slk
 
 Requires Ruby 3.2+.
 
+### Windows
+
+```powershell
+# Install Ruby (if needed) via RubyInstaller or Chocolatey
+winget install RubyInstallerTeam.Ruby.3.3
+# or: choco install ruby
+
+# Install slk
+gem install slk
+
+# (Optional) Install age for encrypted token storage
+choco install age.portable
+```
+
+Configuration is stored in `%APPDATA%\slk\` on Windows.
+
 ## Setup
 
 Run the setup wizard:
@@ -155,13 +171,13 @@ Tokens will be stored encrypted in `~/.config/slk/tokens.age`.
 
 ## Configuration
 
-Files are stored in XDG-compliant locations:
+Files are stored in XDG-compliant locations (or `%APPDATA%`/`%LOCALAPPDATA%` on Windows):
 
-- **Config**: `~/.config/slk/`
+- **Config**: `~/.config/slk/` (Windows: `%APPDATA%\slk\`)
   - `config.json` - Settings
   - `tokens.json` or `tokens.age` - Workspace tokens
   - `presets.json` - Status presets
-- **Cache**: `~/.cache/slk/`
+- **Cache**: `~/.cache/slk/` (Windows: `%LOCALAPPDATA%\slk\`)
   - `users-{workspace}.json` - User cache
   - `channels-{workspace}.json` - Channel cache
 

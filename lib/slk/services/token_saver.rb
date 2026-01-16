@@ -61,11 +61,18 @@ module Slk
       def save_plaintext(tokens)
         temp_file = "#{plain_tokens_file}.tmp"
         File.write(temp_file, JSON.pretty_generate(tokens))
-        File.chmod(0o600, temp_file)
+        restrict_file_permissions(temp_file)
         FileUtils.mv(temp_file, plain_tokens_file)
       rescue *FILE_ERRORS => e
         FileUtils.rm_f(temp_file)
         raise TokenStoreError, "Failed to save tokens: #{e.message}"
+      end
+
+      # Restrict file to owner-only access.
+      # On Unix: chmod 600. On Windows: chmod is a no-op for security;
+      # files in %APPDATA% are already user-private by default.
+      def restrict_file_permissions(file)
+        File.chmod(0o600, file) unless Gem.win_platform?
       end
 
       def encrypted_tokens_file
