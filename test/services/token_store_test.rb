@@ -398,6 +398,8 @@ class TokenStoreTest < Minitest::Test
 
   # File permissions test
   def test_add_creates_file_with_restricted_permissions
+    skip 'File permissions not applicable on Windows' if Gem.win_platform?
+
     with_temp_config do |dir|
       store = Slk::Services::TokenStore.new
       store.add('testws', 'xoxb-test')

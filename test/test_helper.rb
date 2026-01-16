@@ -39,13 +39,21 @@ module Slk
       Dir.mktmpdir('slk-test') do |dir|
         old_config = ENV.fetch('XDG_CONFIG_HOME', nil)
         old_cache = ENV.fetch('XDG_CACHE_HOME', nil)
+        old_appdata = ENV.fetch('APPDATA', nil)
+        old_localappdata = ENV.fetch('LOCALAPPDATA', nil)
+
         ENV['XDG_CONFIG_HOME'] = dir
         ENV['XDG_CACHE_HOME'] = "#{dir}/cache"
+        # Also set Windows env vars for cross-platform compatibility
+        ENV['APPDATA'] = dir
+        ENV['LOCALAPPDATA'] = "#{dir}/cache"
 
         yield dir
       ensure
         ENV['XDG_CONFIG_HOME'] = old_config
         ENV['XDG_CACHE_HOME'] = old_cache
+        ENV['APPDATA'] = old_appdata
+        ENV['LOCALAPPDATA'] = old_localappdata
       end
     end
 
