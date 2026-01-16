@@ -143,8 +143,10 @@ class ConfigCommandTest < Minitest::Test
       result = command.execute
 
       assert_equal 0, result
-      # Path should be expanded (absolute)
-      assert @config.data['ssh_key'].start_with?('/')
+      # Path should be expanded (absolute) - check for both Unix (/) and Windows (drive letter)
+      expanded_path = @config.data['ssh_key']
+      assert(expanded_path.start_with?('/') || expanded_path.match?(/^[A-Za-z]:/),
+             "Expected absolute path, got: #{expanded_path}")
     end
   end
 

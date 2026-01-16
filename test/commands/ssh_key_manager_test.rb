@@ -88,7 +88,8 @@ class SshKeyManagerTest < Minitest::Test
       result = manager.set('/path/to/key')
 
       assert result[:success]
-      assert_match %r{Set ssh_key = /path/to/key}, result[:message]
+      # On Windows, path gets expanded to D:/path/to/key
+      assert_match(/Set ssh_key = .*path.to.key/, result[:message])
     end
   end
 
