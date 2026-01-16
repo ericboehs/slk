@@ -43,7 +43,7 @@ class SshKeyManagerTest < Minitest::Test
 
   def test_set_returns_error_on_encryption_error
     config = mock_config
-    token_store = mock_token_store(migrate_encryption: ->(_o, _n) { raise Slk::EncryptionError, 'Key invalid' })
+    token_store = mock_token_store(migrate_encryption: ->(_o, _n, _ctx) { raise Slk::EncryptionError, 'Key invalid' })
 
     manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
 
@@ -55,7 +55,7 @@ class SshKeyManagerTest < Minitest::Test
 
   def test_set_returns_error_on_file_not_found
     config = mock_config
-    token_store = mock_token_store(migrate_encryption: ->(_o, _n) { raise Errno::ENOENT, 'No such file' })
+    token_store = mock_token_store(migrate_encryption: ->(_o, _n, _ctx) { raise Errno::ENOENT, 'No such file' })
 
     manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
 
@@ -67,7 +67,7 @@ class SshKeyManagerTest < Minitest::Test
 
   def test_set_returns_error_on_permission_denied
     config = mock_config
-    token_store = mock_token_store(migrate_encryption: ->(_o, _n) { raise Errno::EACCES, 'Permission denied' })
+    token_store = mock_token_store(migrate_encryption: ->(_o, _n, _ctx) { raise Errno::EACCES, 'Permission denied' })
 
     manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
 
@@ -104,7 +104,9 @@ class SshKeyManagerTest < Minitest::Test
 
   def test_unset_returns_error_on_encryption_error
     config = mock_config(ssh_key: '/old/key')
-    token_store = mock_token_store(migrate_encryption: ->(_o, _n) { raise Slk::EncryptionError, 'Decrypt failed' })
+    token_store = mock_token_store(migrate_encryption: lambda { |_o, _n, _ctx|
+      raise Slk::EncryptionError, 'Decrypt failed'
+    })
 
     manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
 
@@ -119,7 +121,6 @@ class SshKeyManagerTest < Minitest::Test
 
     config = mock_config
     token_store = mock_token_store(
-      capture_on_info: true,
       migrate_encryption: ->(_o, _n, ctx) { ctx[:on_info]&.call('Migration info') }
     )
 
@@ -136,7 +137,6 @@ class SshKeyManagerTest < Minitest::Test
 
     config = mock_config
     token_store = mock_token_store(
-      capture_on_warning: true,
       migrate_encryption: ->(_o, _n, ctx) { ctx[:on_warning]&.call('Migration warning') }
     )
 
@@ -170,32 +170,14 @@ class SshKeyManagerTest < Minitest::Test
     end
   end
 
-  def mock_token_store(migrate_encryption: nil, capture_on_info: false, capture_on_warning: false)
+  def mock_token_store(migrate_encryption: nil)
+    ctx = {}
     Object.new.tap do |store|
-      ctx = {}
-
-      if capture_on_info
-        store.define_singleton_method(:on_info=) { |cb| ctx[:on_info] = cb }
-      else
-        store.define_singleton_method(:on_info=) { |_cb| nil }
-      end
-
-      if capture_on_warning
-        store.define_singleton_method(:on_warning=) { |cb| ctx[:on_warning] = cb }
-      else
-        store.define_singleton_method(:on_warning=) { |_cb| nil }
-      end
-
+      store.define_singleton_method(:on_info=) { |cb| ctx[:on_info] = cb }
+      store.define_singleton_method(:on_warning=) { |cb| ctx[:on_warning] = cb }
       store.define_singleton_method(:on_prompt_pub_key=) { |_cb| nil }
-
-      if migrate_encryption
-        if migrate_encryption.arity == 3
-          store.define_singleton_method(:migrate_encryption) { |o, n| migrate_encryption.call(o, n, ctx) }
-        else
-          store.define_singleton_method(:migrate_encryption) { |o, n| migrate_encryption.call(o, n) }
-        end
-      else
-        store.define_singleton_method(:migrate_encryption) { |_o, _n| nil }
+      store.define_singleton_method(:migrate_encryption) do |o, n|
+        migrate_encryption&.call(o, n, ctx)
       end
     end
   end
