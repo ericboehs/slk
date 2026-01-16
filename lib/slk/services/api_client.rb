@@ -71,7 +71,7 @@ module Slk
       def safe_close(http)
         http.finish if http.started?
       rescue IOError
-        # Connection already closed
+        # Connection already closed - this is expected, not an error
       end
 
       def execute_request(method, query_params = nil, body: nil, &)

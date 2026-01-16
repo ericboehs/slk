@@ -345,6 +345,57 @@ class TokenStoreTest < Minitest::Test
     end
   end
 
+  def test_migrate_encryption_from_key_to_different_key
+    skip unless can_create_test_ssh_key?
+    skip unless age_available?
+
+    with_temp_config do |dir|
+      # Create two different ed25519 keys
+      key1_path = "#{dir}/test_key1"
+      key2_path = "#{dir}/test_key2"
+      system("ssh-keygen -t ed25519 -f #{key1_path} -N '' -q")
+      system("ssh-keygen -t ed25519 -f #{key2_path} -N '' -q")
+
+      # Write plaintext tokens first, then encrypt with key1
+      write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-secret-token' } })
+      store = Slk::Services::TokenStore.new
+      store.migrate_encryption(nil, key1_path)
+
+      config_dir = "#{dir}/slk"
+      encrypted_file = "#{config_dir}/tokens.age"
+      assert File.exist?(encrypted_file)
+
+      # Read original encrypted content for comparison
+      original_encrypted = File.read(encrypted_file)
+
+      # Now migrate from key1 to key2
+      messages = []
+      store.on_info = ->(msg) { messages << msg }
+      store.migrate_encryption(key1_path, key2_path)
+
+      # Encrypted file should still exist
+      assert File.exist?(encrypted_file)
+
+      # Content should be different (re-encrypted with new key)
+      new_encrypted = File.read(encrypted_file)
+      refute_equal original_encrypted, new_encrypted, 'File should be re-encrypted with new key'
+
+      # Verify we can decrypt with key2 and get original content
+      encryption = Slk::Services::Encryption.new
+      decrypted = encryption.decrypt(encrypted_file, key2_path)
+      tokens = JSON.parse(decrypted)
+      assert_equal 'xoxb-secret-token', tokens['myworkspace']['token']
+
+      # Verify we cannot decrypt with key1 anymore
+      assert_raises(Slk::EncryptionError) do
+        encryption.decrypt(encrypted_file, key1_path)
+      end
+
+      # Should have notified about re-encryption
+      assert_includes messages, 'Tokens have been re-encrypted with the new SSH key.'
+    end
+  end
+
   # File permissions test
   def test_add_creates_file_with_restricted_permissions
     with_temp_config do |dir|

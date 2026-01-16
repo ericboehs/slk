@@ -15,30 +15,33 @@ class EncryptionTest < Minitest::Test
 
   # validate_key_type! tests
   def test_validate_key_type_accepts_ed25519
+    skip unless can_create_test_ssh_key?
+
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      File.write(key_path, 'dummy private key')
-      File.write("#{key_path}.pub", 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@host')
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
 
       assert @encryption.validate_key_type!(key_path)
     end
   end
 
   def test_validate_key_type_accepts_rsa
+    skip unless can_create_test_ssh_key?
+
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      File.write(key_path, 'dummy private key')
-      File.write("#{key_path}.pub", 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAB... user@host')
+      system("ssh-keygen -t rsa -b 2048 -f #{key_path} -N '' -q")
 
       assert @encryption.validate_key_type!(key_path)
     end
   end
 
   def test_validate_key_type_rejects_ecdsa
+    skip unless can_create_test_ssh_key?
+
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      File.write(key_path, 'dummy private key')
-      File.write("#{key_path}.pub", 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTI... user@host')
+      system("ssh-keygen -t ecdsa -b 256 -f #{key_path} -N '' -q")
 
       error = assert_raises(Slk::EncryptionError) do
         @encryption.validate_key_type!(key_path)
@@ -62,10 +65,13 @@ class EncryptionTest < Minitest::Test
   end
 
   def test_validate_key_type_raises_when_public_key_missing
+    skip unless can_create_test_ssh_key?
+
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      File.write(key_path, 'dummy private key')
-      # No .pub file created
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      # Remove the .pub file
+      File.delete("#{key_path}.pub")
 
       error = assert_raises(Slk::EncryptionError) do
         @encryption.validate_key_type!(key_path)
@@ -76,11 +82,15 @@ class EncryptionTest < Minitest::Test
   end
 
   def test_validate_key_type_prompts_for_pub_key_when_not_found
+    skip unless can_create_test_ssh_key?
+
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
       alt_pub_path = "#{dir}/alt_key.pub"
-      File.write(key_path, 'dummy private key')
-      File.write(alt_pub_path, 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@host')
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+
+      # Move the pub key to an alternate location
+      FileUtils.mv("#{key_path}.pub", alt_pub_path)
 
       @encryption.on_prompt_pub_key = ->(_path) { alt_pub_path }
 
@@ -89,9 +99,12 @@ class EncryptionTest < Minitest::Test
   end
 
   def test_validate_key_type_rejects_empty_pub_file
+    skip unless can_create_test_ssh_key?
+
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      File.write(key_path, 'dummy private key')
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      # Overwrite the pub file with empty content
       File.write("#{key_path}.pub", '')
 
       error = assert_raises(Slk::EncryptionError) do
@@ -134,6 +147,72 @@ class EncryptionTest < Minitest::Test
     end
   end
 
+  def test_validate_key_type_raises_for_passphrase_protected_key
+    skip unless can_create_test_ssh_key?
+
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/test_key"
+      # Create a passphrase-protected key
+      system("ssh-keygen -t ed25519 -f #{key_path} -N 'testpassphrase' -q")
+
+      error = assert_raises(Slk::EncryptionError) do
+        @encryption.validate_key_type!(key_path)
+      end
+
+      assert_match(/Cannot verify key pair/, error.message)
+      assert_match(/passphrase-protected or corrupted/, error.message)
+    end
+  end
+
+  def test_validate_key_type_rejects_prompted_ecdsa_key
+    skip unless can_create_test_ssh_key?
+
+    Dir.mktmpdir do |dir|
+      # Create an ed25519 private key
+      key_path = "#{dir}/test_key"
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      # Remove the default pub file
+      File.delete("#{key_path}.pub")
+
+      # Create an ECDSA key for the prompted public key
+      ecdsa_path = "#{dir}/ecdsa_key"
+      system("ssh-keygen -t ecdsa -b 256 -f #{ecdsa_path} -N '' -q")
+
+      @encryption.on_prompt_pub_key = ->(_path) { "#{ecdsa_path}.pub" }
+
+      error = assert_raises(Slk::EncryptionError) do
+        @encryption.validate_key_type!(key_path)
+      end
+
+      assert_match(/Unsupported SSH key type: ecdsa-sha2-nistp256/, error.message)
+    end
+  end
+
+  def test_validate_key_type_rejects_prompted_mismatched_key
+    skip unless can_create_test_ssh_key?
+
+    Dir.mktmpdir do |dir|
+      # Create first ed25519 key
+      key1_path = "#{dir}/key1"
+      system("ssh-keygen -t ed25519 -f #{key1_path} -N '' -q")
+      # Remove the default pub file
+      File.delete("#{key1_path}.pub")
+
+      # Create second ed25519 key (different key pair)
+      key2_path = "#{dir}/key2"
+      system("ssh-keygen -t ed25519 -f #{key2_path} -N '' -q")
+
+      # Prompt returns key2's public key for key1's private key
+      @encryption.on_prompt_pub_key = ->(_path) { "#{key2_path}.pub" }
+
+      error = assert_raises(Slk::EncryptionError) do
+        @encryption.validate_key_type!(key1_path)
+      end
+
+      assert_match(/Public key does not match private key/, error.message)
+    end
+  end
+
   # encrypt tests
   def test_encrypt_raises_when_age_not_available
     encryption = Slk::Services::Encryption.new
@@ -150,10 +229,13 @@ class EncryptionTest < Minitest::Test
 
   def test_encrypt_raises_when_public_key_not_found
     skip unless @encryption.available?
+    skip unless can_create_test_ssh_key?
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      File.write(key_path, 'dummy private key')
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      # Remove the pub file
+      File.delete("#{key_path}.pub")
       output_path = "#{dir}/output.age"
 
       error = assert_raises(Slk::EncryptionError) do

@@ -253,6 +253,23 @@ class CacheStoreTest < Minitest::Test
     end
   end
 
+  def test_corrupted_cache_file_is_deleted
+    with_temp_config do |dir|
+      cache_dir = "#{dir}/cache/slk"
+      FileUtils.mkdir_p(cache_dir)
+      corrupted_file = "#{cache_dir}/users-workspace1.json"
+      File.write(corrupted_file, 'not valid json{')
+
+      store = Slk::Services::CacheStore.new
+      store.on_warning = ->(_msg) {} # suppress warning
+
+      # Accessing the cache should delete the corrupted file
+      store.get_user('workspace1', 'U123')
+
+      refute File.exist?(corrupted_file), 'Corrupted cache file should be deleted'
+    end
+  end
+
   # Cache access logging tests
   def test_on_cache_access_callback_is_settable
     with_temp_config do

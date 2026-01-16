@@ -61,13 +61,20 @@ module Slk
 
       def decrypt_with_key(ssh_key)
         content = @encryption.decrypt(encrypted_tokens_file, ssh_key)
-        content ? JSON.parse(content) : {}
+        if content.nil?
+          raise TokenStoreError, "Encrypted tokens file disappeared unexpectedly: #{encrypted_tokens_file}"
+        end
+
+        JSON.parse(content)
       rescue JSON::ParserError => e
         raise TokenStoreError, "Encrypted tokens file is corrupted: #{e.message}"
       end
 
       def parse_plain_file
-        JSON.parse(File.read(plain_tokens_file))
+        content = File.read(plain_tokens_file)
+        JSON.parse(content)
+      rescue Errno::ENOENT
+        raise TokenStoreError, "Tokens file disappeared unexpectedly: #{plain_tokens_file}"
       rescue JSON::ParserError => e
         raise TokenStoreError, "Tokens file #{plain_tokens_file} is corrupted: #{e.message}"
       end

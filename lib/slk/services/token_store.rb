@@ -69,13 +69,15 @@ module Slk
         @encryption.on_prompt_pub_key = @on_prompt_pub_key
         @encryption.validate_key_type!(new_ssh_key) if new_ssh_key
         @saver.save_with_cleanup(tokens, new_ssh_key)
-        notify_encryption_change(new_ssh_key)
+        notify_encryption_change(old_ssh_key, new_ssh_key)
       end
 
       private
 
-      def notify_encryption_change(new_ssh_key)
-        if new_ssh_key
+      def notify_encryption_change(old_ssh_key, new_ssh_key)
+        if new_ssh_key && old_ssh_key
+          @on_info&.call('Tokens have been re-encrypted with the new SSH key.')
+        elsif new_ssh_key
           @on_info&.call('Tokens have been encrypted with the new SSH key.')
         else
           @on_warning&.call('Tokens are now stored in plaintext.')

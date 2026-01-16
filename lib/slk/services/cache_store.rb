@@ -147,29 +147,37 @@ module Slk
       def load_user_cache(workspace_name)
         return if @user_cache.key?(workspace_name)
 
-        file = user_cache_file(workspace_name)
-        @user_cache[workspace_name] = if File.exist?(file)
-                                        JSON.parse(File.read(file))
-                                      else
-                                        {}
-                                      end
-      rescue JSON::ParserError => e
-        @on_warning&.call("User cache corrupted for #{workspace_name}: #{e.message}")
-        @user_cache[workspace_name] = {}
+        @user_cache[workspace_name] = load_cache_file(user_cache_file(workspace_name), 'User', workspace_name)
       end
 
       def load_channel_cache(workspace_name)
         return if @channel_cache.key?(workspace_name)
 
-        file = channel_cache_file(workspace_name)
-        @channel_cache[workspace_name] = if File.exist?(file)
-                                           JSON.parse(File.read(file))
-                                         else
-                                           {}
-                                         end
+        @channel_cache[workspace_name] = load_cache_file(channel_cache_file(workspace_name), 'Channel', workspace_name)
+      end
+
+      def load_subteam_cache(workspace_name)
+        return if @subteam_cache.key?(workspace_name)
+
+        @subteam_cache[workspace_name] = load_cache_file(subteam_cache_file(workspace_name), 'Subteam', workspace_name)
+      end
+
+      # Load and parse a JSON cache file, returning empty hash if missing.
+      # Corrupted files are deleted and rebuilt on next access.
+      def load_cache_file(file, cache_type, workspace_name)
+        return {} unless File.exist?(file)
+
+        JSON.parse(File.read(file))
       rescue JSON::ParserError => e
-        @on_warning&.call("Channel cache corrupted for #{workspace_name}: #{e.message}")
-        @channel_cache[workspace_name] = {}
+        @on_warning&.call("#{cache_type} cache corrupted for #{workspace_name}: #{e.message}. Cache will be rebuilt.")
+        safely_delete_file(file)
+        {}
+      end
+
+      def safely_delete_file(file)
+        FileUtils.rm(file)
+      rescue Errno::EACCES, Errno::EPERM, Errno::EROFS => e
+        @on_warning&.call("Could not remove corrupted cache file: #{e.message}")
       end
 
       def save_channel_cache(workspace_name)
@@ -186,20 +194,6 @@ module Slk
 
       def channel_cache_file(workspace_name)
         @paths.cache_file("channels-#{workspace_name}.json")
-      end
-
-      def load_subteam_cache(workspace_name)
-        return if @subteam_cache.key?(workspace_name)
-
-        file = subteam_cache_file(workspace_name)
-        @subteam_cache[workspace_name] = if File.exist?(file)
-                                           JSON.parse(File.read(file))
-                                         else
-                                           {}
-                                         end
-      rescue JSON::ParserError => e
-        @on_warning&.call("Subteam cache corrupted for #{workspace_name}: #{e.message}")
-        @subteam_cache[workspace_name] = {}
       end
 
       def save_subteam_cache(workspace_name)

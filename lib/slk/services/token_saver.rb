@@ -2,8 +2,20 @@
 
 module Slk
   module Services
-    # Handles saving tokens to encrypted or plaintext files
+    # Handles saving tokens to encrypted or plaintext files.
+    # Uses atomic writes (temp file + mv) for the token file itself.
     class TokenSaver
+      # File system errors we catch and wrap in TokenStoreError
+      FILE_ERRORS = [
+        Errno::ENOENT,
+        Errno::EACCES,
+        Errno::EPERM,
+        Errno::ENOSPC,
+        Errno::EDQUOT,
+        Errno::EROFS,
+        Errno::EIO
+      ].freeze
+
       def initialize(encryption:, paths:)
         @encryption = encryption
         @paths = paths
@@ -34,13 +46,26 @@ module Slk
       private
 
       def save_encrypted(tokens, ssh_key)
-        @encryption.encrypt(JSON.generate(tokens), ssh_key, encrypted_tokens_file)
+        temp_file = "#{encrypted_tokens_file}.tmp"
+        @encryption.encrypt(JSON.generate(tokens), ssh_key, temp_file)
+        FileUtils.mv(temp_file, encrypted_tokens_file)
         FileUtils.rm_f(plain_tokens_file)
+      rescue EncryptionError => e
+        FileUtils.rm_f(temp_file)
+        raise TokenStoreError, "Failed to encrypt tokens: #{e.message}"
+      rescue *FILE_ERRORS => e
+        FileUtils.rm_f(temp_file)
+        raise TokenStoreError, "Failed to save encrypted tokens: #{e.message}"
       end
 
       def save_plaintext(tokens)
-        File.write(plain_tokens_file, JSON.pretty_generate(tokens))
-        File.chmod(0o600, plain_tokens_file)
+        temp_file = "#{plain_tokens_file}.tmp"
+        File.write(temp_file, JSON.pretty_generate(tokens))
+        File.chmod(0o600, temp_file)
+        FileUtils.mv(temp_file, plain_tokens_file)
+      rescue *FILE_ERRORS => e
+        FileUtils.rm_f(temp_file)
+        raise TokenStoreError, "Failed to save tokens: #{e.message}"
       end
 
       def encrypted_tokens_file

@@ -23,6 +23,14 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby-version }}
 
+      - name: Install age (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get install -y age
+
+      - name: Install age (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install age
+
       - name: Run tests
         run: rake test
 

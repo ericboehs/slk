@@ -2,8 +2,24 @@
 
 module Slk
   module Commands
-    # Handles SSH key configuration and token migration
+    # Handles SSH key configuration and token migration.
+    # When the SSH key is changed, existing tokens are decrypted with the old key
+    # and re-encrypted with the new key. Supports prompting for public key location
+    # if not found at the default path (private_key.pub).
     class SshKeyManager
+      # File system errors mapped to user-friendly messages.
+      # These occur during SSH key file operations (reading keys, migrating tokens).
+      FILE_ERRORS = {
+        Errno::ENOENT => 'File not found',
+        Errno::EACCES => 'Permission denied',
+        Errno::EPERM => 'Permission denied',
+        Errno::ENOSPC => 'Disk full',
+        Errno::EDQUOT => 'Disk quota exceeded',
+        Errno::EROFS => 'Read-only file system'
+      }.freeze
+
+      attr_accessor :on_info, :on_warning
+
       def initialize(config:, token_store:, output:)
         @config = config
         @token_store = token_store
@@ -42,8 +58,8 @@ module Slk
         error(e.message)
       rescue ArgumentError => e
         error("Invalid path: #{e.message}")
-      rescue SystemCallError => e
-        error("File system error: #{e.message}")
+      rescue *FILE_ERRORS.keys => e
+        error("#{FILE_ERRORS[e.class]}: #{e.message}")
       end
 
       def normalize_path(path)
@@ -108,10 +124,6 @@ module Slk
       def error(message)
         { success: false, error: message }
       end
-
-      public
-
-      attr_accessor :on_info, :on_warning
     end
   end
 end
