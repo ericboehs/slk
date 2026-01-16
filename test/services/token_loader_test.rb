@@ -5,15 +5,13 @@ require 'test_helper'
 class TokenLoaderTest < Minitest::Test
   def setup
     @encryption = Slk::Services::Encryption.new
-    @paths = mock_paths
   end
 
   # load tests
   def test_load_returns_empty_hash_when_no_files_exist
-    loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: @paths)
-
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
+      paths = mock_paths(dir)
+      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: paths)
 
       result = loader.load('/path/to/key')
       assert_equal({}, result)
@@ -21,10 +19,9 @@ class TokenLoaderTest < Minitest::Test
   end
 
   def test_load_raises_when_encrypted_exists_without_ssh_key
-    loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: @paths)
-
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
+      paths = mock_paths(dir)
+      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: paths)
       File.write(File.join(dir, 'tokens.age'), 'encrypted')
 
       error = assert_raises(Slk::EncryptionError) do
@@ -36,10 +33,9 @@ class TokenLoaderTest < Minitest::Test
   end
 
   def test_load_parses_plain_file_when_no_encrypted_exists
-    loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: @paths)
-
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
+      paths = mock_paths(dir)
+      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: paths)
       File.write(File.join(dir, 'tokens.json'), '{"workspace": "token123"}')
 
       result = loader.load(nil)
@@ -48,10 +44,9 @@ class TokenLoaderTest < Minitest::Test
   end
 
   def test_load_raises_on_corrupted_plain_file
-    loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: @paths)
-
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
+      paths = mock_paths(dir)
+      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: paths)
       File.write(File.join(dir, 'tokens.json'), 'not valid json{')
 
       error = assert_raises(Slk::TokenStoreError) do
@@ -63,10 +58,9 @@ class TokenLoaderTest < Minitest::Test
   end
 
   def test_load_raises_when_plain_file_disappears
-    loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: @paths)
-
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
+      paths = mock_paths(dir)
+      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: paths)
       tokens_file = File.join(dir, 'tokens.json')
       File.write(tokens_file, '{}')
 
@@ -84,11 +78,10 @@ class TokenLoaderTest < Minitest::Test
 
   # load_auto tests
   def test_load_auto_returns_empty_hash_when_no_files
-    loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: @paths)
-    config = mock_config(ssh_key: nil)
-
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
+      paths = mock_paths(dir)
+      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: paths)
+      config = mock_config(ssh_key: nil)
 
       result = loader.load_auto(config)
       assert_equal({}, result)
@@ -96,11 +89,10 @@ class TokenLoaderTest < Minitest::Test
   end
 
   def test_load_auto_loads_plain_file_when_no_encrypted
-    loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: @paths)
-    config = mock_config(ssh_key: nil)
-
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
+      paths = mock_paths(dir)
+      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: paths)
+      config = mock_config(ssh_key: nil)
       File.write(File.join(dir, 'tokens.json'), '{"workspace": "token456"}')
 
       result = loader.load_auto(config)
@@ -109,11 +101,10 @@ class TokenLoaderTest < Minitest::Test
   end
 
   def test_load_auto_raises_when_encrypted_exists_without_config_ssh_key
-    loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: @paths)
-    config = mock_config(ssh_key: nil)
-
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
+      paths = mock_paths(dir)
+      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: paths)
+      config = mock_config(ssh_key: nil)
       File.write(File.join(dir, 'tokens.age'), 'encrypted')
 
       error = assert_raises(Slk::EncryptionError) do
@@ -126,10 +117,9 @@ class TokenLoaderTest < Minitest::Test
 
   # encrypted_file_exists? / plain_file_exists? tests
   def test_encrypted_file_exists_returns_true_when_file_present
-    loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: @paths)
-
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
+      paths = mock_paths(dir)
+      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: paths)
       File.write(File.join(dir, 'tokens.age'), 'content')
 
       assert loader.encrypted_file_exists?
@@ -137,20 +127,18 @@ class TokenLoaderTest < Minitest::Test
   end
 
   def test_encrypted_file_exists_returns_false_when_not_present
-    loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: @paths)
-
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
+      paths = mock_paths(dir)
+      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: paths)
 
       refute loader.encrypted_file_exists?
     end
   end
 
   def test_plain_file_exists_returns_true_when_file_present
-    loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: @paths)
-
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
+      paths = mock_paths(dir)
+      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: paths)
       File.write(File.join(dir, 'tokens.json'), '{}')
 
       assert loader.plain_file_exists?
@@ -166,14 +154,14 @@ class TokenLoaderTest < Minitest::Test
       key_path = "#{dir}/test_key"
       system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
 
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
+      paths = mock_paths(dir)
 
       # Encrypt tokens file
       tokens = { 'workspace' => 'secret_token' }
       encrypted_file = File.join(dir, 'tokens.age')
       @encryption.encrypt(JSON.generate(tokens), key_path, encrypted_file)
 
-      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: @paths)
+      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: paths)
       result = loader.load(key_path)
 
       assert_equal tokens, result
@@ -188,13 +176,13 @@ class TokenLoaderTest < Minitest::Test
       key_path = "#{dir}/test_key"
       system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
 
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
+      paths = mock_paths(dir)
 
       # Encrypt invalid JSON
       encrypted_file = File.join(dir, 'tokens.age')
       @encryption.encrypt('not valid json{', key_path, encrypted_file)
 
-      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: @paths)
+      loader = Slk::Services::TokenLoader.new(encryption: @encryption, paths: paths)
 
       error = assert_raises(Slk::TokenStoreError) do
         loader.load(key_path)
@@ -206,9 +194,9 @@ class TokenLoaderTest < Minitest::Test
 
   private
 
-  def mock_paths
+  def mock_paths(dir)
     Object.new.tap do |paths|
-      paths.define_singleton_method(:config_file) { |f| "/tmp/#{f}" }
+      paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
     end
   end
 
