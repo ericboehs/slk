@@ -23,6 +23,7 @@ module Slk
 
         public_key = find_public_key(ssh_key_path)
         validate_public_key_type!(public_key)
+        validate_key_pair_match!(ssh_key_path, public_key)
       end
 
       def encrypt(content, ssh_key_path, output_file)
@@ -69,6 +70,32 @@ module Slk
         raise EncryptionError,
               "Unsupported SSH key type: #{key_type || 'unknown'}. " \
               "age only supports: #{SUPPORTED_KEY_TYPES.join(', ')}"
+      end
+
+      def validate_key_pair_match!(private_key_path, public_key_path)
+        derived_pub = derive_public_key(private_key_path)
+        return true unless derived_pub # Skip if ssh-keygen not available
+
+        provided_pub = File.read(public_key_path).lines.first&.strip || ''
+        return true if keys_match?(derived_pub, provided_pub)
+
+        raise EncryptionError,
+              'Public key does not match private key. ' \
+              'Please provide the correct public key for this private key.'
+      end
+
+      def derive_public_key(private_key_path)
+        output, _error, status = Open3.capture3('ssh-keygen', '-y', '-f', private_key_path)
+        return nil unless status.success?
+
+        output.strip
+      end
+
+      def keys_match?(derived, provided)
+        # Compare key type and key data (first two fields), ignore comment
+        derived_parts = derived.split[0..1]
+        provided_parts = provided.split[0..1]
+        derived_parts == provided_parts
       end
 
       def run_age_encrypt(content, public_key, output_file)

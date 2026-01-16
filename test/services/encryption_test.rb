@@ -102,6 +102,38 @@ class EncryptionTest < Minitest::Test
     end
   end
 
+  def test_validate_key_type_rejects_mismatched_key_pair
+    skip unless can_create_test_ssh_key?
+
+    Dir.mktmpdir do |dir|
+      # Create two different key pairs
+      key1_path = "#{dir}/key1"
+      key2_path = "#{dir}/key2"
+      system("ssh-keygen -t ed25519 -f #{key1_path} -N '' -q")
+      system("ssh-keygen -t ed25519 -f #{key2_path} -N '' -q")
+
+      # Use key1's private key with key2's public key
+      File.write("#{key1_path}.pub", File.read("#{key2_path}.pub"))
+
+      error = assert_raises(Slk::EncryptionError) do
+        @encryption.validate_key_type!(key1_path)
+      end
+
+      assert_match(/Public key does not match private key/, error.message)
+    end
+  end
+
+  def test_validate_key_type_accepts_matching_key_pair
+    skip unless can_create_test_ssh_key?
+
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/test_key"
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+
+      assert @encryption.validate_key_type!(key_path)
+    end
+  end
+
   # encrypt tests
   def test_encrypt_raises_when_age_not_available
     encryption = Slk::Services::Encryption.new
