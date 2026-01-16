@@ -319,6 +319,10 @@ class EncryptionTest < Minitest::Test
   private
 
   def can_create_test_ssh_key?
-    system('which ssh-keygen > /dev/null 2>&1')
+    require 'open3'
+    _, _, status = Open3.capture3('ssh-keygen', '-V')
+    status.success?
+  rescue Errno::ENOENT
+    false
   end
 end

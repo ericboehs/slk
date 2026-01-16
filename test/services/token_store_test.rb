@@ -460,10 +460,18 @@ class TokenStoreTest < Minitest::Test
   end
 
   def can_create_test_ssh_key?
-    system('which ssh-keygen > /dev/null 2>&1')
+    require 'open3'
+    _, _, status = Open3.capture3('ssh-keygen', '-V')
+    status.success?
+  rescue Errno::ENOENT
+    false
   end
 
   def age_available?
-    system('which age > /dev/null 2>&1')
+    require 'open3'
+    _, _, status = Open3.capture3('age', '--version')
+    status.success?
+  rescue Errno::ENOENT
+    false
   end
 end
