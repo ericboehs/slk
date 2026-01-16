@@ -40,6 +40,8 @@ module Slk
     autoload :ApiClient, 'slk/services/api_client'
     autoload :Configuration, 'slk/services/configuration'
     autoload :TokenStore, 'slk/services/token_store'
+    autoload :TokenLoader, 'slk/services/token_loader'
+    autoload :TokenSaver, 'slk/services/token_saver'
     autoload :CacheStore, 'slk/services/cache_store'
     autoload :PresetStore, 'slk/services/preset_store'
     autoload :Encryption, 'slk/services/encryption'
