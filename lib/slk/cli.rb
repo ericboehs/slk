@@ -131,11 +131,45 @@ module Slk
     end
 
     def setup_very_verbose_logging(runner, output)
+      setup_response_header_logging(runner, output)
+      setup_request_body_logging(runner, output)
+      setup_response_body_logging(runner, output)
+      setup_cache_logging(runner, output)
+    end
+
+    def setup_response_header_logging(runner, output)
       runner.api_client.on_response = lambda { |method, code, headers|
         next if headers.empty?
 
-        parts = headers.map { |k, v| "#{k.sub('X-RateLimit-', '')}=#{v}" }
+        elapsed = headers.delete('elapsed_ms')
+        req_id = headers.delete('X-Slack-Req-Id')
+        rate_parts = headers.map { |k, v| "#{k.sub('X-RateLimit-', '')}=#{v}" }
+
+        parts = ["#{elapsed}ms"]
+        parts << "req=#{req_id}" if req_id
+        parts.concat(rate_parts)
         output.debug("  #{method} #{code}: #{parts.join(', ')}")
+      }
+    end
+
+    def setup_request_body_logging(runner, output)
+      runner.api_client.on_request_body = lambda { |method, body|
+        truncated = body.length > 500 ? "#{body[0..500]}..." : body
+        output.debug("  #{method} request: #{truncated}")
+      }
+    end
+
+    def setup_response_body_logging(runner, output)
+      runner.api_client.on_response_body = lambda { |method, body|
+        truncated = body.length > 500 ? "#{body[0..500]}..." : body
+        output.debug("  #{method} response: #{truncated}")
+      }
+    end
+
+    def setup_cache_logging(runner, output)
+      runner.cache_store.on_cache_access = lambda { |type, _workspace, key, hit, value|
+        status = hit ? "HIT (#{value})" : 'MISS'
+        output.debug("  [Cache] #{type} #{key}: #{status}")
       }
     end
 

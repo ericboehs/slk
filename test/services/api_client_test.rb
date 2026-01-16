@@ -29,6 +29,24 @@ class ApiClientTest < Minitest::Test
     assert_equal callback, @client.on_request
   end
 
+  def test_on_response_callback_is_settable
+    callback = ->(method, code, _headers) { "#{method}: #{code}" }
+    @client.on_response = callback
+    assert_equal callback, @client.on_response
+  end
+
+  def test_on_request_body_callback_is_settable
+    callback = ->(method, body) { "#{method}: #{body}" }
+    @client.on_request_body = callback
+    assert_equal callback, @client.on_request_body
+  end
+
+  def test_on_response_body_callback_is_settable
+    callback = ->(method, body) { "#{method}: #{body}" }
+    @client.on_response_body = callback
+    assert_equal callback, @client.on_response_body
+  end
+
   # close() tests
   def test_close_returns_without_error_when_no_connections
     @client.close # Should not raise

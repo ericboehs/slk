@@ -5,7 +5,7 @@ module Slk
     # Persistent cache for user names, channel names, and subteams
     # rubocop:disable Metrics/ClassLength
     class CacheStore
-      attr_accessor :on_warning
+      attr_accessor :on_warning, :on_cache_access
 
       def initialize(paths: nil)
         @paths = paths || Support::XdgPaths.new
@@ -13,19 +13,24 @@ module Slk
         @channel_cache = {}
         @subteam_cache = {}
         @on_warning = nil
+        @on_cache_access = nil
       end
 
       # User cache methods
       def get_user(workspace_name, user_id)
         load_user_cache(workspace_name)
-        @user_cache.dig(workspace_name, user_id)
+        result = @user_cache.dig(workspace_name, user_id)
+        log_cache_access('user', workspace_name, user_id, result)
+        result
       end
 
       def get_user_id_by_name(workspace_name, name)
         load_user_cache(workspace_name)
         cache = @user_cache[workspace_name] || {}
         # Reverse lookup: find user_id where display_name matches
-        cache.find { |_id, display_name| display_name == name }&.first
+        result = cache.find { |_id, display_name| display_name == name }&.first
+        log_cache_access('user_by_name', workspace_name, name, result)
+        result
       end
 
       def set_user(workspace_name, user_id, display_name, persist: false)
@@ -73,13 +78,17 @@ module Slk
       # Channel cache methods
       def get_channel_id(workspace_name, channel_name)
         load_channel_cache(workspace_name)
-        @channel_cache.dig(workspace_name, channel_name)
+        result = @channel_cache.dig(workspace_name, channel_name)
+        log_cache_access('channel_id', workspace_name, channel_name, result)
+        result
       end
 
       def get_channel_name(workspace_name, channel_id)
         load_channel_cache(workspace_name)
         cache = @channel_cache[workspace_name] || {}
-        cache.key(channel_id)
+        result = cache.key(channel_id)
+        log_cache_access('channel_name', workspace_name, channel_id, result)
+        result
       end
 
       def set_channel(workspace_name, channel_name, channel_id)
@@ -102,7 +111,9 @@ module Slk
       # Subteam cache methods
       def get_subteam(workspace_name, subteam_id)
         load_subteam_cache(workspace_name)
-        @subteam_cache.dig(workspace_name, subteam_id)
+        result = @subteam_cache.dig(workspace_name, subteam_id)
+        log_cache_access('subteam', workspace_name, subteam_id, result)
+        result
       end
 
       def set_subteam(workspace_name, subteam_id, handle)
@@ -201,6 +212,13 @@ module Slk
 
       def subteam_cache_file(workspace_name)
         @paths.cache_file("subteams-#{workspace_name}.json")
+      end
+
+      def log_cache_access(type, workspace, key, result)
+        return unless @on_cache_access
+
+        hit = !result.nil?
+        @on_cache_access.call(type, workspace, key, hit, result)
       end
     end
     # rubocop:enable Metrics/ClassLength

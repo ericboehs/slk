@@ -252,4 +252,41 @@ class CacheStoreTest < Minitest::Test
       assert_match(/Subteam cache corrupted/, warnings.first)
     end
   end
+
+  # Cache access logging tests
+  def test_on_cache_access_callback_is_settable
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      callback = ->(type, _workspace, _key, hit, _value) { "#{type}: #{hit}" }
+      store.on_cache_access = callback
+      assert_equal callback, store.on_cache_access
+    end
+  end
+
+  def test_on_cache_access_logs_cache_hit
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      accesses = []
+      store.on_cache_access = ->(type, _workspace, _key, hit, value) { accesses << [type, hit, value] }
+
+      store.set_user('workspace1', 'U123', 'John')
+      store.get_user('workspace1', 'U123')
+
+      assert_equal 1, accesses.size
+      assert_equal ['user', true, 'John'], accesses.first
+    end
+  end
+
+  def test_on_cache_access_logs_cache_miss
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      accesses = []
+      store.on_cache_access = ->(type, _workspace, _key, hit, value) { accesses << [type, hit, value] }
+
+      store.get_user('workspace1', 'U999')
+
+      assert_equal 1, accesses.size
+      assert_equal ['user', false, nil], accesses.first
+    end
+  end
 end

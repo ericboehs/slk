@@ -20,12 +20,14 @@ module Slk
       ].freeze
 
       attr_reader :call_count
-      attr_accessor :on_request, :on_response
+      attr_accessor :on_request, :on_response, :on_request_body, :on_response_body
 
       def initialize
         @call_count = 0
         @on_request = nil
         @on_response = nil
+        @on_request_body = nil
+        @on_response_body = nil
         @http_cache = {}
       end
 
@@ -36,10 +38,11 @@ module Slk
       end
 
       def post(workspace, method, params = {})
-        execute_request(method) do |uri, http|
+        body = params.empty? ? nil : JSON.generate(params)
+        execute_request(method, body: body) do |uri, http|
           request = Net::HTTP::Post.new(uri)
           workspace.headers.each { |k, v| request[k] = v }
-          request.body = JSON.generate(params) unless params.empty?
+          request.body = body
           http.request(request)
         end
       end
@@ -54,10 +57,11 @@ module Slk
 
       # Form-encoded POST (some Slack endpoints require this)
       def post_form(workspace, method, params = {})
-        execute_request(method) do |uri, http|
+        body = params.empty? ? nil : URI.encode_www_form(params)
+        execute_request(method, body: body) do |uri, http|
           request = Net::HTTP::Post.new(uri)
           apply_auth_headers(request, workspace)
-          request.set_form_data(params)
+          request.set_form_data(params) unless params.empty?
           http.request(request)
         end
       end
@@ -70,17 +74,30 @@ module Slk
         # Connection already closed
       end
 
-      def execute_request(method, query_params = nil)
+      def execute_request(method, query_params = nil, body: nil, &)
         log_request(method)
-        uri = URI("#{BASE_URL}/#{method}")
-        uri.query = URI.encode_www_form(query_params) if query_params&.any?
-
-        http = get_http(uri)
-        response = yield(uri, http)
-        log_response(method, response)
+        log_request_body(method, body)
+        uri = build_uri(method, query_params)
+        response, elapsed_ms = timed_request(uri, &)
+        log_response(method, response, elapsed_ms)
+        log_response_body(method, response.body)
         handle_response(response, method)
       rescue *NETWORK_ERRORS => e
         raise ApiError, "Network error: #{e.message}"
+      end
+
+      def build_uri(method, query_params)
+        uri = URI("#{BASE_URL}/#{method}")
+        uri.query = URI.encode_www_form(query_params) if query_params&.any?
+        uri
+      end
+
+      def timed_request(uri)
+        start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        http = get_http(uri)
+        response = yield(uri, http)
+        elapsed_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time) * 1000).round(1)
+        [response, elapsed_ms]
       end
 
       def apply_auth_headers(request, workspace)
@@ -93,10 +110,16 @@ module Slk
         @on_request&.call(method, @call_count)
       end
 
-      def log_response(method, response)
+      def log_request_body(method, body)
+        @on_request_body&.call(method, body) if body
+      end
+
+      def log_response(method, response, elapsed_ms)
         return unless @on_response
 
         headers = {
+          'elapsed_ms' => elapsed_ms,
+          'X-Slack-Req-Id' => response['X-Slack-Req-Id'],
           'X-RateLimit-Limit' => response['X-RateLimit-Limit'],
           'X-RateLimit-Remaining' => response['X-RateLimit-Remaining'],
           'X-RateLimit-Reset' => response['X-RateLimit-Reset'],
@@ -104,6 +127,10 @@ module Slk
         }.compact
 
         @on_response.call(method, response.code, headers)
+      end
+
+      def log_response_body(method, body)
+        @on_response_body&.call(method, body) if body
       end
 
       # Get or create a persistent HTTP connection for the given URI
