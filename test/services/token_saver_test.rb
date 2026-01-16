@@ -23,9 +23,11 @@ class TokenSaverTest < Minitest::Test
       assert File.exist?(plain_file)
       assert_equal tokens, JSON.parse(File.read(plain_file))
 
-      # Check file permissions
-      mode = File.stat(plain_file).mode & 0o777
-      assert_equal 0o600, mode, 'Plain tokens file should have 600 permissions'
+      # Check file permissions (Unix only - Windows doesn't support chmod)
+      unless Gem.win_platform?
+        mode = File.stat(plain_file).mode & 0o777
+        assert_equal 0o600, mode, 'Plain tokens file should have 600 permissions'
+      end
     end
   end
 
