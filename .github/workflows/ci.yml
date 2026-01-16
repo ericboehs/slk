@@ -31,17 +31,6 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: brew install age
 
-      - name: Cache Chocolatey packages
-        if: matrix.os == 'windows-latest'
-        uses: actions/cache@v4
-        with:
-          path: C:\Users\runneradmin\AppData\Local\Temp\chocolatey
-          key: chocolatey-age-portable
-
-      - name: Install age (Windows)
-        if: matrix.os == 'windows-latest'
-        run: choco install age.portable -y
-
       - name: Run tests
         run: rake test
 
