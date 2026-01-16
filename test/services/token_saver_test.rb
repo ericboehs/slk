@@ -5,16 +5,13 @@ require 'test_helper'
 class TokenSaverTest < Minitest::Test
   def setup
     @encryption = Slk::Services::Encryption.new
-    @paths = mock_paths
   end
 
   # save tests
   def test_save_writes_plaintext_when_no_ssh_key
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
-      @paths.define_singleton_method(:ensure_config_dir) { FileUtils.mkdir_p(dir) }
-
-      saver = Slk::Services::TokenSaver.new(encryption: @encryption, paths: @paths)
+      paths = mock_paths(dir)
+      saver = Slk::Services::TokenSaver.new(encryption: @encryption, paths: paths)
       tokens = { 'workspace' => 'token123' }
 
       saver.save(tokens, nil)
@@ -33,14 +30,13 @@ class TokenSaverTest < Minitest::Test
 
   def test_save_with_cleanup_removes_other_format
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
-      @paths.define_singleton_method(:ensure_config_dir) { FileUtils.mkdir_p(dir) }
+      paths = mock_paths(dir)
 
       # Create encrypted file first
       encrypted_file = File.join(dir, 'tokens.age')
       File.write(encrypted_file, 'old encrypted')
 
-      saver = Slk::Services::TokenSaver.new(encryption: @encryption, paths: @paths)
+      saver = Slk::Services::TokenSaver.new(encryption: @encryption, paths: paths)
       tokens = { 'workspace' => 'token123' }
 
       saver.save_with_cleanup(tokens, nil)
@@ -58,13 +54,12 @@ class TokenSaverTest < Minitest::Test
     skip 'chmod does not prevent writes on Windows' if Gem.win_platform?
 
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
-      @paths.define_singleton_method(:ensure_config_dir) { FileUtils.mkdir_p(dir) }
+      paths = mock_paths(dir)
 
       # Make directory read-only to force write failure
       File.chmod(0o555, dir)
 
-      saver = Slk::Services::TokenSaver.new(encryption: @encryption, paths: @paths)
+      saver = Slk::Services::TokenSaver.new(encryption: @encryption, paths: paths)
 
       error = assert_raises(Slk::TokenStoreError) do
         saver.save({ 'test' => 'token' }, nil)
@@ -78,14 +73,13 @@ class TokenSaverTest < Minitest::Test
 
   def test_save_uses_atomic_writes
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
-      @paths.define_singleton_method(:ensure_config_dir) { FileUtils.mkdir_p(dir) }
+      paths = mock_paths(dir)
 
       # Write initial tokens
       plain_file = File.join(dir, 'tokens.json')
       File.write(plain_file, '{"old": "data"}')
 
-      saver = Slk::Services::TokenSaver.new(encryption: @encryption, paths: @paths)
+      saver = Slk::Services::TokenSaver.new(encryption: @encryption, paths: paths)
       tokens = { 'workspace' => 'newtoken' }
 
       saver.save(tokens, nil)
@@ -107,10 +101,8 @@ class TokenSaverTest < Minitest::Test
       key_path = "#{dir}/test_key"
       system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
 
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
-      @paths.define_singleton_method(:ensure_config_dir) { FileUtils.mkdir_p(dir) }
-
-      saver = Slk::Services::TokenSaver.new(encryption: @encryption, paths: @paths)
+      paths = mock_paths(dir)
+      saver = Slk::Services::TokenSaver.new(encryption: @encryption, paths: paths)
       tokens = { 'workspace' => 'secret_token' }
 
       saver.save(tokens, key_path)
@@ -134,14 +126,13 @@ class TokenSaverTest < Minitest::Test
     skip unless @encryption.available?
 
     Dir.mktmpdir do |dir|
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
-      @paths.define_singleton_method(:ensure_config_dir) { FileUtils.mkdir_p(dir) }
+      paths = mock_paths(dir)
 
       # Create a fake encryption that fails with EncryptionError
       failing_encryption = Object.new
       failing_encryption.define_singleton_method(:encrypt) { |_c, _k, _o| raise Slk::EncryptionError, 'Encryption failed' }
 
-      saver = Slk::Services::TokenSaver.new(encryption: failing_encryption, paths: @paths)
+      saver = Slk::Services::TokenSaver.new(encryption: failing_encryption, paths: paths)
 
       assert_raises(Slk::TokenStoreError) do
         saver.save({ 'test' => 'token' }, '/path/to/key')
@@ -161,14 +152,13 @@ class TokenSaverTest < Minitest::Test
       key_path = "#{dir}/test_key"
       system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
 
-      @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
-      @paths.define_singleton_method(:ensure_config_dir) { FileUtils.mkdir_p(dir) }
+      paths = mock_paths(dir)
 
       # Create plain file first
       plain_file = File.join(dir, 'tokens.json')
       File.write(plain_file, '{"old": "plain_token"}')
 
-      saver = Slk::Services::TokenSaver.new(encryption: @encryption, paths: @paths)
+      saver = Slk::Services::TokenSaver.new(encryption: @encryption, paths: paths)
       tokens = { 'workspace' => 'new_secret' }
 
       saver.save_with_cleanup(tokens, key_path)
@@ -181,10 +171,10 @@ class TokenSaverTest < Minitest::Test
 
   private
 
-  def mock_paths
+  def mock_paths(dir)
     Object.new.tap do |paths|
-      paths.define_singleton_method(:config_file) { |f| "/tmp/#{f}" }
-      paths.define_singleton_method(:ensure_config_dir) { nil }
+      paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
+      paths.define_singleton_method(:ensure_config_dir) { FileUtils.mkdir_p(dir) }
     end
   end
 
