@@ -55,6 +55,8 @@ class TokenSaverTest < Minitest::Test
   end
 
   def test_save_raises_on_write_failure
+    skip 'chmod does not prevent writes on Windows' if Gem.win_platform?
+
     Dir.mktmpdir do |dir|
       @paths.define_singleton_method(:config_file) { |f| File.join(dir, f) }
       @paths.define_singleton_method(:ensure_config_dir) { FileUtils.mkdir_p(dir) }
