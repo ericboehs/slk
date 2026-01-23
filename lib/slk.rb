@@ -32,6 +32,7 @@ module Slk
     autoload :User, 'slk/models/user'
     autoload :Channel, 'slk/models/channel'
     autoload :Preset, 'slk/models/preset'
+    autoload :SearchResult, 'slk/models/search_result'
   end
 
   # Application services for configuration, caching, and API communication
@@ -64,6 +65,7 @@ module Slk
     autoload :ActivityFormatter, 'slk/formatters/activity_formatter'
     autoload :AttachmentFormatter, 'slk/formatters/attachment_formatter'
     autoload :BlockFormatter, 'slk/formatters/block_formatter'
+    autoload :SearchFormatter, 'slk/formatters/search_formatter'
   end
 
   # CLI commands implementing user-facing functionality
@@ -77,6 +79,7 @@ module Slk
     autoload :Unread, 'slk/commands/unread'
     autoload :Catchup, 'slk/commands/catchup'
     autoload :Activity, 'slk/commands/activity'
+    autoload :Search, 'slk/commands/search'
     autoload :Preset, 'slk/commands/preset'
     autoload :Workspaces, 'slk/commands/workspaces'
     autoload :Cache, 'slk/commands/cache'
@@ -96,6 +99,7 @@ module Slk
     autoload :Threads, 'slk/api/threads'
     autoload :Usergroups, 'slk/api/usergroups'
     autoload :Activity, 'slk/api/activity'
+    autoload :Search, 'slk/api/search'
   end
 
   # Utility classes for paths, parsing, and helpers
@@ -108,5 +112,6 @@ module Slk
     autoload :UserResolver, 'slk/support/user_resolver'
     autoload :TextWrapper, 'slk/support/text_wrapper'
     autoload :InteractivePrompt, 'slk/support/interactive_prompt'
+    autoload :DateParser, 'slk/support/date_parser'
   end
 end

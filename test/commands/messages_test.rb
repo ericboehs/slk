@@ -108,6 +108,72 @@ class MessagesCommandTest < Minitest::Test
     assert_equal '1234567890.123455', result
   end
 
+  def test_since_option_parses_duration
+    command = build_command(['#general', '--since', '7d'])
+
+    # Access the options
+    options = command.instance_variable_get(:@options)
+    assert_equal '7d', options[:since]
+  end
+
+  def test_since_option_parses_iso_date
+    command = build_command(['#general', '--since', '2024-01-15'])
+
+    options = command.instance_variable_get(:@options)
+    assert_equal '2024-01-15', options[:since]
+  end
+
+  def test_since_option_missing_value_raises_error
+    error = assert_raises(ArgumentError) do
+      build_command(['#general', '--since'])
+    end
+
+    assert_includes error.message, '--since requires'
+  end
+
+  def test_since_option_invalid_format_shows_error
+    @mock_client.stub('conversations.history', {
+                        'ok' => true,
+                        'messages' => []
+                      })
+
+    command = build_command(['#general', '--since', 'invalid'])
+
+    command.define_singleton_method(:target_resolver) do
+      resolver = Object.new
+      ws = Slk::Models::Workspace.new(name: 'test', token: 'xoxb-test')
+      result = Slk::Services::TargetResolver::Result.new(
+        workspace: ws, channel_id: 'C123', thread_ts: nil, msg_ts: nil
+      )
+      resolver.define_singleton_method(:resolve) { |_target, **_opts| result }
+      resolver
+    end
+
+    result = command.execute
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Invalid date format'
+  end
+
+  def test_determine_oldest_timestamp_with_since
+    command = build_command(['#general', '--since', '7d'])
+
+    # Mock Time.now to get consistent results
+    timestamp = command.send(:determine_oldest_timestamp, nil)
+
+    # Should return a Slack timestamp string
+    assert_match(/^\d+\.\d{6}$/, timestamp)
+  end
+
+  def test_determine_oldest_timestamp_url_takes_precedence
+    command = build_command(['#general', '--since', '7d'])
+
+    timestamp = command.send(:determine_oldest_timestamp, '1234567890.123456')
+
+    # URL-based oldest should take precedence, adjusted slightly
+    assert_equal '1234567890.123455', timestamp
+  end
+
   def test_json_output_option
     @mock_client.stub('conversations.history', {
                         'ok' => true,

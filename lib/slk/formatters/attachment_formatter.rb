@@ -18,16 +18,30 @@ module Slk
 
       private
 
+      # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       def format_attachment(attachment, lines, options)
         att_text = attachment['text'] || attachment['fallback']
         image_url = attachment['image_url'] || attachment['thumb_url']
+        block_images = extract_block_images(attachment)
 
-        return unless att_text || image_url
+        return unless att_text || image_url || block_images.any?
 
         lines << ''
         format_author(attachment, lines)
-        format_text(att_text, lines, options) if att_text
+        format_text(att_text, lines, options) if att_text && block_images.empty?
         format_image(attachment, image_url, lines) if image_url
+        block_images.each { |img| lines << "> [Image: #{img}]" }
+      end
+      # rubocop:enable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+
+      def extract_block_images(attachment)
+        return [] unless attachment['blocks']
+
+        attachment['blocks'].filter_map do |block|
+          next unless block['type'] == 'image'
+
+          block.dig('title', 'text') || 'Image'
+        end
       end
 
       def format_author(attachment, lines)

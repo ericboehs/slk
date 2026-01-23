@@ -10,6 +10,7 @@ module Slk
     class Messages < Base
       include Support::InlineImages
 
+      # rubocop:disable Metrics/MethodLength
       def execute
         result = validate_options
         return result if result
@@ -22,7 +23,11 @@ module Slk
       rescue ApiError => e
         error("Failed to fetch messages: #{e.message}")
         1
+      rescue ArgumentError => e
+        error(e.message)
+        1
       end
+      # rubocop:enable Metrics/MethodLength
 
       def missing_target_error
         error('Usage: slk messages <channel|@user|url>')
@@ -53,17 +58,26 @@ module Slk
           limit: 500,
           limit_set: false,
           threads: false,
-          workspace_emoji: false
+          workspace_emoji: false,
+          since: nil
         )
       end
 
       def handle_option(arg, args, remaining)
         case arg
         when '-n', '--limit' then handle_limit_option(args)
+        when '--since' then handle_since_option(args)
         when '--threads' then @options[:threads] = true
         when '--workspace-emoji' then @options[:workspace_emoji] = true
         else super
         end
+      end
+
+      def handle_since_option(args)
+        value = args.shift
+        raise ArgumentError, '--since requires a duration (1d, 7d, 1w, 1m) or date (YYYY-MM-DD)' unless value
+
+        @options[:since] = value
       end
 
       def handle_limit_option(args)
@@ -99,6 +113,7 @@ module Slk
 
       def add_message_options(section)
         section.option('-n, --limit N', 'Number of messages (default: 500, or 50 for message URLs)')
+        section.option('--since DURATION', 'Messages since duration (1d, 7d, 1w, 1m) or date (YYYY-MM-DD)')
         section.option('--threads', 'Show thread replies inline')
         section.option('--workspace-emoji', 'Show workspace emoji as inline images (experimental)')
       end
@@ -172,9 +187,19 @@ module Slk
       end
 
       def fetch_channel_history(api, channel_id, oldest)
-        oldest_adjusted = oldest ? adjust_timestamp(oldest, -0.000001) : nil
-        response = api.history(channel: channel_id, limit: @options[:limit], oldest: oldest_adjusted)
+        oldest_ts = determine_oldest_timestamp(oldest)
+        response = api.history(channel: channel_id, limit: @options[:limit], oldest: oldest_ts)
         response['messages'] || []
+      end
+
+      def determine_oldest_timestamp(oldest_from_url)
+        # URL-based oldest takes precedence
+        return adjust_timestamp(oldest_from_url, -0.000001) if oldest_from_url
+
+        # Otherwise use --since if provided
+        return Support::DateParser.to_slack_timestamp(@options[:since]) if @options[:since]
+
+        nil
       end
 
       # Adjust a Slack timestamp by a small amount while preserving precision
