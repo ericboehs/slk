@@ -10,6 +10,7 @@ module Slk
     class Messages < Base
       include Support::InlineImages
 
+      # rubocop:disable Metrics/MethodLength
       def execute
         result = validate_options
         return result if result
@@ -26,6 +27,7 @@ module Slk
         error(e.message)
         1
       end
+      # rubocop:enable Metrics/MethodLength
 
       def missing_target_error
         error('Usage: slk messages <channel|@user|url>')

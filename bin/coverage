@@ -8,8 +8,6 @@ gemfile do
   gem 'nokogiri'
 end
 
-require 'set'
-
 # Path to the SimpleCov HTML report
 coverage_file = File.join(Dir.pwd, 'coverage', 'index.html')
 

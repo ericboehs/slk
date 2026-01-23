@@ -18,6 +18,7 @@ module Slk
 
       private
 
+      # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       def format_attachment(attachment, lines, options)
         att_text = attachment['text'] || attachment['fallback']
         image_url = attachment['image_url'] || attachment['thumb_url']
@@ -31,6 +32,7 @@ module Slk
         format_image(attachment, image_url, lines) if image_url
         block_images.each { |img| lines << "> [Image: #{img}]" }
       end
+      # rubocop:enable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
       def extract_block_images(attachment)
         return [] unless attachment['blocks']
