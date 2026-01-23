@@ -43,6 +43,7 @@ module Slk
             #{output.cyan('presence')}     Get or set your presence (away/active)
             #{output.cyan('dnd')}          Manage Do Not Disturb
             #{output.cyan('messages')}     Read channel or DM messages
+            #{output.cyan('search')}       Search messages across channels
             #{output.cyan('unread')}       View and clear unread messages
             #{output.cyan('preset')}       Manage and apply status presets
             #{output.cyan('workspaces')}   Manage Slack workspaces

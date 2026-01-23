@@ -79,6 +79,10 @@ module Slk
       Api::Activity.new(@api_client, workspace(workspace_name))
     end
 
+    def search_api(workspace_name = nil)
+      Api::Search.new(@api_client, workspace(workspace_name))
+    end
+
     # Formatter helpers
     def message_formatter
       @message_formatter ||= Formatters::MessageFormatter.new(
@@ -105,6 +109,14 @@ module Slk
 
     def duration_formatter
       @duration_formatter ||= Formatters::DurationFormatter.new
+    end
+
+    def search_formatter
+      @search_formatter ||= Formatters::SearchFormatter.new(
+        output: @output,
+        emoji_replacer: emoji_replacer,
+        mention_replacer: mention_replacer
+      )
     end
 
     # Logging
