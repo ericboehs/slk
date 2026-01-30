@@ -147,14 +147,37 @@ module Slk
       end
 
       def output_json_messages(messages, workspace, channel_id)
-        format_options = {
-          no_names: @options[:no_names],
-          reaction_timestamps: @options[:reaction_timestamps],
-          channel_id: channel_id
-        }
-        output_json(messages.map do |m|
-          runner.message_formatter.format_json(m, workspace: workspace, options: format_options)
-        end)
+        format_options = json_format_options(channel_id)
+
+        json_messages = messages.map do |message|
+          format_message_as_json(message, workspace, channel_id, format_options)
+        end
+
+        output_json(json_messages)
+      end
+
+      def json_format_options(channel_id)
+        { no_names: @options[:no_names], reaction_timestamps: @options[:reaction_timestamps], channel_id: channel_id }
+      end
+
+      def format_message_as_json(message, workspace, channel_id, format_options)
+        result = runner.message_formatter.format_json(message, workspace: workspace, options: format_options)
+        if should_show_thread?(message)
+          result[:replies] =
+            fetch_thread_replies_json(workspace, channel_id, message, format_options)
+        end
+        result
+      end
+
+      def fetch_thread_replies_json(workspace, channel_id, parent_message, format_options)
+        api = runner.conversations_api(workspace.name)
+        replies = fetch_all_thread_replies(api, channel_id, parent_message.ts)
+
+        # Skip parent (first element), format each reply as JSON
+        replies[1..].map do |reply_data|
+          reply = Models::Message.from_api(reply_data, channel_id: channel_id)
+          runner.message_formatter.format_json(reply, workspace: workspace, options: format_options)
+        end
       end
 
       # Apply default limit based on target type (50 for message URLs, 500 otherwise)
