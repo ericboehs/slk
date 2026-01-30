@@ -202,7 +202,98 @@ class MessagesCommandTest < Minitest::Test
     assert_equal 'Hello', output.first['text']
   end
 
+  def test_json_threads_option_includes_nested_replies
+    # Parent message with reply_count indicates it's a thread parent
+    @mock_client.stub('conversations.history', {
+                        'ok' => true,
+                        'messages' => [
+                          { 'ts' => '1234.0001', 'user' => 'U123', 'text' => 'Parent message',
+                            'reply_count' => 2, 'thread_ts' => '1234.0001' }
+                        ]
+                      })
+    # Thread replies endpoint
+    @mock_client.stub('conversations.replies', {
+                        'ok' => true,
+                        'messages' => [
+                          { 'ts' => '1234.0001', 'user' => 'U123', 'text' => 'Parent message',
+                            'thread_ts' => '1234.0001' },
+                          { 'ts' => '1234.0002', 'user' => 'U456', 'text' => 'First reply',
+                            'thread_ts' => '1234.0001' },
+                          { 'ts' => '1234.0003', 'user' => 'U789', 'text' => 'Second reply',
+                            'thread_ts' => '1234.0001' }
+                        ]
+                      })
+
+    command = build_command(['#general', '--json', '--threads'])
+    stub_target_resolver(command)
+
+    result = command.execute
+
+    assert_equal 0, result
+    output = JSON.parse(@io.string)
+    assert_instance_of Array, output
+    assert_equal 1, output.length
+
+    parent = output.first
+    assert_equal 'Parent message', parent['text']
+    assert parent.key?('replies'), 'Expected replies key to be present'
+    assert_equal 2, parent['replies'].length
+    assert_equal 'First reply', parent['replies'][0]['text']
+    assert_equal 'Second reply', parent['replies'][1]['text']
+  end
+
+  def test_json_without_threads_option_omits_replies_key
+    @mock_client.stub('conversations.history', {
+                        'ok' => true,
+                        'messages' => [
+                          { 'ts' => '1234.0001', 'user' => 'U123', 'text' => 'Parent message',
+                            'reply_count' => 2, 'thread_ts' => '1234.0001' }
+                        ]
+                      })
+
+    command = build_command(['#general', '--json'])
+    stub_target_resolver(command)
+
+    result = command.execute
+
+    assert_equal 0, result
+    output = JSON.parse(@io.string)
+    parent = output.first
+    refute parent.key?('replies'), 'Expected replies key to be absent without --threads'
+  end
+
+  def test_json_threads_option_omits_replies_for_message_without_thread
+    @mock_client.stub('conversations.history', {
+                        'ok' => true,
+                        'messages' => [
+                          { 'ts' => '1234.0001', 'user' => 'U123', 'text' => 'Regular message' }
+                        ]
+                      })
+
+    command = build_command(['#general', '--json', '--threads'])
+    stub_target_resolver(command)
+
+    result = command.execute
+
+    assert_equal 0, result
+    output = JSON.parse(@io.string)
+    parent = output.first
+    refute parent.key?('replies'), 'Expected replies key to be absent for non-thread message'
+  end
+
   private
+
+  def stub_target_resolver(command)
+    command.define_singleton_method(:target_resolver) do
+      resolver = Object.new
+      ws = Slk::Models::Workspace.new(name: 'test', token: 'xoxb-test')
+      result = Slk::Services::TargetResolver::Result.new(
+        workspace: ws, channel_id: 'C123', thread_ts: nil, msg_ts: nil
+      )
+      resolver.define_singleton_method(:resolve) { |_target, **_opts| result }
+      resolver
+    end
+  end
 
   def build_command(args)
     runner = build_runner
