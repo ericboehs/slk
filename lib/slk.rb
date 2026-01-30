@@ -53,6 +53,7 @@ module Slk
     autoload :UnreadMarker, 'slk/services/unread_marker'
     autoload :TargetResolver, 'slk/services/target_resolver'
     autoload :SetupWizard, 'slk/services/setup_wizard'
+    autoload :UserLookup, 'slk/services/user_lookup'
   end
 
   # Output formatters for messages, durations, and emoji
