@@ -8,11 +8,11 @@ module Slk
       WINDOWS = Gem.win_platform?
 
       def config_dir
-        @config_dir ||= File.join(default_config_base, 'slk')
+        @config_dir ||= normalize_path(File.join(default_config_base, 'slk'))
       end
 
       def cache_dir
-        @cache_dir ||= File.join(default_cache_base, 'slk')
+        @cache_dir ||= normalize_path(File.join(default_cache_base, 'slk'))
       end
 
       private
@@ -27,6 +27,11 @@ module Slk
         return ENV.fetch('XDG_CACHE_HOME', File.join(Dir.home, '.cache')) unless WINDOWS
 
         ENV.fetch('LOCALAPPDATA', File.join(Dir.home, 'AppData', 'Local'))
+      end
+
+      # Normalize path separators to forward slashes for Dir.glob compatibility on Windows
+      def normalize_path(path)
+        WINDOWS ? path.tr('\\', '/') : path
       end
 
       public
