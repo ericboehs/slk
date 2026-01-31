@@ -398,6 +398,8 @@ class TokenStoreTest < Minitest::Test
 
   # File permissions test
   def test_add_creates_file_with_restricted_permissions
+    skip 'File permissions not applicable on Windows' if Gem.win_platform?
+
     with_temp_config do |dir|
       store = Slk::Services::TokenStore.new
       store.add('testws', 'xoxb-test')
@@ -458,10 +460,18 @@ class TokenStoreTest < Minitest::Test
   end
 
   def can_create_test_ssh_key?
-    system('which ssh-keygen > /dev/null 2>&1')
+    require 'open3'
+    _, _, status = Open3.capture3('ssh-keygen', '-V')
+    status.success?
+  rescue Errno::ENOENT
+    false
   end
 
   def age_available?
-    system('which age > /dev/null 2>&1')
+    require 'open3'
+    _, _, status = Open3.capture3('age', '--version')
+    status.success?
+  rescue Errno::ENOENT
+    false
   end
 end

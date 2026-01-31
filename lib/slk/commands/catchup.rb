@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative '../support/help_formatter'
+require_relative '../support/platform'
 
 module Slk
   module Commands
@@ -293,7 +294,7 @@ module Slk
 
       def open_channel_in_slack(workspace, channel_id)
         team_id = runner.client_api(workspace.name).team_id
-        system('open', "slack://channel?team=#{team_id}&id=#{channel_id}")
+        Support::Platform.open_url("slack://channel?team=#{team_id}&id=#{channel_id}")
         success('Opened in Slack')
         :next
       end
@@ -402,7 +403,7 @@ module Slk
         first = thread_mark_data.first
         team_id = runner.client_api(workspace.name).team_id
         url = "slack://channel?team=#{team_id}&id=#{first[:channel]}&thread_ts=#{first[:thread_ts]}"
-        system('open', url)
+        Support::Platform.open_url(url)
         success('Opened in Slack')
       end
     end

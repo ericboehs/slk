@@ -11,7 +11,11 @@ module Slk
       attr_accessor :on_prompt_pub_key
 
       def available?
-        system('which age > /dev/null 2>&1')
+        # Cross-platform check for age command
+        _output, _error, status = Open3.capture3('age', '--version')
+        status.success?
+      rescue Errno::ENOENT
+        false
       end
 
       # Validate that the SSH key is a type supported by age

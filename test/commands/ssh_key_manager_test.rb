@@ -12,10 +12,13 @@ class SshKeyManagerTest < Minitest::Test
   def test_set_expands_path
     skip unless can_create_test_ssh_key?
 
-    with_temp_setup do |_dir, config, token_store, key_path|
-      # Track what path was set
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/test_key"
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+
       set_path = nil
-      config.define_singleton_method(:[]=) { |k, v| set_path = v if k == 'ssh_key' }
+      config = mock_config(ssh_key: nil, on_set: ->(k, v) { set_path = v if k == 'ssh_key' })
+      token_store = mock_token_store
 
       manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
 
@@ -28,189 +31,162 @@ class SshKeyManagerTest < Minitest::Test
   end
 
   def test_set_rejects_pub_key_file
-    with_mock_setup do |config, token_store|
-      manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    config = mock_config
+    token_store = mock_token_store
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
 
-      result = manager.set('/path/to/key.pub')
+    result = manager.set('/path/to/key.pub')
 
-      refute result[:success]
-      assert_match(/private key path, not the public key/, result[:error])
-    end
+    refute result[:success]
+    assert_match(/private key path, not the public key/, result[:error])
   end
 
   def test_set_returns_error_on_encryption_error
-    with_mock_setup do |config, token_store|
-      token_store.define_singleton_method(:migrate_encryption) { |_o, _n| raise Slk::EncryptionError, 'Key invalid' }
+    config = mock_config
+    token_store = mock_token_store(migrate_encryption: ->(_o, _n, _ctx) { raise Slk::EncryptionError, 'Key invalid' })
 
-      manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
 
-      result = manager.set('/path/to/key')
+    result = manager.set('/path/to/key')
 
-      refute result[:success]
-      assert_equal 'Key invalid', result[:error]
-    end
+    refute result[:success]
+    assert_equal 'Key invalid', result[:error]
   end
 
   def test_set_returns_error_on_file_not_found
-    with_mock_setup do |config, token_store|
-      token_store.define_singleton_method(:migrate_encryption) do |_o, _n|
-        raise Errno::ENOENT, 'No such file'
-      end
+    config = mock_config
+    token_store = mock_token_store(migrate_encryption: ->(_o, _n, _ctx) { raise Errno::ENOENT, 'No such file' })
 
-      manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
 
-      result = manager.set('/path/to/key')
+    result = manager.set('/path/to/key')
 
-      refute result[:success]
-      assert_match(/File not found/, result[:error])
-    end
+    refute result[:success]
+    assert_match(/File not found/, result[:error])
   end
 
   def test_set_returns_error_on_permission_denied
-    with_mock_setup do |config, token_store|
-      token_store.define_singleton_method(:migrate_encryption) do |_o, _n|
-        raise Errno::EACCES, 'Permission denied'
-      end
+    config = mock_config
+    token_store = mock_token_store(migrate_encryption: ->(_o, _n, _ctx) { raise Errno::EACCES, 'Permission denied' })
 
-      manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
 
-      result = manager.set('/path/to/key')
+    result = manager.set('/path/to/key')
 
-      refute result[:success]
-      assert_match(/Permission denied/, result[:error])
-    end
+    refute result[:success]
+    assert_match(/Permission denied/, result[:error])
   end
 
   def test_set_returns_success_with_message
-    with_mock_setup do |config, token_store|
-      manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    config = mock_config
+    token_store = mock_token_store
 
-      result = manager.set('/path/to/key')
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
 
-      assert result[:success]
-      assert_match %r{Set ssh_key = /path/to/key}, result[:message]
-    end
+    result = manager.set('/path/to/key')
+
+    assert result[:success]
+    # On Windows, path gets expanded to D:/path/to/key
+    assert_match(/Set ssh_key = .*path.to.key/, result[:message])
   end
 
   def test_unset_clears_ssh_key
-    with_mock_setup do |config, token_store|
-      config.define_singleton_method(:ssh_key) { '/old/key' }
+    config = mock_config(ssh_key: '/old/key')
+    token_store = mock_token_store
 
-      manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
 
-      result = manager.unset
+    result = manager.unset
 
-      assert result[:success]
-      assert_match(/Cleared ssh_key/, result[:message])
-    end
+    assert result[:success]
+    assert_match(/Cleared ssh_key/, result[:message])
   end
 
   def test_unset_returns_error_on_encryption_error
-    with_mock_setup do |config, token_store|
-      config.define_singleton_method(:ssh_key) { '/old/key' }
-      token_store.define_singleton_method(:migrate_encryption) { |_o, _n| raise Slk::EncryptionError, 'Decrypt failed' }
+    config = mock_config(ssh_key: '/old/key')
+    token_store = mock_token_store(migrate_encryption: lambda { |_o, _n, _ctx|
+      raise Slk::EncryptionError, 'Decrypt failed'
+    })
 
-      manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
 
-      result = manager.unset
+    result = manager.unset
 
-      refute result[:success]
-      assert_equal 'Decrypt failed', result[:error]
-    end
+    refute result[:success]
+    assert_equal 'Decrypt failed', result[:error]
   end
 
   def test_on_info_callback_is_propagated
-    with_mock_setup do |config, token_store|
-      info_messages = []
+    info_messages = []
 
-      # Create a token store that calls the info callback
-      token_store.define_singleton_method(:on_info=) { |cb| @on_info = cb }
-      token_store.define_singleton_method(:migrate_encryption) do |_o, _n|
-        @on_info&.call('Migration info')
-      end
+    config = mock_config
+    token_store = mock_token_store(
+      migrate_encryption: ->(_o, _n, ctx) { ctx[:on_info]&.call('Migration info') }
+    )
 
-      manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
-      manager.on_info = ->(msg) { info_messages << msg }
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    manager.on_info = ->(msg) { info_messages << msg }
 
-      manager.set('/path/to/key')
+    manager.set('/path/to/key')
 
-      assert_includes info_messages, 'Migration info'
-    end
+    assert_includes info_messages, 'Migration info'
   end
 
   def test_on_warning_callback_is_propagated
-    with_mock_setup do |config, token_store|
-      warning_messages = []
+    warning_messages = []
 
-      # Create a token store that calls the warning callback
-      token_store.define_singleton_method(:on_warning=) { |cb| @on_warning = cb }
-      token_store.define_singleton_method(:migrate_encryption) do |_o, _n|
-        @on_warning&.call('Migration warning')
-      end
+    config = mock_config
+    token_store = mock_token_store(
+      migrate_encryption: ->(_o, _n, ctx) { ctx[:on_warning]&.call('Migration warning') }
+    )
 
-      manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
-      manager.on_warning = ->(msg) { warning_messages << msg }
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    manager.on_warning = ->(msg) { warning_messages << msg }
 
-      manager.set('/path/to/key')
+    manager.set('/path/to/key')
 
-      assert_includes warning_messages, 'Migration warning'
-    end
+    assert_includes warning_messages, 'Migration warning'
   end
 
   def test_set_clears_key_on_empty_string
-    with_mock_setup do |config, token_store|
-      cleared = false
-      config.define_singleton_method(:[]=) do |k, v|
-        cleared = true if k == 'ssh_key' && v.nil?
-      end
+    cleared = false
+    config = mock_config(on_set: ->(k, v) { cleared = true if k == 'ssh_key' && v.nil? })
+    token_store = mock_token_store
 
-      manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
 
-      result = manager.set('')
+    result = manager.set('')
 
-      assert result[:success]
-      assert cleared, 'Config ssh_key should be set to nil'
-    end
+    assert result[:success]
+    assert cleared, 'Config ssh_key should be set to nil'
   end
 
   private
 
-  def with_mock_setup
-    config = Object.new
-    config.define_singleton_method(:ssh_key) { nil }
-    config.define_singleton_method(:[]=) { |_k, _v| nil }
-
-    token_store = Object.new
-    token_store.define_singleton_method(:on_info=) { |_cb| nil }
-    token_store.define_singleton_method(:on_warning=) { |_cb| nil }
-    token_store.define_singleton_method(:on_prompt_pub_key=) { |_cb| nil }
-    token_store.define_singleton_method(:migrate_encryption) { |_o, _n| nil }
-
-    yield config, token_store
+  def mock_config(ssh_key: nil, on_set: nil)
+    Object.new.tap do |config|
+      config.define_singleton_method(:ssh_key) { ssh_key }
+      config.define_singleton_method(:[]=) { |k, v| on_set&.call(k, v) }
+    end
   end
 
-  def with_temp_setup
-    skip unless can_create_test_ssh_key?
-
-    Dir.mktmpdir do |dir|
-      key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
-
-      config = Object.new
-      config.define_singleton_method(:ssh_key) { nil }
-      config.define_singleton_method(:[]=) { |_k, _v| nil }
-
-      token_store = Object.new
-      token_store.define_singleton_method(:on_info=) { |_cb| nil }
-      token_store.define_singleton_method(:on_warning=) { |_cb| nil }
-      token_store.define_singleton_method(:on_prompt_pub_key=) { |_cb| nil }
-      token_store.define_singleton_method(:migrate_encryption) { |_o, _n| nil }
-
-      yield dir, config, token_store, key_path
+  def mock_token_store(migrate_encryption: nil)
+    ctx = {}
+    Object.new.tap do |store|
+      store.define_singleton_method(:on_info=) { |cb| ctx[:on_info] = cb }
+      store.define_singleton_method(:on_warning=) { |cb| ctx[:on_warning] = cb }
+      store.define_singleton_method(:on_prompt_pub_key=) { |_cb| nil }
+      store.define_singleton_method(:migrate_encryption) do |o, n|
+        migrate_encryption&.call(o, n, ctx)
+      end
     end
   end
 
   def can_create_test_ssh_key?
-    system('which ssh-keygen > /dev/null 2>&1')
+    require 'open3'
+    _, _, status = Open3.capture3('ssh-keygen', '-V')
+    status.success?
+  rescue Errno::ENOENT
+    false
   end
 end

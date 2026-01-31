@@ -105,23 +105,16 @@ module Slk
         return message.user_id if options[:no_names]
         return message.embedded_username if message.embedded_username
 
-        cached = @cache.get_user(workspace.name, message.user_id)
-        return cached if cached
-
-        lookup_bot_if_needed(message, workspace) || message.user_id
+        user_lookup_for(workspace).resolve_name_or_bot(message.user_id) || message.user_id
       end
 
-      def lookup_bot_if_needed(message, workspace)
-        return unless message.user_id.start_with?('B') && @api_client
-
-        lookup_bot_name(workspace, message.user_id)
-      end
-
-      def lookup_bot_name(workspace, bot_id)
-        bots_api = Api::Bots.new(@api_client, workspace, on_debug: @on_debug)
-        name = bots_api.get_name(bot_id)
-        @cache.set_user(workspace.name, bot_id, name, persist: true) if name
-        name
+      def user_lookup_for(workspace)
+        Services::UserLookup.new(
+          cache_store: @cache,
+          workspace: workspace,
+          api_client: @api_client,
+          on_debug: @on_debug
+        )
       end
 
       def format_timestamp(time)

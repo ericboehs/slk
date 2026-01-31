@@ -30,6 +30,11 @@ module Slk
         replace_special_mentions(result)
       end
 
+      # Public API for looking up user names (used by MessageFormatter)
+      def lookup_user_name(workspace, user_id)
+        user_lookup_for(workspace).resolve_name(user_id)
+      end
+
       private
 
       def replace_user_mentions(text, workspace)
@@ -76,42 +81,19 @@ module Slk
 
       def lookup_by_type(workspace, id, type)
         case type
-        when :user then lookup_user_name(workspace, id)
+        when :user then user_lookup_for(workspace).resolve_name(id)
         when :channel then lookup_channel_name(workspace, id)
         when :subteam then lookup_subteam_handle(workspace, id)
         end
       end
 
-      def lookup_user_name(workspace, user_id)
-        cached = @cache.get_user(workspace.name, user_id)
-        return cached if cached
-
-        fetch_user_name_from_api(workspace, user_id)
-      end
-
-      def fetch_user_name_from_api(workspace, user_id)
-        return nil unless @api
-
-        response = Api::Users.new(@api, workspace).info(user_id)
-        return nil unless response['ok'] && response['user']
-
-        name = extract_user_display_name(response['user'])
-        cache_user_name(workspace, user_id, name)
-        name
-      rescue ApiError => e
-        @on_debug&.call("User lookup failed for #{user_id}: #{e.message}")
-        nil
-      end
-
-      def cache_user_name(workspace, user_id, name)
-        @cache.set_user(workspace.name, user_id, name, persist: true) unless name.to_s.empty?
-      end
-
-      def extract_user_display_name(user)
-        profile = user['profile'] || {}
-        profile['display_name'].then { |n| n.to_s.empty? ? nil : n } ||
-          profile['real_name'].then { |n| n.to_s.empty? ? nil : n } ||
-          user['name'].then { |n| n.to_s.empty? ? nil : n }
+      def user_lookup_for(workspace)
+        Services::UserLookup.new(
+          cache_store: @cache,
+          workspace: workspace,
+          api_client: @api,
+          on_debug: @on_debug
+        )
       end
 
       def lookup_channel_name(workspace, channel_id)
