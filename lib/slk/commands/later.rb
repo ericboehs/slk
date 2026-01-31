@@ -69,6 +69,7 @@ module Slk
         puts "With due dates: #{items.count(&:due_date?)}"
       end
 
+      # rubocop:disable Metrics/MethodLength
       def build_json_output(workspace, items)
         items.map do |item|
           json_item = {
@@ -90,7 +91,9 @@ module Slk
           json_item
         end
       end
+      # rubocop:enable Metrics/MethodLength
 
+      # rubocop:disable Metrics/MethodLength
       def display_formatted(workspace, items)
         if items.empty?
           puts 'No saved items found.'
@@ -105,6 +108,7 @@ module Slk
         end
         show_fetch_failure_summary
       end
+      # rubocop:enable Metrics/MethodLength
 
       def display_without_workspace_emoji(workspace, items)
         formatter = build_formatter(output)
@@ -210,6 +214,7 @@ module Slk
         help.render
       end
 
+      # rubocop:disable Metrics/MethodLength
       def add_options_section(help)
         help.section('OPTIONS') do |s|
           s.option('-n, --limit N', 'Number of items (default: 15)')
@@ -224,6 +229,8 @@ module Slk
           add_common_options(s)
         end
       end
+
+      # rubocop:enable Metrics/MethodLength
 
       def add_common_options(section)
         section.option('--json', 'Output as JSON')

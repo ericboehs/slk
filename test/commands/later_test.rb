@@ -179,7 +179,7 @@ class LaterCommandTest < Minitest::Test
     assert_match(/--no-content/, @io.string)
   end
 
-  def test_default_limit_is_15
+  def test_default_limit_is_fifteen
     @saved_api.expect_list({ 'ok' => true, 'saved_items' => [] })
 
     runner = build_runner
@@ -203,7 +203,7 @@ class LaterCommandTest < Minitest::Test
     runner = build_runner
     # Override saved_api to raise an exception
     error_api = Object.new
-    error_api.define_singleton_method(:list) { |filter:, limit:| raise Slk::ApiError, 'Network timeout' }
+    error_api.define_singleton_method(:list) { |**_| raise Slk::ApiError, 'Network timeout' }
     runner.define_singleton_method(:saved_api) { |_| error_api }
 
     command = Slk::Commands::Later.new([], runner: runner)

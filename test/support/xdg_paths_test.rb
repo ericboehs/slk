@@ -21,9 +21,9 @@ class XdgPathsTest < Minitest::Test
   def test_config_dir_uses_appdata_on_windows
     skip 'Windows-only test' unless WINDOWS
 
-    with_env('APPDATA' => 'C:\Custom\AppData') do
+    with_env('APPDATA' => 'C:/Custom/AppData') do
       paths = Slk::Support::XdgPaths.new
-      assert_equal 'C:\Custom\AppData/slk', paths.config_dir
+      assert_equal File.join('C:/Custom/AppData', 'slk'), paths.config_dir
     end
   end
 
@@ -49,9 +49,9 @@ class XdgPathsTest < Minitest::Test
   def test_cache_dir_uses_localappdata_on_windows
     skip 'Windows-only test' unless WINDOWS
 
-    with_env('LOCALAPPDATA' => 'C:\Custom\Local') do
+    with_env('LOCALAPPDATA' => 'C:/Custom/Local') do
       paths = Slk::Support::XdgPaths.new
-      assert_equal 'C:\Custom\Local/slk', paths.cache_dir
+      assert_equal File.join('C:/Custom/Local', 'slk'), paths.cache_dir
     end
   end
 

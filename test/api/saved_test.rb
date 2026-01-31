@@ -56,7 +56,7 @@ class SavedApiTest < Minitest::Test
     assert_equal 'in_progress', call[:params][:filter]
   end
 
-  def test_list_defaults_limit_to_15
+  def test_list_defaults_limit_to_fifteen
     @mock_client.stub('saved.list', { 'ok' => true, 'saved_items' => [] })
 
     @api.list

@@ -2,6 +2,7 @@
 
 module Slk
   # Dependency injection container providing services to commands
+  # rubocop:disable Metrics/ClassLength
   class Runner
     attr_reader :output, :config, :token_store, :api_client, :cache_store, :preset_store
 
@@ -153,4 +154,5 @@ module Slk
       @cache_store.on_warning = warning_handler
     end
   end
+  # rubocop:enable Metrics/ClassLength
 end

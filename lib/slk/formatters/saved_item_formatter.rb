@@ -28,6 +28,7 @@ module Slk
 
       private
 
+      # rubocop:disable Metrics/MethodLength
       def format_status_badge(item)
         badge = case item.state
                 when 'completed' then '[completed]'
@@ -48,6 +49,8 @@ module Slk
         end
       end
 
+      # rubocop:enable Metrics/MethodLength
+
       def format_due_info(item)
         return '' unless item.due_date?
 
@@ -61,6 +64,7 @@ module Slk
         end
       end
 
+      # rubocop:disable Metrics/MethodLength
       def format_time_difference(seconds)
         abs_seconds = seconds.abs
         ago = seconds.negative?
@@ -77,6 +81,7 @@ module Slk
 
         ago ? "#{formatted} ago" : "in #{formatted}"
       end
+      # rubocop:enable Metrics/MethodLength
 
       def display_message(message, workspace, width: nil, truncate: false)
         username = resolve_message_author(message, workspace)

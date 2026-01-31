@@ -19,6 +19,7 @@ module Slk
       :date_completed,
       :is_archived
     ) do
+      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity
       def self.from_api(data)
         new(
           item_id: data['item_id'] || data['channel_id'] || data['conversation_id'],
@@ -31,6 +32,7 @@ module Slk
           is_archived: data['is_archived'] || false
         )
       end
+      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
 
       def self.parse_timestamp(value)
         return nil if value.nil? || value.to_i.zero?
