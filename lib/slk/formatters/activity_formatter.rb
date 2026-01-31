@@ -5,11 +5,11 @@ module Slk
     # Formats activity feed items for terminal display
     # rubocop:disable Metrics/ClassLength
     class ActivityFormatter
-      def initialize(output:, enricher:, emoji_replacer:, mention_replacer:, on_debug: nil)
+      def initialize(output:, enricher:, emoji_replacer:, text_processor:, on_debug: nil)
         @output = output
         @enricher = enricher
         @emoji = emoji_replacer
-        @mentions = mention_replacer
+        @text_processor = text_processor
         @on_debug = on_debug
       end
 
@@ -119,10 +119,7 @@ module Slk
       end
 
       def prepare_message_text(message, workspace)
-        text = message['text'] || ''
-        return '[No text]' if text.empty?
-
-        @mentions.replace(text, workspace)
+        @text_processor.process(message['text'], workspace)
       end
 
       def display_additional_lines(lines)

@@ -45,6 +45,8 @@ module Slk
             #{output.cyan('messages')}     Read channel or DM messages
             #{output.cyan('search')}       Search messages across channels
             #{output.cyan('unread')}       View and clear unread messages
+            #{output.cyan('activity')}     Show activity feed (reactions, mentions, threads)
+            #{output.cyan('later')}        Show saved "Later" items
             #{output.cyan('preset')}       Manage and apply status presets
             #{output.cyan('workspaces')}   Manage Slack workspaces
             #{output.cyan('cache')}        Manage user/channel cache

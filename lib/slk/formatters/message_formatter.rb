@@ -6,13 +6,16 @@ module Slk
     # rubocop:disable Metrics/ClassLength
     class MessageFormatter
       # rubocop:disable Metrics/ParameterLists
-      def initialize(output:, mention_replacer:, emoji_replacer:, cache_store:, api_client: nil, on_debug: nil)
+      def initialize(output:, mention_replacer:, emoji_replacer:, cache_store:, api_client: nil,
+                     text_processor: nil, on_debug: nil)
         @output = output
-        @mentions = mention_replacer
-        @emoji = emoji_replacer
         @cache = cache_store
         @api_client = api_client
         @on_debug = on_debug
+        @text_processor = text_processor || TextProcessor.new(
+          mention_replacer: mention_replacer,
+          emoji_replacer: emoji_replacer
+        )
         @reaction_formatter = build_reaction_formatter(output, emoji_replacer, cache_store)
         @json_formatter = JsonMessageFormatter.new(cache_store: cache_store)
       end
@@ -25,7 +28,7 @@ module Slk
       def format(message, workspace:, options: {})
         username = resolve_username(message, workspace, options)
         timestamp = format_timestamp(message.timestamp)
-        text = process_text(message.text, workspace, options)
+        text = @text_processor.process(message.text, workspace, options)
 
         header = build_header(timestamp, username)
         display_text = build_display_text(text, message, header, options)
@@ -37,7 +40,7 @@ module Slk
       def format_simple(message, workspace:, options: {})
         username = resolve_username(message, workspace, options)
         timestamp = format_timestamp(message.timestamp)
-        text = process_text(message.text, workspace, options)
+        text = @text_processor.process(message.text, workspace, options)
 
         reaction_text = ''
         unless options[:no_reactions] || message.reactions.empty?
@@ -88,7 +91,7 @@ module Slk
 
       def build_output_lines(main_line, message, workspace, options, display_text)
         lines = [main_line]
-        text_processor = ->(txt) { process_text(txt, workspace, options) }
+        text_processor = ->(txt) { @text_processor.process(txt, workspace, options) }
 
         BlockFormatter.new(text_processor: text_processor)
                       .format(message.blocks, message.text, lines, options)
@@ -119,17 +122,6 @@ module Slk
 
       def format_timestamp(time)
         time.strftime('%Y-%m-%d %H:%M')
-      end
-
-      def process_text(text, workspace, options)
-        result = decode_html_entities(text.dup)
-        result = @mentions.replace(result, workspace)
-        result = @emoji.replace(result, workspace) unless options[:no_emoji]
-        result
-      end
-
-      def decode_html_entities(text)
-        text.gsub('&amp;', '&').gsub('&lt;', '<').gsub('&gt;', '>')
       end
 
       def format_files(message, lines, options, skip_first: false)

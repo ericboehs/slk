@@ -4,10 +4,10 @@ module Slk
   module Formatters
     # Formats search results for terminal display
     class SearchFormatter
-      def initialize(output:, emoji_replacer:, mention_replacer:)
+      def initialize(output:, mention_replacer:, text_processor:)
         @output = output
-        @emoji = emoji_replacer
         @mentions = mention_replacer
+        @text_processor = text_processor
       end
 
       # Display a list of search results
@@ -54,11 +54,7 @@ module Slk
       end
 
       def prepare_text(text, workspace, options)
-        return text if options[:no_emoji] && options[:no_mentions]
-
-        text = @emoji.replace(text) unless options[:no_emoji]
-        text = @mentions.replace(text, workspace) unless options[:no_mentions]
-        text
+        @text_processor.process(text, workspace, options)
       end
 
       def display_files(files)

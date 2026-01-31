@@ -7,12 +7,12 @@ class SearchFormatterTest < Minitest::Test
     @io = StringIO.new
     @err = StringIO.new
     @output = Slk::Formatters::Output.new(io: @io, err: @err, color: false)
-    @emoji_replacer = MockEmojiReplacer.new
     @mention_replacer = MockMentionReplacer.new
+    @text_processor = MockTextProcessor.new
     @formatter = Slk::Formatters::SearchFormatter.new(
       output: @output,
-      emoji_replacer: @emoji_replacer,
-      mention_replacer: @mention_replacer
+      mention_replacer: @mention_replacer,
+      text_processor: @text_processor
     )
     @workspace = mock_workspace('test')
   end
@@ -185,14 +185,19 @@ class SearchFormatterTest < Minitest::Test
     Slk::Models::SearchResult.new(**defaults, **overrides)
   end
 
-  # Mock emoji replacer for testing
-  class MockEmojiReplacer
-    def replace(text)
-      text.gsub(/:(\w+):/, '[emoji:\1]')
+  # Mock text processor for testing
+  class MockTextProcessor
+    def process(text, _workspace, options = {})
+      return '[No text]' if text.to_s.empty?
+
+      result = text
+      result = result.gsub(/<@(\w+)>/, '@resolved_\1') unless options[:no_mentions]
+      result = result.gsub(/:(\w+):/, '[emoji:\1]') unless options[:no_emoji]
+      result
     end
   end
 
-  # Mock mention replacer for testing
+  # Mock mention replacer for testing (used for resolve_channel/resolve_user)
   class MockMentionReplacer
     def replace(text, _workspace)
       text.gsub(/<@(\w+)>/, '@resolved_\1')

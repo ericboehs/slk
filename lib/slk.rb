@@ -33,6 +33,7 @@ module Slk
     autoload :Channel, 'slk/models/channel'
     autoload :Preset, 'slk/models/preset'
     autoload :SearchResult, 'slk/models/search_result'
+    autoload :SavedItem, 'slk/models/saved_item'
   end
 
   # Application services for configuration, caching, and API communication
@@ -54,6 +55,7 @@ module Slk
     autoload :TargetResolver, 'slk/services/target_resolver'
     autoload :SetupWizard, 'slk/services/setup_wizard'
     autoload :UserLookup, 'slk/services/user_lookup'
+    autoload :MessageResolver, 'slk/services/message_resolver'
   end
 
   # Output formatters for messages, durations, and emoji
@@ -69,6 +71,8 @@ module Slk
     autoload :AttachmentFormatter, 'slk/formatters/attachment_formatter'
     autoload :BlockFormatter, 'slk/formatters/block_formatter'
     autoload :SearchFormatter, 'slk/formatters/search_formatter'
+    autoload :SavedItemFormatter, 'slk/formatters/saved_item_formatter'
+    autoload :TextProcessor, 'slk/formatters/text_processor'
   end
 
   # CLI commands implementing user-facing functionality
@@ -89,6 +93,7 @@ module Slk
     autoload :Emoji, 'slk/commands/emoji'
     autoload :Config, 'slk/commands/config'
     autoload :Help, 'slk/commands/help'
+    autoload :Later, 'slk/commands/later'
   end
 
   # Thin wrappers around Slack API endpoints
@@ -103,6 +108,7 @@ module Slk
     autoload :Usergroups, 'slk/api/usergroups'
     autoload :Activity, 'slk/api/activity'
     autoload :Search, 'slk/api/search'
+    autoload :Saved, 'slk/api/saved'
   end
 
   # Utility classes for paths, parsing, and helpers

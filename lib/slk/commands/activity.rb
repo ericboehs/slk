@@ -118,7 +118,7 @@ module Slk
           output: output,
           enricher: enricher(workspace),
           emoji_replacer: runner.emoji_replacer,
-          mention_replacer: runner.mention_replacer,
+          text_processor: runner.text_processor,
           on_debug: ->(msg) { debug(msg) }
         )
       end
@@ -131,20 +131,14 @@ module Slk
       end
 
       def fetch_message(workspace, channel_id, message_ts)
-        response = fetch_message_history(workspace, channel_id, message_ts)
-        return nil unless response['ok'] && response['messages']&.any?
-
-        response['messages'].find { |msg| msg['ts'] == message_ts }
-      rescue ApiError => e
-        debug("Could not fetch message #{message_ts} from #{channel_id}: #{e.message}")
-        nil
+        message_resolver(workspace).fetch_by_ts(channel_id, message_ts)
       end
 
-      def fetch_message_history(workspace, channel_id, message_ts)
-        api = runner.conversations_api(workspace.name)
-        oldest_ts = (message_ts.to_f - 1).to_s
-        latest_ts = (message_ts.to_f + 1).to_s
-        api.history(channel: channel_id, limit: 10, oldest: oldest_ts, latest: latest_ts)
+      def message_resolver(workspace)
+        Services::MessageResolver.new(
+          conversations_api: runner.conversations_api(workspace.name),
+          on_debug: ->(msg) { debug(msg) }
+        )
       end
     end
     # rubocop:enable Metrics/ClassLength

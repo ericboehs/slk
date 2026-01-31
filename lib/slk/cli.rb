@@ -13,6 +13,7 @@ module Slk
       'unread' => Commands::Unread,
       'catchup' => Commands::Catchup,
       'activity' => Commands::Activity,
+      'later' => Commands::Later,
       'search' => Commands::Search,
       'preset' => Commands::Preset,
       'workspaces' => Commands::Workspaces,

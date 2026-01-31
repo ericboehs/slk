@@ -83,6 +83,17 @@ module Slk
       Api::Search.new(@api_client, workspace(workspace_name))
     end
 
+    def saved_api(workspace_name = nil)
+      Api::Saved.new(@api_client, workspace(workspace_name))
+    end
+
+    def message_resolver(workspace_name = nil)
+      Services::MessageResolver.new(
+        conversations_api: conversations_api(workspace_name),
+        on_debug: ->(msg) { @output.debug(msg) }
+      )
+    end
+
     # Formatter helpers
     def message_formatter
       @message_formatter ||= Formatters::MessageFormatter.new(
@@ -107,6 +118,13 @@ module Slk
       @emoji_replacer ||= Formatters::EmojiReplacer.new
     end
 
+    def text_processor
+      @text_processor ||= Formatters::TextProcessor.new(
+        mention_replacer: mention_replacer,
+        emoji_replacer: emoji_replacer
+      )
+    end
+
     def duration_formatter
       @duration_formatter ||= Formatters::DurationFormatter.new
     end
@@ -114,8 +132,8 @@ module Slk
     def search_formatter
       @search_formatter ||= Formatters::SearchFormatter.new(
         output: @output,
-        emoji_replacer: emoji_replacer,
-        mention_replacer: mention_replacer
+        mention_replacer: mention_replacer,
+        text_processor: text_processor
       )
     end
 
