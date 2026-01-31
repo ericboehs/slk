@@ -31,13 +31,5 @@ Gem::Specification.new do |spec|
   spec.executables = ['slk']
   spec.require_paths = ['lib']
 
-  spec.post_install_message = <<~MSG
-    slk 0.2.0: Config directory changed from slack-cli to slk
-
-    If upgrading from 0.1.x, migrate your config:
-      mv ${XDG_CONFIG_HOME:-~/.config}/slack-cli ${XDG_CONFIG_HOME:-~/.config}/slk
-      mv ${XDG_CACHE_HOME:-~/.cache}/slack-cli ${XDG_CACHE_HOME:-~/.cache}/slk
-  MSG
-
   # No runtime dependencies - pure Ruby!
 end
