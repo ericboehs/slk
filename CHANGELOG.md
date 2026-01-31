@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`later` command** - View Slack's "Save for Later" items
+  - Lists saved messages with content preview
+  - Filter by state: `--completed`, `--in-progress`
+  - `--counts` for summary statistics (total, overdue, with due dates)
+  - `--no-content` to skip fetching message text
+  - `--workspace-emoji` for inline custom emoji images
+  - `--width N` to wrap text at N columns
+  - `--no-wrap` to truncate messages to single line
+  - `--json` output includes message content
+
+### Changed
+
+- New `TextProcessor` service centralizes text processing (HTML decode, mentions, emoji)
+- New `MessageResolver` service extracted from activity command for reuse
+- Refactored formatters to use shared TextProcessor
+
 ## [0.4.0] - 2026-01-30
 
 ### Added
