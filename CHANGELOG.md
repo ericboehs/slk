@@ -7,7 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<!-- TODO: Remove post_install_message from slk.gemspec before releasing 0.3.0 -->
+## [0.4.0] - 2026-01-30
+
+### Added
+
+- **Windows Support** - slk now runs on Windows
+  - Uses `%APPDATA%` and `%LOCALAPPDATA%` for config/cache directories
+  - Cross-platform command detection with `Open3.capture3`
+  - Proper NTFS permission handling (skips `chmod` on Windows)
+  - New `Support::Platform` module for OS-specific behavior
+  - CI testing on Windows (Ruby 3.2, 3.3, 3.4, 4.0)
+
+### Changed
+
+- New `UserLookup` service consolidates duplicate user name resolution logic
+- Removed ~65 lines of duplicated code from `MentionReplacer` and `MessageFormatter`
+
+## [0.3.0] - 2026-01-16
+
+### Added
+
+- `-vv`/`--very-verbose` flag for detailed API debugging with timing and response bodies
+- SSH key validation and token migration when keys change
+- Public key validation (ensures it matches private key)
+- `config unset` command for removing configuration values
+- CI infrastructure with GitHub Actions (Ruby 3.2-4.0, macOS, Ubuntu)
+
+### Changed
+
+- Improved error handling throughout with comprehensive tests
+- Better SSH key error messages with public key prompting
+- Cache user lookups to reduce API calls
+- Improved rate limit error messages
+
+### Fixed
+
+- Test output no longer leaks to stdout
+- All rubocop offenses resolved
 
 ## [0.2.0] - 2025-01-15
 
@@ -63,5 +99,7 @@ Initial release of the Ruby rewrite. Pure Ruby, no external dependencies.
   - Pure Ruby stdlib - no gem dependencies
   - Ruby 3.2+ with modern features (Data.define, pattern matching)
 
+[0.4.0]: https://github.com/ericboehs/slk/releases/tag/v0.4.0
+[0.3.0]: https://github.com/ericboehs/slk/releases/tag/v0.3.0
 [0.2.0]: https://github.com/ericboehs/slk/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ericboehs/slk/releases/tag/v0.1.0
