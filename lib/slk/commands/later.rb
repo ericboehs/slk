@@ -101,7 +101,8 @@ module Slk
         end
 
         @fetch_failures = 0
-        if @options[:workspace_emoji] && inline_images_supported?
+        # Skip workspace emoji inline images in markdown mode (they're terminal escape sequences)
+        if @options[:workspace_emoji] && inline_images_supported? && !@options[:markdown]
           display_with_workspace_emoji(workspace, items)
         else
           display_without_workspace_emoji(workspace, items)
@@ -121,7 +122,7 @@ module Slk
       def display_with_workspace_emoji(workspace, items)
         # Capture output to StringIO, then reprint with workspace emoji
         buffer = StringIO.new
-        buffer_output = Formatters::Output.new(io: buffer, err: $stderr, color: $stdout.tty?)
+        buffer_output = create_buffer_output(buffer)
         formatter = build_formatter(buffer_output)
 
         items.each do |item|
@@ -150,6 +151,16 @@ module Slk
           text_processor: runner.text_processor,
           on_debug: ->(msg) { debug(msg) }
         )
+      end
+
+      # Create a buffer output using the same class as the main output
+      # This ensures markdown mode works correctly with workspace emoji buffering
+      def create_buffer_output(buffer)
+        if @options[:markdown]
+          Formatters::MarkdownOutput.new(io: buffer, err: $stderr)
+        else
+          Formatters::Output.new(io: buffer, err: $stderr, color: $stdout.tty?)
+        end
       end
 
       def fetch_message_content(workspace, item)

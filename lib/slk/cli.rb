@@ -26,6 +26,7 @@ module Slk
     def initialize(argv, output: nil)
       @argv = argv.dup
       @output = output || Formatters::Output.new
+      @output_injected = !output.nil?
     end
 
     def run
@@ -119,11 +120,20 @@ module Slk
     def build_runner(args)
       verbose = verbose_mode?(args)
       very_verbose = args.include?('-vv') || args.include?('--very-verbose')
-      output = @output || Formatters::Output.new(verbose: verbose)
+      markdown = args.include?('--markdown')
+      output = @output_injected ? @output : build_output(verbose: verbose, markdown: markdown)
       runner = Runner.new(output: output)
       setup_verbose_logging(runner, output) if verbose
       setup_very_verbose_logging(runner, output) if very_verbose
       runner
+    end
+
+    def build_output(verbose:, markdown:)
+      if markdown
+        Formatters::MarkdownOutput.new(verbose: verbose)
+      else
+        Formatters::Output.new(verbose: verbose)
+      end
     end
 
     def setup_verbose_logging(runner, output)

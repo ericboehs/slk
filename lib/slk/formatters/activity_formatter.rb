@@ -133,7 +133,7 @@ module Slk
       end
 
       def format_time(slack_timestamp)
-        Time.at(slack_timestamp.to_f).strftime('%b %d %-I:%M %p')
+        Time.at(slack_timestamp.to_f).strftime('%b %d %-I:%M:%S %p')
       end
 
       def debug_missing(item_type)

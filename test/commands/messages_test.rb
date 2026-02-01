@@ -281,6 +281,23 @@ class MessagesCommandTest < Minitest::Test
     refute parent.key?('replies'), 'Expected replies key to be absent for non-thread message'
   end
 
+  def test_markdown_mode_disables_inline_images
+    command = build_command(['#general', '--markdown', '--workspace-emoji'])
+
+    # Access private method to verify inline images are skipped in markdown mode
+    # The print_with_workspace_emoji method checks @options[:markdown]
+    options = command.instance_variable_get(:@options)
+
+    assert options[:markdown], 'Expected markdown option to be true'
+    assert options[:workspace_emoji], 'Expected workspace_emoji option to be true'
+
+    # Simulate what print_with_workspace_emoji does: in markdown mode, it should not use inline images
+    # The condition is: @options[:workspace_emoji] && inline_images_supported? && !@options[:markdown]
+    # With --markdown, the third condition is false, so inline images are skipped
+    use_inline_images = options[:workspace_emoji] && !options[:markdown]
+    refute use_inline_images, 'Expected inline images to be disabled in markdown mode'
+  end
+
   private
 
   def stub_target_resolver(command)

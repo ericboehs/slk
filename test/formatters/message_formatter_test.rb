@@ -129,6 +129,14 @@ class MessageFormatterTest < Minitest::Test
     assert_equal 5, result[:reply_count]
   end
 
+  def test_format_timestamp_includes_seconds
+    # Access private method via send
+    time = Time.new(2024, 1, 15, 14, 30, 45)
+    result = @formatter.send(:format_timestamp, time)
+
+    assert_equal '2024-01-15 14:30:45', result
+  end
+
   private
 
   # rubocop:disable Naming/MethodParameterName

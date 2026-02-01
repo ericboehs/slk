@@ -80,6 +80,29 @@ class CLITest < Minitest::Test
     assert Slk::CLI::COMMANDS.frozen?
   end
 
+  def test_markdown_flag_creates_markdown_output
+    cli = Slk::CLI.new(['help', '--markdown'])
+    # Access private method to test output creation
+    output = cli.send(:build_output, verbose: false, markdown: true)
+
+    assert_instance_of Slk::Formatters::MarkdownOutput, output
+  end
+
+  def test_no_markdown_flag_creates_regular_output
+    cli = Slk::CLI.new(['help'])
+    output = cli.send(:build_output, verbose: false, markdown: false)
+
+    assert_instance_of Slk::Formatters::Output, output
+  end
+
+  def test_injected_output_takes_precedence_over_markdown_flag
+    cli = Slk::CLI.new(['help', '--markdown'], output: @output)
+    runner = cli.send(:build_runner, ['--markdown'])
+
+    # Injected output should be used, not MarkdownOutput
+    assert_same @output, runner.output
+  end
+
   def test_config_error_handling
     cli = Slk::CLI.new(['help'], output: @output)
 

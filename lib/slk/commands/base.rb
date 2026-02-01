@@ -32,7 +32,7 @@ module Slk
       end
 
       def base_options
-        { workspace: nil, all: false, verbose: false, quiet: false, json: false, width: default_width }
+        { workspace: nil, all: false, verbose: false, quiet: false, json: false, markdown: false, width: default_width }
       end
 
       def formatting_options
@@ -72,6 +72,7 @@ module Slk
         when '-vv', '--very-verbose' then @options[:verbose] = @options[:very_verbose] = true
         when '-q', '--quiet' then @options[:quiet] = true
         when '--json' then @options[:json] = true
+        when '--markdown' then @options[:markdown] = true
         when '-h', '--help' then @options[:help] = true
         when '--no-emoji' then @options[:no_emoji] = true
         when '--no-reactions' then @options[:no_reactions] = true

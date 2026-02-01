@@ -295,8 +295,9 @@ module Slk
       end
 
       # Print text, replacing workspace emoji codes with inline images when enabled
+      # Skip inline images in markdown mode (they're terminal escape sequences)
       def print_with_workspace_emoji(text, workspace)
-        if @options[:workspace_emoji] && inline_images_supported?
+        if @options[:workspace_emoji] && inline_images_supported? && !@options[:markdown]
           print_line_with_emoji_images(text, workspace)
         else
           puts text

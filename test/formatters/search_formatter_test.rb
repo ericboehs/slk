@@ -162,8 +162,8 @@ class SearchFormatterTest < Minitest::Test
     @formatter.display_result(result, @workspace)
 
     output = @io.string
-    # Timestamp should be formatted
-    assert_match(/\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]/, output)
+    # Timestamp should be formatted (with seconds)
+    assert_match(/\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]/, output)
   end
 
   private

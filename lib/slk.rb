@@ -61,6 +61,7 @@ module Slk
   # Output formatters for messages, durations, and emoji
   module Formatters
     autoload :Output, 'slk/formatters/output'
+    autoload :MarkdownOutput, 'slk/formatters/markdown_output'
     autoload :DurationFormatter, 'slk/formatters/duration_formatter'
     autoload :MentionReplacer, 'slk/formatters/mention_replacer'
     autoload :EmojiReplacer, 'slk/formatters/emoji_replacer'

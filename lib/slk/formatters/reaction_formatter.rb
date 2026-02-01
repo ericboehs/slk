@@ -80,7 +80,7 @@ module Slk
 
       def format_time(slack_timestamp)
         time = Time.at(slack_timestamp.to_f)
-        time.strftime('%-I:%M %p') # e.g., "2:45 PM"
+        time.strftime('%-I:%M:%S %p') # e.g., "2:45:30 PM"
       end
     end
   end

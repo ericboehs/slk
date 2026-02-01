@@ -121,7 +121,7 @@ module Slk
       end
 
       def format_timestamp(time)
-        time.strftime('%Y-%m-%d %H:%M')
+        time.strftime('%Y-%m-%d %H:%M:%S')
       end
 
       def format_files(message, lines, options, skip_first: false)
