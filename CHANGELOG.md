@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Ghostty/Kitty terminal support** - Inline emoji images now work in Ghostty and Kitty terminals
+  - Uses Kitty graphics protocol with Unicode placeholders for proper tmux support
+  - Images clear correctly with `clear` command (no floating artifacts)
+  - Converts GIF/JPEG to PNG automatically (macOS only via `sips`)
+
 - **`later` command** - View Slack's "Save for Later" items
   - Lists saved messages with content preview
   - Filter by state: `--completed`, `--in-progress`
