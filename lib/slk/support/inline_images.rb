@@ -113,36 +113,22 @@ module Slk
       end
 
       # Kitty graphics protocol methods (Ghostty, Kitty)
-      # Format: \e_Ga=T,q=1,f=100,r=<rows>,m=0;<base64-data>\e\\
       # a=T: transmit and display, q=1: suppress OK response, f=100: PNG, r=rows, m=0: no more chunks
       def print_kitty_image(encoded, height)
-        printf "\e_Ga=T,q=1,f=100,r=%d,m=0;%s\e\\", height, encoded
+        printf "\e_Ga=T,q=1,f=100,r=%<height>d,m=0;%<data>s\e\\", height: height, data: encoded
       end
 
-      # Kitty graphics with Unicode placeholders for tmux
-      # Uses U+10EEEE placeholder character so images clear/scroll with text
+      # Kitty graphics with Unicode placeholders for tmux (images clear/scroll with text)
       # See: https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders
       def print_tmux_kitty_image(encoded, _height)
         @kitty_image_id ||= 30
         @kitty_image_id = (@kitty_image_id % 255) + 1
         image_id = @kitty_image_id
 
-        # Single row with 2 columns for inline display
-        cols = 2
-        rows = 1
-
-        # tmux passthrough for graphics command (inner escapes doubled)
-        # Transmit image with Unicode placeholder mode (U=1), q=1 suppresses OK response
-        $stdout.print "\ePtmux;\e\e_Ga=T,U=1,q=1,f=100,i=#{image_id},c=#{cols},r=#{rows},m=0;#{encoded}\e\e\\\e\\"
-
-        # Output placeholder cells with foreground color set to image_id
-        # Each cell needs U+10EEEE + row_diacritic + col_diacritic
-        # Diacritics: U+0305=0, U+030D=1
-        # Output 2 cells side by side for col 0 and col 1
-        $stdout.print "\e[38;5;#{image_id}m"
-        $stdout.print "\u{10EEEE}\u0305\u0305"  # row 0, col 0
-        $stdout.print "\u{10EEEE}\u0305\u030D"  # row 0, col 1
-        $stdout.print "\e[39m"
+        # tmux passthrough: transmit image with Unicode placeholder mode (U=1), 2 cols x 1 row
+        $stdout.print "\ePtmux;\e\e_Ga=T,U=1,q=1,f=100,i=#{image_id},c=2,r=1,m=0;#{encoded}\e\e\\\e\\"
+        # Output placeholder cells (U+10EEEE + row/col diacritics) with foreground color = image_id
+        $stdout.print "\e[38;5;#{image_id}m\u{10EEEE}\u0305\u0305\u{10EEEE}\u0305\u030D\e[39m"
         $stdout.flush
       end
 
@@ -153,14 +139,12 @@ module Slk
 
         print_inline_image(path, height: height)
 
-        if in_tmux? && kitty_graphics_supported?
-          # Unicode placeholders are regular text, just print after them
-          puts " #{text}"
-        elsif in_tmux?
+        if in_tmux? && !kitty_graphics_supported?
           # iTerm2 in tmux: image ends with \n + space, cursor on next line
           # Move up 1 line, right 3 cols (past image), then print text
           print "\e[1A\e[3C#{text}\n"
         else
+          # Direct output or Unicode placeholders (regular text, just print after)
           puts " #{text}"
         end
 
