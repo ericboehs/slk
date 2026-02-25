@@ -192,10 +192,10 @@ module Slk
         raw = if thread_ts
                 fetch_thread_messages(api, channel_id, thread_ts)
               else
-                fetch_channel_history(api, channel_id, oldest)
+                fetch_channel_history(api, channel_id, oldest).reverse
               end
 
-        raw.map { |m| Models::Message.from_api(m, channel_id: channel_id) }.reverse
+        raw.map { |m| Models::Message.from_api(m, channel_id: channel_id) }
       end
 
       def fetch_thread_messages(api, channel_id, thread_ts)
