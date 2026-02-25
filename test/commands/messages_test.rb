@@ -281,6 +281,56 @@ class MessagesCommandTest < Minitest::Test
     refute parent.key?('replies'), 'Expected replies key to be absent for non-thread message'
   end
 
+  def test_channel_messages_display_in_chronological_order
+    # Slack API returns newest first for conversations.history
+    @mock_client.stub('conversations.history', {
+                        'ok' => true,
+                        'messages' => [
+                          { 'ts' => '1234.0003', 'user' => 'U123', 'text' => 'Third' },
+                          { 'ts' => '1234.0002', 'user' => 'U123', 'text' => 'Second' },
+                          { 'ts' => '1234.0001', 'user' => 'U123', 'text' => 'First' }
+                        ]
+                      })
+
+    command = build_command(['#general'])
+    stub_target_resolver(command)
+
+    result = command.execute
+
+    assert_equal 0, result
+    first_pos = @io.string.index('First')
+    second_pos = @io.string.index('Second')
+    third_pos = @io.string.index('Third')
+    assert first_pos < second_pos, 'First should appear before Second'
+    assert second_pos < third_pos, 'Second should appear before Third'
+  end
+
+  def test_thread_messages_display_in_chronological_order
+    # conversations.replies returns messages that deduplicate_and_sort orders oldest first
+    @mock_client.stub('conversations.replies', {
+                        'ok' => true,
+                        'messages' => [
+                          { 'ts' => '1234.0001', 'user' => 'U123', 'text' => 'Parent', 'thread_ts' => '1234.0001' },
+                          { 'ts' => '1234.0003', 'user' => 'U789', 'text' => 'Third reply',
+                            'thread_ts' => '1234.0001' },
+                          { 'ts' => '1234.0002', 'user' => 'U456', 'text' => 'Second reply',
+                            'thread_ts' => '1234.0001' }
+                        ]
+                      })
+
+    command = build_command(['#general'])
+    stub_target_resolver(command, thread_ts: '1234.0001')
+
+    result = command.execute
+
+    assert_equal 0, result
+    parent_pos = @io.string.index('Parent')
+    second_pos = @io.string.index('Second reply')
+    third_pos = @io.string.index('Third reply')
+    assert parent_pos < second_pos, 'Parent should appear before Second reply'
+    assert second_pos < third_pos, 'Second reply should appear before Third reply'
+  end
+
   def test_markdown_mode_disables_inline_images
     command = build_command(['#general', '--markdown', '--workspace-emoji'])
 
@@ -300,12 +350,12 @@ class MessagesCommandTest < Minitest::Test
 
   private
 
-  def stub_target_resolver(command)
+  def stub_target_resolver(command, thread_ts: nil, msg_ts: nil)
     command.define_singleton_method(:target_resolver) do
       resolver = Object.new
       ws = Slk::Models::Workspace.new(name: 'test', token: 'xoxb-test')
       result = Slk::Services::TargetResolver::Result.new(
-        workspace: ws, channel_id: 'C123', thread_ts: nil, msg_ts: nil
+        workspace: ws, channel_id: 'C123', thread_ts: thread_ts, msg_ts: msg_ts
       )
       resolver.define_singleton_method(:resolve) { |_target, **_opts| result }
       resolver
