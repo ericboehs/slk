@@ -12,9 +12,30 @@ module Slk
 
         target = positional_args.first
         return usage_error unless target
-        return url_required_error unless Support::SlackUrlParser.new.slack_url?(target)
 
-        super
+        parsed = Support::SlackUrlParser.new.parse(target)
+        return url_required_error unless parsed&.message?
+
+        resolved = target_resolver.resolve(target, default_workspace: target_workspaces.first)
+        fetch_and_display_messages(resolved)
+      rescue ApiError => e
+        error("Failed to fetch messages: #{e.message}")
+        1
+      rescue ArgumentError => e
+        error(e.message)
+        1
+      end
+
+      def fetch_and_display_messages(resolved)
+        ts = resolved.thread_ts || resolved.msg_ts
+        return message_url_required_error unless ts
+
+        api = runner.conversations_api(resolved.workspace.name)
+        raw = fetch_all_thread_replies(api, resolved.channel_id, ts)
+        messages = raw.map { |m| Models::Message.from_api(m, channel_id: resolved.channel_id) }
+
+        output_messages(messages, resolved.workspace, resolved.channel_id)
+        0
       end
 
       protected
@@ -25,16 +46,13 @@ module Slk
       end
 
       def url_required_error
-        error('thread command requires a Slack URL')
+        error('thread command requires a Slack message URL')
         1
       end
 
-      def default_options
-        super.merge(
-          limit: 1,
-          limit_set: true, # Prevent apply_default_limit from overriding
-          threads: true
-        )
+      def message_url_required_error
+        error('URL must point to a specific message (not just a channel)')
+        1
       end
 
       def help_text
