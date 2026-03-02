@@ -25,7 +25,16 @@ class ThreadCommandTest < Minitest::Test
     result = command.execute
 
     assert_equal 1, result
-    assert_includes @err.string, 'thread command requires a Slack URL'
+    assert_includes @err.string, 'thread command requires a Slack message URL'
+  end
+
+  def test_channel_only_url_shows_error
+    command = build_command(['https://test.slack.com/archives/C123'])
+
+    result = command.execute
+
+    assert_equal 1, result
+    assert_includes @err.string, 'thread command requires a Slack message URL'
   end
 
   def test_fetches_thread_via_replies_api

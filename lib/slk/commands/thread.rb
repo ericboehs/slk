@@ -12,7 +12,9 @@ module Slk
 
         target = positional_args.first
         return usage_error unless target
-        return url_required_error unless Support::SlackUrlParser.new.slack_url?(target)
+
+        parsed = Support::SlackUrlParser.new.parse(target)
+        return url_required_error unless parsed&.message?
 
         resolved = target_resolver.resolve(target, default_workspace: target_workspaces.first)
         fetch_and_display_messages(resolved)
@@ -26,7 +28,7 @@ module Slk
 
       def fetch_and_display_messages(resolved)
         ts = resolved.thread_ts || resolved.msg_ts
-        return usage_error unless ts
+        return message_url_required_error unless ts
 
         api = runner.conversations_api(resolved.workspace.name)
         raw = fetch_all_thread_replies(api, resolved.channel_id, ts)
@@ -44,7 +46,12 @@ module Slk
       end
 
       def url_required_error
-        error('thread command requires a Slack URL')
+        error('thread command requires a Slack message URL')
+        1
+      end
+
+      def message_url_required_error
+        error('URL must point to a specific message (not just a channel)')
         1
       end
 
