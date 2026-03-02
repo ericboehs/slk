@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-03-01
+
 ### Added
 
 - **Ghostty/Kitty terminal support** - Inline emoji images now work in Ghostty and Kitty terminals
@@ -29,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New `TextProcessor` service centralizes text processing (HTML decode, mentions, emoji)
 - New `MessageResolver` service extracted from activity command for reuse
 - Refactored formatters to use shared TextProcessor
+
+### Fixed
+
+- **`thread` command** - Fixed fetching wrong message when using `slk thread <url>`
+  - Now uses `conversations.replies` directly instead of `conversations.history` with limit 1
+  - Previously could return the wrong message if newer messages existed in the channel
+  - Tightened URL validation to reject non-message URLs (e.g. channel-only URLs) early
 
 ## [0.4.0] - 2026-01-30
 
@@ -122,6 +131,7 @@ Initial release of the Ruby rewrite. Pure Ruby, no external dependencies.
   - Pure Ruby stdlib - no gem dependencies
   - Ruby 3.2+ with modern features (Data.define, pattern matching)
 
+[0.4.2]: https://github.com/ericboehs/slk/releases/tag/v0.4.2
 [0.4.0]: https://github.com/ericboehs/slk/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ericboehs/slk/releases/tag/v0.3.0
 [0.2.0]: https://github.com/ericboehs/slk/releases/tag/v0.2.0
