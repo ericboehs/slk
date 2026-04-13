@@ -10,6 +10,16 @@ module Slk
         result = validate_options
         return result if result
 
+        resolve_and_display_thread
+      rescue ApiError => e
+        error("Failed to fetch messages: #{e.message}")
+        1
+      rescue ArgumentError => e
+        error(e.message)
+        1
+      end
+
+      def resolve_and_display_thread
         target = positional_args.first
         return usage_error unless target
 
@@ -18,12 +28,6 @@ module Slk
 
         resolved = target_resolver.resolve(target, default_workspace: target_workspaces.first)
         fetch_and_display_messages(resolved)
-      rescue ApiError => e
-        error("Failed to fetch messages: #{e.message}")
-        1
-      rescue ArgumentError => e
-        error(e.message)
-        1
       end
 
       def fetch_and_display_messages(resolved)

@@ -103,7 +103,7 @@ class TokenStoreTest < Minitest::Test
       workspaces = store.all_workspaces
 
       assert_equal 2, workspaces.size
-      assert(workspaces.all? { |ws| ws.is_a?(Slk::Models::Workspace) })
+      assert(workspaces.all?(Slk::Models::Workspace))
       assert_equal %w[ws1 ws2].sort, workspaces.map(&:name).sort
     end
   end
