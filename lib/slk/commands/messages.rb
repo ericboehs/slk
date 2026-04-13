@@ -289,12 +289,20 @@ module Slk
       def show_thread_replies(workspace, channel_id, parent_message, opts)
         api = runner.conversations_api(workspace.name)
         replies = fetch_all_thread_replies(api, channel_id, parent_message.ts)
+        reply_messages = replies[1..].map { |r| Models::Message.from_api(r, channel_id: channel_id) }
 
-        replies[1..].each { |reply_data| display_thread_reply(reply_data, workspace, channel_id, opts) }
+        download_reply_files(reply_messages, workspace, opts)
+        reply_messages.each { |reply| display_thread_reply_message(reply, workspace, opts) }
       end
 
-      def display_thread_reply(reply_data, workspace, channel_id, opts)
-        reply = Models::Message.from_api(reply_data, channel_id: channel_id)
+      def download_reply_files(replies, workspace, opts)
+        return unless opts[:fetch_attachments]
+
+        new_paths = fetch_attachment_files(replies, workspace)
+        opts[:file_paths].merge!(new_paths)
+      end
+
+      def display_thread_reply_message(reply, workspace, opts)
         formatted = runner.message_formatter.format(reply, workspace: workspace, options: opts)
 
         lines = formatted.lines

@@ -18,6 +18,7 @@ module Slk
       ].freeze
 
       IMAGE_TYPES = %w[png jpg jpeg gif bmp webp svg].freeze
+      MAX_REDIRECTS = 3
 
       def initialize(cache_dir:, on_debug: nil)
         @cache_dir = cache_dir
@@ -130,12 +131,23 @@ module Slk
 
       def fetch_with_redirect(url)
         uri = URI.parse(url)
-        response = build_http_client(uri).request(Net::HTTP::Get.new(uri))
+        MAX_REDIRECTS.times do
+          response = build_http_client(uri).request(Net::HTTP::Get.new(uri))
+          return response unless response.is_a?(Net::HTTPRedirection) && response['location']
 
-        return response unless response.is_a?(Net::HTTPRedirection) && response['location']
-
-        uri = URI.parse(response['location'])
+          uri = resolve_redirect(uri, response['location'])
+          return response unless uri.host
+        end
+        # Exhausted redirects — return last response as-is
         build_http_client(uri).request(Net::HTTP::Get.new(uri))
+      end
+
+      def resolve_redirect(original_uri, location)
+        parsed = URI.parse(location)
+        return parsed if parsed.host
+
+        # Relative redirect — resolve against original URI
+        URI.parse("#{original_uri.scheme}://#{original_uri.host}:#{original_uri.port}#{location}")
       end
 
       def write_response(response, filepath) # rubocop:disable Naming/PredicateMethod
