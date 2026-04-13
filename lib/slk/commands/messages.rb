@@ -124,6 +124,7 @@ module Slk
         section.option('--no-names', 'Skip user name lookups (faster)')
         section.option('--reaction-names', 'Show reactions with user names')
         section.option('--reaction-timestamps', 'Show when each person reacted')
+        section.option('--fetch-attachments', 'Download files/images to local cache (~/.cache/slk/files/)')
         section.option('--width N', 'Wrap text at N columns (default: 72 on TTY, no wrap otherwise)')
         section.option('--no-wrap', 'Disable text wrapping')
       end
@@ -258,15 +259,22 @@ module Slk
       end
 
       def display_messages(messages, workspace, channel_id)
-        formatter = runner.message_formatter
-        opts = format_options.merge(channel_id: channel_id)
+        opts = build_display_options(messages, workspace, channel_id)
 
         messages.each_with_index do |message, index|
-          display_single_message(formatter, message, workspace, opts)
+          display_single_message(runner.message_formatter, message, workspace, opts)
           puts if index < messages.length - 1
 
           show_thread_replies(workspace, channel_id, message, opts) if should_show_thread?(message)
         end
+
+        print_file_summary(messages) unless opts[:fetch_attachments]
+      end
+
+      def build_display_options(messages, workspace, channel_id)
+        opts = format_options.merge(channel_id: channel_id)
+        opts[:file_paths] = fetch_attachment_files(messages, workspace) if opts[:fetch_attachments]
+        opts
       end
 
       def should_show_thread?(message)
@@ -329,6 +337,24 @@ module Slk
         else
           print ":#{emoji_name}:"
         end
+      end
+
+      def print_file_summary(messages)
+        file_count = messages.sum { |m| m.files.size }
+        return if file_count.zero?
+
+        label = file_count == 1 ? '1 file' : "#{file_count} files"
+        puts
+        info("#{label} not downloaded. Use --fetch-attachments to download.")
+      end
+
+      def fetch_attachment_files(messages, workspace)
+        paths = Support::XdgPaths.new
+        downloader = Services::FileDownloader.new(
+          cache_dir: paths.cache_dir,
+          on_debug: ->(msg) { debug(msg) }
+        )
+        downloader.download_message_files(messages, workspace)
       end
 
       def find_workspace_emoji(workspace_name, emoji_name)
