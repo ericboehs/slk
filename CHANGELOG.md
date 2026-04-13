@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-13
+
+### Added
+
+- **`--fetch-attachments` flag** - Download message files and attachment images to local cache
+  - Downloads Slack files (authed) and public attachment images (Giphy, Tenor, etc.)
+  - Cached to `~/.cache/slk/files/{workspace}/` with skip-on-rerun
+  - Shows copyable local file paths in output: `[File: /path/to/file.png]`
+  - Works with `messages`, `thread`, and `--threads` inline replies
+  - Summary line when files are present: `9 files not downloaded. Use --fetch-attachments to download.`
+  - Follows up to 3 redirect hops with relative URL resolution
+
+### Changed
+
+- Added `rubocop` as a dev dependency for linting
+
+### Fixed
+
+- **`thread` command** - Extracted `resolve_and_display_thread` to fix rubocop complexity warnings
+
 ## [0.4.2] - 2026-03-01
 
 ### Added
@@ -131,6 +151,7 @@ Initial release of the Ruby rewrite. Pure Ruby, no external dependencies.
   - Pure Ruby stdlib - no gem dependencies
   - Ruby 3.2+ with modern features (Data.define, pattern matching)
 
+[0.5.0]: https://github.com/ericboehs/slk/releases/tag/v0.5.0
 [0.4.2]: https://github.com/ericboehs/slk/releases/tag/v0.4.2
 [0.4.0]: https://github.com/ericboehs/slk/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ericboehs/slk/releases/tag/v0.3.0
