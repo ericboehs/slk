@@ -75,6 +75,7 @@ module Slk
           s.option('--no-emoji', 'Show :emoji: codes instead of unicode')
           s.option('--no-reactions', 'Hide reactions')
           s.option('--no-names', 'Skip user name lookups (faster)')
+          s.option('--fetch-attachments', 'Download files/images to local cache (~/.cache/slk/files/)')
           s.option('--json', 'Output as JSON')
           s.option('-v, --verbose', 'Show debug information')
         end
