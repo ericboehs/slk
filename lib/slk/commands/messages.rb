@@ -348,12 +348,16 @@ module Slk
       end
 
       def print_file_summary(messages)
-        file_count = messages.sum { |m| m.files.size }
+        file_count = messages.sum { |m| m.files.size + downloadable_attachment_count(m) }
         return if file_count.zero?
 
         label = file_count == 1 ? '1 file' : "#{file_count} files"
         puts
         info("#{label} not downloaded. Use --fetch-attachments to download.")
+      end
+
+      def downloadable_attachment_count(message)
+        message.attachments.count { |a| a['image_url'] || a['thumb_url'] }
       end
 
       def fetch_attachment_files(messages, workspace)
