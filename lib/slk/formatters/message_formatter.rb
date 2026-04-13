@@ -85,8 +85,14 @@ module Slk
         return '' unless message.files? && !options[:no_files]
 
         first_file = message.files.first
-        file_name = first_file['name'] || 'file'
-        @output.blue("[File: #{file_name}]")
+        file_label = file_display_label(first_file, options)
+        @output.blue("[File: #{file_label}]")
+      end
+
+      def file_display_label(file, options)
+        file_id = file['id']
+        local_path = options.dig(:file_paths, file_id) if file_id
+        local_path || file['name'] || 'file'
       end
 
       def build_output_lines(main_line, message, workspace, options, display_text)
@@ -96,7 +102,7 @@ module Slk
         BlockFormatter.new(text_processor: text_processor)
                       .format(message.blocks, message.text, lines, options)
         AttachmentFormatter.new(output: @output, text_processor: text_processor)
-                           .format(message.attachments, lines, options)
+                           .format(message.attachments, lines, options, message_ts: message.ts)
         format_files(message, lines, options, skip_first: display_text.include?('[File:'))
         format_reactions(message, lines, workspace, options)
         format_thread_indicator(message, lines, options)
@@ -128,7 +134,10 @@ module Slk
         return if options[:no_files]
 
         files = files_to_display(message.files, skip_first)
-        files.each { |file| lines << @output.blue("[File: #{file['name'] || 'file'}]") }
+        files.each do |file|
+          label = file_display_label(file, options)
+          lines << @output.blue("[File: #{label}]")
+        end
       end
 
       def files_to_display(files, skip_first)

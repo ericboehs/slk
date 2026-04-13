@@ -49,6 +49,7 @@ module Slk
     autoload :ReactionEnricher, 'slk/services/reaction_enricher'
     autoload :GemojiSync, 'slk/services/gemoji_sync'
     autoload :EmojiDownloader, 'slk/services/emoji_downloader'
+    autoload :FileDownloader, 'slk/services/file_downloader'
     autoload :EmojiSearcher, 'slk/services/emoji_searcher'
     autoload :ActivityEnricher, 'slk/services/activity_enricher'
     autoload :UnreadMarker, 'slk/services/unread_marker'

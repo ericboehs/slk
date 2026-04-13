@@ -32,7 +32,8 @@ module Slk
       end
 
       def base_options
-        { workspace: nil, all: false, verbose: false, quiet: false, json: false, markdown: false, width: default_width }
+        { workspace: nil, all: false, verbose: false, quiet: false, json: false, markdown: false,
+          width: default_width, fetch_attachments: false }
       end
 
       def formatting_options
@@ -79,6 +80,7 @@ module Slk
         when '--no-names' then @options[:no_names] = true
         when '--reaction-names' then @options[:reaction_names] = true
         when '--reaction-timestamps' then @options[:reaction_timestamps] = true
+        when '--fetch-attachments' then @options[:fetch_attachments] = true
         else handle_option(arg, args, remaining)
         end
       end
@@ -194,7 +196,8 @@ module Slk
           no_names: @options[:no_names],
           reaction_names: @options[:reaction_names],
           reaction_timestamps: @options[:reaction_timestamps],
-          width: @options[:width]
+          width: @options[:width],
+          fetch_attachments: @options[:fetch_attachments]
         }
       end
     end

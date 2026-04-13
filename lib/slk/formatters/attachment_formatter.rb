@@ -9,17 +9,19 @@ module Slk
         @text_processor = text_processor
       end
 
-      def format(attachments, lines, options)
+      def format(attachments, lines, options, message_ts: nil)
         return if attachments.empty?
         return if options[:no_attachments]
 
-        attachments.each { |att| format_attachment(att, lines, options) }
+        attachments.each_with_index do |att, idx|
+          format_attachment(att, lines, options, message_ts: message_ts, index: idx)
+        end
       end
 
       private
 
       # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
-      def format_attachment(attachment, lines, options)
+      def format_attachment(attachment, lines, options, message_ts: nil, index: 0)
         att_text = attachment['text'] || attachment['fallback']
         image_url = attachment['image_url'] || attachment['thumb_url']
         block_images = extract_block_images(attachment)
@@ -29,7 +31,7 @@ module Slk
         lines << ''
         format_author(attachment, lines)
         format_text(att_text, lines, options) if att_text && block_images.empty?
-        format_image(attachment, image_url, lines) if image_url
+        format_image(attachment, lines, options, message_ts: message_ts, index: index) if image_url
         block_images.each { |img| lines << "> [Image: #{img}]" }
       end
       # rubocop:enable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
@@ -64,9 +66,22 @@ module Slk
         Support::TextWrapper.wrap(text, width - 2, width - 2)
       end
 
-      def format_image(attachment, image_url, lines)
-        filename = attachment['title'] || extract_filename(image_url)
-        lines << "> [Image: #{filename}]"
+      def format_image(attachment, lines, options, message_ts: nil, index: 0)
+        local_path = lookup_attachment_path(options, message_ts, index)
+        if local_path
+          lines << "> [Image: #{local_path}]"
+        else
+          image_url = attachment['image_url'] || attachment['thumb_url']
+          filename = attachment['title'] || extract_filename(image_url)
+          lines << "> [Image: #{filename}]"
+        end
+      end
+
+      def lookup_attachment_path(options, message_ts, index)
+        return nil unless message_ts
+
+        key = "att_#{message_ts}_#{index}"
+        options.dig(:file_paths, key)
       end
 
       def extract_filename(url)
