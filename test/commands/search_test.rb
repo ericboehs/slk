@@ -197,6 +197,97 @@ class SearchCommandTest < Minitest::Test
     assert_includes error.message, '--after requires a value'
   end
 
+  def test_missing_before_value_raises_error
+    error = assert_raises(ArgumentError) do
+      build_command(['test', '--before'])
+    end
+
+    assert_includes error.message, '--before requires a value'
+  end
+
+  def test_missing_on_value_raises_error
+    error = assert_raises(ArgumentError) do
+      build_command(['test', '--on'])
+    end
+
+    assert_includes error.message, '--on requires a value'
+  end
+
+  def test_missing_page_value_raises_error
+    error = assert_raises(ArgumentError) do
+      build_command(['test', '--page'])
+    end
+
+    assert_includes error.message, '--page requires a value'
+  end
+
+  def test_help_option
+    command = build_command(['--help'])
+    assert_equal 0, command.execute
+    assert_includes @io.string, 'slk search'
+    assert_includes @io.string, '--in'
+    assert_includes @io.string, '--from'
+  end
+
+  def test_unknown_option_returns_error
+    command = build_command(['test', '--bogus'])
+    assert_equal 1, command.execute
+    assert_includes @err.string, 'Unknown option'
+  end
+
+  def test_api_error_generic
+    def @mock_client.get(workspace, method, params = {})
+      @calls << { workspace: workspace.name, method: method, params: params }
+      raise Slk::ApiError, 'server_down'
+    end
+
+    command = build_command(['test'])
+    assert_equal 1, command.execute
+    assert_includes @err.string, 'Search failed'
+    assert_includes @err.string, 'server_down'
+  end
+
+  def test_threads_option_fetches_replies
+    stub_search_response([thread_match])
+    @mock_client.stub('conversations.replies', {
+                        'ok' => true,
+                        'messages' => [
+                          { 'ts' => '1.0', 'user' => 'U1', 'text' => 'msg', 'thread_ts' => '1.0' },
+                          { 'ts' => '1.1', 'user' => 'U2', 'text' => 'reply', 'thread_ts' => '1.0' }
+                        ]
+                      })
+
+    command = build_command(['msg', '--threads'])
+    assert_equal 0, command.execute
+    assert_includes @io.string, 'reply'
+  end
+
+  def test_threads_option_handles_replies_error
+    stub_search_response([thread_match])
+
+    original_post_form = @mock_client.method(:post_form)
+    @mock_client.define_singleton_method(:post_form) do |ws, m, params = {}|
+      raise Slk::ApiError, 'replies_failed' if m == 'conversations.replies'
+
+      original_post_form.call(ws, m, params)
+    end
+
+    command = build_command(['msg', '--threads'])
+    assert_equal 0, command.execute
+  end
+
+  def thread_match
+    { 'ts' => '1.0', 'user' => 'U1', 'text' => 'msg',
+      'channel' => { 'id' => 'C1', 'name' => 'general' },
+      'permalink' => 'https://x.slack.com/archives/C1/p1?thread_ts=1.0' }
+  end
+
+  def test_verbose_shows_pagination_info
+    stub_search_response([])
+    command = build_command(['test', '--verbose'])
+    assert_equal 0, command.execute
+  end
+
   private
 
   def stub_search_response(matches)

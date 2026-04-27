@@ -22,6 +22,7 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby-version }}
+          bundler-cache: true
 
       - name: Install age (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
@@ -32,7 +33,26 @@ jobs:
         run: brew install age
 
       - name: Run tests
-        run: rake test
+        run: bundle exec rake test
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0'
+          bundler-cache: true
+
+      - name: Install age
+        run: sudo apt-get install -y age
+
+      - name: Run tests with coverage threshold
+        env:
+          COVERAGE: '1'
+        run: bundle exec rake test
 
   lint:
     runs-on: ubuntu-latest
@@ -43,9 +63,7 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '4.0'
-
-      - name: Install rubocop
-        run: gem install rubocop --no-document
+          bundler-cache: true
 
       - name: Run rubocop
-        run: rubocop
+        run: bundle exec rubocop

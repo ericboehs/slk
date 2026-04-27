@@ -109,6 +109,83 @@ class CacheCommandTest < Minitest::Test
     assert_includes @io.string, 'populate'
   end
 
+  def test_status_with_present_user_cache
+    @cache_store = MockCacheStorePresent.new
+    runner = create_runner
+    command = Slk::Commands::Cache.new(['status'], runner: runner)
+    assert_equal 0, command.execute
+    assert_includes @io.string, 'present'
+  end
+
+  def test_populate_cache
+    @mock_client.stub('users.list', {
+                        'ok' => true,
+                        'members' => [
+                          { 'id' => 'U1', 'name' => 'alice', 'profile' => { 'real_name' => 'Alice' } },
+                          { 'id' => 'U2', 'name' => 'bob', 'profile' => { 'real_name' => 'Bob' } }
+                        ]
+                      })
+    runner = create_runner
+    command = Slk::Commands::Cache.new(['populate'], runner: runner)
+    assert_equal 0, command.execute
+    assert_includes @io.string, 'Cached'
+  end
+
+  def test_populate_cache_paginated
+    page1 = { 'ok' => true, 'members' => [user_member('U1', 'a')],
+              'response_metadata' => { 'next_cursor' => 'next' } }
+    page2 = { 'ok' => true, 'members' => [user_member('U2', 'b')] }
+    call = 0
+    @mock_client.define_singleton_method(:post) do |ws, m, params = {}|
+      @calls << { workspace: ws.name, method: m, params: params }
+      call += 1
+      if m == 'users.list'
+        call == 1 ? page1 : page2
+      else
+        @responses[m] || { 'ok' => true }
+      end
+    end
+    runner = create_runner
+    command = Slk::Commands::Cache.new(['populate'], runner: runner)
+    assert_equal 0, command.execute
+  end
+
+  def test_refresh_alias
+    @mock_client.stub('users.list', { 'ok' => true, 'members' => [] })
+    runner = create_runner
+    command = Slk::Commands::Cache.new(['refresh'], runner: runner)
+    assert_equal 0, command.execute
+  end
+
+  def test_populate_specific_workspace
+    @mock_client.stub('users.list', { 'ok' => true, 'members' => [] })
+    runner = create_runner
+    command = Slk::Commands::Cache.new(%w[populate test], runner: runner)
+    assert_equal 0, command.execute
+  end
+
+  def test_status_multi_workspace
+    workspaces = [mock_workspace('alpha'), mock_workspace('beta')]
+    runner = create_runner(workspaces: workspaces)
+    command = Slk::Commands::Cache.new(['status', '--all'], runner: runner)
+    assert_equal 0, command.execute
+    assert_includes @io.string, 'alpha'
+  end
+
+  def test_api_error_handling
+    runner = create_runner
+    @mock_client.define_singleton_method(:post) do |_ws, _m, _params = {}|
+      raise Slk::ApiError, 'oops'
+    end
+    command = Slk::Commands::Cache.new(['populate'], runner: runner)
+    assert_equal 1, command.execute
+    assert_includes @err.string, 'Failed'
+  end
+
+  def user_member(id, name)
+    { 'id' => id, 'name' => name, 'profile' => { 'real_name' => name.capitalize } }
+  end
+
   class MockCacheStore
     attr_reader :cleared_user, :cleared_channel
 
@@ -137,6 +214,14 @@ class CacheCommandTest < Minitest::Test
       @cleared_channel = workspace || true
     end
 
+    def populate_user_cache(_workspace, users)
+      users.size
+    end
+
     def on_warning=(callback); end
+  end
+
+  class MockCacheStorePresent < MockCacheStore
+    def user_cache_file_exists?(_workspace) = true
   end
 end

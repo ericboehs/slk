@@ -152,6 +152,148 @@ class PresetCommandTest < Minitest::Test
     assert_includes @io.string, 'add'
   end
 
+  def test_list_with_full_preset_options
+    @preset_store.presets = {
+      'meeting' => { 'text' => 'In meeting', 'emoji' => ':calendar:', 'duration' => '1h',
+                     'presence' => 'away', 'dnd' => '1h' }
+    }
+    runner = create_runner
+    command = Slk::Commands::Preset.new(['list'], runner: runner)
+    assert_equal 0, command.execute
+    assert_includes @io.string, 'Duration: 1h'
+    assert_includes @io.string, 'Presence: away'
+    assert_includes @io.string, 'DND: 1h'
+  end
+
+  def test_add_preset_interactive
+    fake_input = StringIO.new("focus\nFocusing\n:headphones:\n2h\n\n\n")
+    $stdin = fake_input
+    @preset_store.presets = {}
+    runner = create_runner
+    command = Slk::Commands::Preset.new(['add'], runner: runner)
+    assert_equal 0, command.execute
+    assert_includes @io.string, 'created'
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_add_preset_empty_name
+    fake_input = StringIO.new("\n")
+    $stdin = fake_input
+    runner = create_runner
+    command = Slk::Commands::Preset.new(['add'], runner: runner)
+    command.execute
+    assert_includes @err.string, 'Name is required'
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_edit_preset
+    @preset_store.presets = {
+      'lunch' => { 'text' => 'Lunch', 'emoji' => ':fork:', 'duration' => '1h',
+                   'presence' => '', 'dnd' => '' }
+    }
+    fake_input = StringIO.new("\n\n\n\n\n")
+    $stdin = fake_input
+    runner = create_runner
+    command = Slk::Commands::Preset.new(%w[edit lunch], runner: runner)
+    assert_equal 0, command.execute
+    assert_includes @io.string, 'updated'
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_edit_preset_not_found
+    @preset_store.presets = {}
+    runner = create_runner
+    command = Slk::Commands::Preset.new(%w[edit unknown], runner: runner)
+    command.execute
+    assert_includes @err.string, 'not found'
+  end
+
+  def test_apply_preset_with_dnd
+    @preset_store.presets = {
+      'focus' => { 'text' => 'Focus', 'emoji' => ':headphones:', 'duration' => '1h',
+                   'presence' => '', 'dnd' => '1h' }
+    }
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+    @mock_client.stub('dnd.setSnooze', { 'ok' => true })
+    runner = create_runner
+    command = Slk::Commands::Preset.new(['focus'], runner: runner)
+    assert_equal 0, command.execute
+  end
+
+  def test_apply_preset_with_dnd_off
+    @preset_store.presets = {
+      'available' => { 'text' => '', 'emoji' => '', 'duration' => '0',
+                       'presence' => '', 'dnd' => 'off' }
+    }
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+    @mock_client.stub('dnd.endSnooze', { 'ok' => true })
+    runner = create_runner
+    command = Slk::Commands::Preset.new(['available'], runner: runner)
+    assert_equal 0, command.execute
+  end
+
+  def test_apply_preset_clears_status
+    @preset_store.presets = {
+      'clear' => { 'text' => '', 'emoji' => '', 'duration' => '0',
+                   'presence' => '', 'dnd' => '' }
+    }
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+    runner = create_runner
+    command = Slk::Commands::Preset.new(['clear'], runner: runner)
+    assert_equal 0, command.execute
+  end
+
+  def test_apply_preset_api_error
+    @preset_store.presets = {
+      'foo' => { 'text' => 'F', 'emoji' => ':x:', 'duration' => '1h',
+                 'presence' => '', 'dnd' => '' }
+    }
+    runner = create_runner
+    @mock_client.define_singleton_method(:post) do |_ws, _m, _params = {}|
+      raise Slk::ApiError, 'boom'
+    end
+    command = Slk::Commands::Preset.new(['foo'], runner: runner)
+    assert_equal 1, command.execute
+    assert_includes @err.string, 'Failed to apply'
+  end
+
+  def test_list_finds_workspace_emoji_path
+    @preset_store.presets = {
+      'meeting' => { 'text' => 'Meeting', 'emoji' => ':calendar:', 'duration' => '0',
+                     'presence' => '', 'dnd' => '' }
+    }
+    Dir.mktmpdir('slk-preset-emoji') do |dir|
+      ws_dir = File.join(dir, 'slk', 'test')
+      FileUtils.mkdir_p(ws_dir)
+      File.write(File.join(ws_dir, 'calendar.png'), 'fake')
+      old = ENV.fetch('XDG_CACHE_HOME', nil)
+      ENV['XDG_CACHE_HOME'] = dir
+      runner = create_runner
+      assert_equal 0, Slk::Commands::Preset.new(['list'], runner: runner).execute
+      ENV['XDG_CACHE_HOME'] = old
+    end
+  end
+
+  def test_list_preset_with_no_status
+    @preset_store.presets = {
+      'empty' => { 'text' => '', 'emoji' => '', 'duration' => '0', 'presence' => '', 'dnd' => '' }
+    }
+    runner = create_runner
+    assert_equal 0, Slk::Commands::Preset.new(['list'], runner: runner).execute
+    assert_includes @io.string, 'empty'
+  end
+
+  def test_unknown_action_falls_through_to_apply
+    @preset_store.presets = {}
+    runner = create_runner
+    command = Slk::Commands::Preset.new(%w[nothere extra], runner: runner)
+    command.execute
+    assert_includes @err.string, 'not found'
+  end
+
   class MockPresetStore
     attr_accessor :presets
 
