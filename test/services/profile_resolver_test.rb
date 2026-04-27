@@ -63,11 +63,12 @@ class ProfileResolverTest < Minitest::Test
     assert_equal 'Boss B', profile.resolved_users['U003'].real_name
   end
 
-  def test_resolve_swallows_other_api_errors_without_on_debug
+  def test_resolve_propagates_non_user_not_found_errors
     @users.add('U001', team_id: 'T_HOME')
     @users.fail_profile_with('U001', :rate_limited)
     resolver = Slk::Services::ProfileResolver.new(users_api: @users, team_api: @team)
-    refute_nil resolver.resolve('U001')
+    err = assert_raises(Slk::ApiError) { resolver.resolve('U001') }
+    assert_equal :rate_limited, err.code
   end
 
   def test_user_not_found_fallback_without_on_debug
@@ -114,15 +115,15 @@ class ProfileResolverTest < Minitest::Test
     refute_nil profile
   end
 
-  def test_resolve_swallows_rate_limited_with_debug
+  def test_resolve_propagates_rate_limited_error_to_debug
     debug_msgs = []
     resolver = Slk::Services::ProfileResolver.new(
       users_api: @users, team_api: @team, on_debug: ->(m) { debug_msgs << m }
     )
     @users.add('U001', team_id: 'T_HOME')
     @users.fail_profile_with('U001', :rate_limited)
-    refute_nil resolver.resolve('U001')
-    assert(debug_msgs.any? { |m| m.include?('failed') })
+    assert_raises(Slk::ApiError) { resolver.resolve('U001') }
+    assert(debug_msgs.any? { |m| m.include?('Profile resolve failed') })
   end
 
   def test_resolve_handles_presence_fetch_failure

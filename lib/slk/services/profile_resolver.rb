@@ -47,11 +47,11 @@ module Slk
         chain = []
         seen = Set.new([user_id])
         current = resolve(user_id)
-        depth.times do
-          current = step_up(current, seen, chain) or break
-        end
+        depth.times { current = step_up(current, seen, chain) or break }
         chain
       end
+
+      private
 
       def step_up(current, seen, chain)
         parent_id = current.supervisor_ids.first
@@ -62,8 +62,6 @@ module Slk
         seen << parent.user_id
         parent
       end
-
-      private
 
       def build_profile(user_id)
         profile = ProfileBuilder.build(
@@ -78,34 +76,38 @@ module Slk
         raise
       end
 
-      # Only swallow `user_not_found` (Slack Connect external users); other
-      # errors must propagate so the card isn't silently degraded.
+      # Only swallow `user_not_found` (Slack Connect); other errors propagate.
       def fetch_profile_response(user_id)
-        cache_or_fetch("up_#{user_id}", ttl: PROFILE_TTL) { @users_api.profile_for(user_id) }
+        key = "up_#{user_id}"
+        cached = MetaCache.read(@cache_store, @workspace_name, key, ttl: PROFILE_TTL) unless @refresh
+        return cached if cached
+
+        response = @users_api.profile_for(user_id)
+        MetaCache.write(@cache_store, @workspace_name, key, response)
+        response
       rescue ApiError => e
         raise unless e.code == :user_not_found
 
-        @on_debug&.call("up_#{user_id}: #{e.message} (falling back to users.info)")
+        @on_debug&.call("#{key}: #{e.message} (falling back to users.info)")
         nil
       end
 
       def attach_extras(profile, user_id)
         profile = attach_home_team_name(profile)
-        presence = safely(:get_presence_for, user_id, &:itself).then { |r| r&.dig('presence') }
+        presence = fetch_presence(user_id)
         presence ? Models::Profile.new(**profile.to_h, presence: presence) : profile
       end
 
-      def safely(method, *args)
-        @users_api.public_send(method, *args)
+      def fetch_presence(user_id)
+        @users_api.get_presence_for(user_id)&.dig('presence')
       rescue ApiError => e
-        @on_debug&.call("#{method}(#{args.first}) failed: #{e.message}")
+        @on_debug&.call("get_presence_for(#{user_id}) failed: #{e.message}")
         nil
       end
 
       def schema
-        @schema ||= cache_or_fetch('team_profile_schema', ttl: SCHEMA_TTL, empty: EMPTY_SCHEMA) do
-          @team_api.profile_schema
-        end
+        @schema ||= cache_or_fetch('team_profile_schema', ttl: SCHEMA_TTL,
+                                                          empty: EMPTY_SCHEMA) { @team_api.profile_schema }
       end
 
       def workspace_team_id
@@ -120,9 +122,7 @@ module Slk
       end
 
       def attach_home_team_name(profile)
-        return profile unless profile.external? && profile.team_id
-
-        name = home_team_name(profile.team_id) or return profile
+        return profile unless profile.external? && profile.team_id && (name = home_team_name(profile.team_id))
 
         Models::Profile.new(**profile.to_h, home_team_name: name)
       end

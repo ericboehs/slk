@@ -111,6 +111,13 @@ class ConfigurationTest < Minitest::Test
     assert Dir.exist?(@paths.config_dir)
   end
 
+  def test_corrupted_json_without_on_warning_returns_empty
+    @paths.ensure_config_dir
+    File.write(@paths.config_file('config.json'), 'totally invalid')
+    config = Slk::Services::Configuration.new(paths: @paths)
+    assert_nil config.primary_workspace
+  end
+
   def test_lazy_loads_config
     write_config('primary_workspace' => 'lazy')
 
