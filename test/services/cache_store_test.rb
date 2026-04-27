@@ -478,4 +478,96 @@ class CacheStoreTest < Minitest::Test
       assert_equal 'a', store.get_user('w1', 'U1')
     end
   end
+
+  def test_get_meta_returns_nil_for_unknown_key
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      assert_nil store.get_meta('w1', 'unknown')
+    end
+  end
+
+  def test_set_meta_with_persist_false_does_not_write_file
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_meta('w1', 'k1', 'value', persist: false)
+      assert_equal 'value', store.get_meta('w1', 'k1')
+      paths = Slk::Support::XdgPaths.new
+      refute File.exist?(paths.cache_file('meta-w1.json'))
+    end
+  end
+
+  def test_get_meta_returns_nil_when_ttl_expired
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_meta('w1', 'k1', 'val', persist: false)
+      # Force fetched_at to be old
+      cache = store.instance_variable_get(:@meta_cache)
+      cache['w1']['k1']['fetched_at'] = Time.now.to_i - 1000
+      assert_nil store.get_meta('w1', 'k1', ttl: 100)
+    end
+  end
+
+  def test_get_meta_returns_value_when_ttl_within
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_meta('w1', 'k1', 'val', persist: false)
+      assert_equal 'val', store.get_meta('w1', 'k1', ttl: 100_000)
+    end
+  end
+
+  def test_load_corrupt_user_cache_warns_and_rebuilds
+    with_temp_config do
+      paths = Slk::Support::XdgPaths.new
+      paths.ensure_cache_dir
+      File.write(paths.cache_file('users-bad.json'), 'not valid json{{')
+      warnings = []
+      store = Slk::Services::CacheStore.new
+      store.on_warning = ->(msg) { warnings << msg }
+      assert_nil store.get_user('bad', 'U1')
+      assert(warnings.any? { |w| w.include?('corrupted') })
+    end
+  end
+
+  def test_safely_delete_file_warns_on_eacces
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      warnings = []
+      store.on_warning = ->(msg) { warnings << msg }
+      FileUtils.stub(:rm, ->(_) { raise Errno::EACCES, 'denied' }) do
+        store.send(:safely_delete_file, '/some/file')
+      end
+      assert(warnings.any? { |w| w.include?('Could not remove') })
+    end
+  end
+
+  def test_safely_delete_file_no_warning_callback
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      FileUtils.stub(:rm, ->(_) { raise Errno::EACCES, 'denied' }) do
+        # Should not raise, even without on_warning callback
+        store.send(:safely_delete_file, '/some/file')
+      end
+    end
+  end
+
+  def test_load_corrupt_cache_without_warning_callback
+    with_temp_config do
+      paths = Slk::Support::XdgPaths.new
+      paths.ensure_cache_dir
+      File.write(paths.cache_file('users-bad2.json'), 'not valid{{{')
+      store = Slk::Services::CacheStore.new # no on_warning
+      assert_nil store.get_user('bad2', 'U1')
+    end
+  end
+
+  def test_log_cache_access_emits_when_callback_set
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      events = []
+      store.on_cache_access = ->(*args) { events << args }
+      store.set_user('w1', 'U1', 'a')
+      store.get_user('w1', 'U1')
+      assert_equal 'user', events.first[0]
+    end
+  end
 end

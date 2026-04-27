@@ -16,6 +16,39 @@ class ProfileResolverTest < Minitest::Test
     refute profile.external?
   end
 
+  def test_resolve_with_refresh_skips_cache
+    @users.add('U001', real_name: 'Alice', team_id: 'T_HOME')
+    cache = Slk::Services::CacheStore.new(paths: TempPaths.new)
+    refresher = Slk::Services::ProfileResolver.new(
+      users_api: @users, team_api: @team, cache_store: cache,
+      workspace_name: 'test'
+    )
+    refresher.refresh = true
+    refresher.resolve('U001')
+    assert @users.calls['users.profile.get'].count { |c| c == 'U001' } >= 1
+  end
+
+  def test_presence_returns_nil_safely
+    @users.add('U001', real_name: 'Alice', team_id: 'T_HOME')
+    @users.define_singleton_method(:get_presence_for) { |_| nil }
+    profile = @resolver.resolve('U001')
+    assert_nil profile.presence
+  end
+
+  class TempPaths
+    def initialize
+      @dir = Dir.mktmpdir('slk-resolver-test')
+    end
+
+    def cache_file(name)
+      File.join(@dir, name)
+    end
+
+    def ensure_cache_dir
+      FileUtils.mkdir_p(@dir)
+    end
+  end
+
   def test_resolve_memoizes
     @users.add('U001', real_name: 'Alice', team_id: 'T_HOME')
     @resolver.resolve('U001')

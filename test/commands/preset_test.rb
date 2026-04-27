@@ -294,6 +294,86 @@ class PresetCommandTest < Minitest::Test
     assert_includes @err.string, 'not found'
   end
 
+  def test_list_alias_ls
+    @preset_store.presets = {}
+    runner = create_runner
+    command = Slk::Commands::Preset.new(['ls'], runner: runner)
+    assert_equal 0, command.execute
+    assert_includes @io.string, 'No presets'
+  end
+
+  def test_find_workspace_emoji_any_returns_nil_for_empty_name
+    runner = create_runner
+    command = Slk::Commands::Preset.new(['list'], runner: runner)
+    assert_nil command.send(:find_workspace_emoji_any, '')
+  end
+
+  def test_find_workspace_emoji_any_returns_path_when_found
+    Dir.mktmpdir do |dir|
+      ws_dir = File.join(dir, 'test')
+      FileUtils.mkdir_p(ws_dir)
+      emoji_file = File.join(ws_dir, 'foo.png')
+      File.write(emoji_file, 'data')
+
+      runner = create_runner
+      runner.config.define_singleton_method(:emoji_dir) { dir }
+      command = Slk::Commands::Preset.new(['list'], runner: runner)
+      result = command.send(:find_workspace_emoji_any, 'foo')
+      assert_equal emoji_file, result
+    end
+  end
+
+  def test_add_preset_with_empty_name_returns_error
+    runner = create_runner
+    command = Slk::Commands::Preset.new(['add'], runner: runner)
+    $stdin = StringIO.new("\n")
+    result = command.execute
+    assert_equal 1, result
+    assert_includes @err.string, 'Name is required'
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_add_preset_with_nil_name_returns_error
+    runner = create_runner
+    command = Slk::Commands::Preset.new(['add'], runner: runner)
+    $stdin = StringIO.new('') # eof - gets returns nil
+    result = command.execute
+    assert_equal 1, result
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_prompt_field_with_default_input_empty_keeps_default
+    runner = create_runner
+    command = Slk::Commands::Preset.new([], runner: runner)
+    $stdin = StringIO.new("\n")
+    result = command.send(:prompt_field, 'label', 'mydefault')
+    assert_equal 'mydefault', result
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_prompt_field_with_default_input_overrides
+    runner = create_runner
+    command = Slk::Commands::Preset.new([], runner: runner)
+    $stdin = StringIO.new("newval\n")
+    result = command.send(:prompt_field, 'label', 'mydefault')
+    assert_equal 'newval', result
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_prompt_field_no_default_returns_input
+    runner = create_runner
+    command = Slk::Commands::Preset.new([], runner: runner)
+    $stdin = StringIO.new("hello\n")
+    result = command.send(:prompt_field, 'label')
+    assert_equal 'hello', result
+  ensure
+    $stdin = STDIN
+  end
+
   class MockPresetStore
     attr_accessor :presets
 

@@ -180,4 +180,17 @@ class ProfileFieldRendererTest < Minitest::Test
   def test_format_text_handles_nil
     assert_equal '', @renderer.format_text(nil)
   end
+
+  def test_relative_phrase_subtract_when_day_smaller
+    # A date where target's day is later in the month than today's,
+    # exercising the months -= 1 branch in years_months_between.
+    today = Date.today
+    target_day = [today.day + 5, 28].min
+    return skip if target_day == today.day
+
+    target = Date.new(today.year - 1, today.month, target_day)
+    f = field(type: 'date', value: target.strftime('%Y-%m-%d'))
+    out = @renderer.render(f, profile_with)
+    assert_includes out, 'ago'
+  end
 end

@@ -59,4 +59,9 @@ class TextWrapperTest < Minitest::Test
     out = TW.wrap("\n\n", 10, 10)
     refute_nil out
   end
+
+  def test_wrap_text_with_trailing_whitespace
+    out = TW.wrap('hello   ', 10, 10)
+    assert_includes out, 'hello'
+  end
 end

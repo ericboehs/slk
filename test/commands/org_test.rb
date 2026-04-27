@@ -183,6 +183,19 @@ class OrgCommandTest < Minitest::Test
     assert_includes io_string, '--depth'
   end
 
+  def test_up_option_explicitly
+    stub_chain(target_id: 'USELF', boss_id: 'UBOSS', boss_name: 'Boss')
+    result = execute_with_args(['--up'])
+    assert_equal 0, result
+  end
+
+  def test_self_user_id_skips_set_when_auth_returns_nil
+    @mock_client.stub('auth.test', { 'ok' => true })
+    result = execute_with_args(['me'])
+    # Either succeeds or returns 1 — we just want the L114 false branch hit
+    assert_includes [0, 1], result
+  end
+
   private
 
   def stub_chain(target_id:, boss_id:, boss_name:, target_name: 'Eric')

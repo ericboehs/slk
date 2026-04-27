@@ -203,4 +203,20 @@ class AttachmentFormatterTest < Minitest::Test
 
     assert(lines.any? { |l| l.include?('LOWERCASE TEXT') })
   end
+
+  def test_format_image_with_local_path
+    attachments = [{ 'image_url' => 'https://example.com/img.png' }]
+    lines = []
+    options = { file_paths: { 'att_123_0' => '/local/cached.png' } }
+    @formatter.format(attachments, lines, options, message_ts: '123')
+    assert(lines.any? { |l| l.include?('/local/cached.png') })
+  end
+
+  def test_format_image_without_message_ts
+    attachments = [{ 'image_url' => 'https://example.com/img.png' }]
+    lines = []
+    options = { file_paths: { 'att_123_0' => '/local/cached.png' } }
+    @formatter.format(attachments, lines, options) # no message_ts
+    refute(lines.any? { |l| l.include?('/local/cached.png') })
+  end
 end

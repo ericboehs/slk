@@ -306,6 +306,125 @@ class FileDownloaderTest < Minitest::Test
     assert(captured_requests.any? { |r| r['Authorization'] == 'Bearer xoxb-my-secret-token' })
   end
 
+  def test_caches_attachment_image_on_second_call
+    with_temp_config do |dir|
+      downloader = build_downloader(dir)
+      workspace = mock_workspace
+      message = build_message(attachments: [{ 'image_url' => 'https://cdn.example.com/image.jpg' }])
+
+      with_stub_http(mock_success('JPG_DATA')) do
+        downloader.download_message_files([message], workspace)
+        paths = downloader.download_message_files([message], workspace)
+        attach_id = paths.keys.first
+        assert_match(/\Aatt_/, attach_id)
+        assert_equal 'JPG_DATA', File.read(paths[attach_id])
+      end
+    end
+  end
+
+  def test_returns_nil_when_attachment_download_returns_failure
+    with_temp_config do |dir|
+      downloader = build_downloader(dir)
+      workspace = mock_workspace
+      message = build_message(attachments: [{ 'image_url' => 'https://cdn.example.com/image.jpg' }])
+
+      with_stub_http(mock_failure(500)) do
+        paths = downloader.download_message_files([message], workspace)
+        assert_empty paths
+      end
+    end
+  end
+
+  def test_uses_jpg_extension_when_url_has_no_extension
+    with_temp_config do |dir|
+      downloader = build_downloader(dir)
+      workspace = mock_workspace
+      message = build_message(attachments: [{ 'image_url' => 'https://media.giphy.com/giphy/abcdef' }])
+
+      with_stub_http(mock_success('GIF_DATA')) do
+        paths = downloader.download_message_files([message], workspace)
+        assert_equal 1, paths.size
+        assert(paths.values.first.end_with?('.jpg'))
+      end
+    end
+  end
+
+  def test_applies_cookie_header_for_xoxc_workspace
+    captured = []
+    with_temp_config do |dir|
+      downloader = build_downloader(dir)
+      workspace = Slk::Models::Workspace.new(name: 'test', token: 'xoxc-abc', cookie: 'cookieval')
+      message = build_message(files: [
+                                { 'id' => 'F1', 'name' => 'a.png',
+                                  'url_private_download' => 'https://files.slack.com/a.png' }
+                              ])
+
+      with_stub_http(mock_success('DATA'), capture: captured) do
+        downloader.download_message_files([message], workspace)
+      end
+    end
+    assert(captured.any? { |r| r['Cookie'] == 'd=cookieval' })
+  end
+
+  def test_handles_network_error_on_public_attachment
+    with_temp_config do |dir|
+      downloader = build_downloader(dir)
+      workspace = mock_workspace
+      message = build_message(attachments: [{ 'image_url' => 'https://cdn.example.com/img.png' }])
+
+      with_stub_http_error(SocketError) do
+        paths = downloader.download_message_files([message], workspace)
+        assert_empty paths
+      end
+    end
+  end
+
+  def test_returns_response_when_redirect_has_no_host
+    with_temp_config do |dir|
+      downloader = build_downloader(dir)
+      workspace = mock_workspace
+      message = build_message(attachments: [{ 'image_url' => 'https://cdn.example.com/img.png' }])
+
+      response = Net::HTTPFound.allocate
+      response.instance_variable_set(:@header, { 'location' => [':not-a-url'] })
+
+      with_stub_http(response) do
+        paths = downloader.download_message_files([message], workspace)
+        assert_empty paths
+      end
+    end
+  end
+
+  def test_build_http_client_configures_ssl_for_https
+    with_temp_config do |dir|
+      downloader = build_downloader(dir)
+      uri = URI.parse('https://example.com/path')
+      http = downloader.send(:build_http_client, uri)
+      assert http.use_ssl?
+      assert_equal OpenSSL::SSL::VERIFY_PEER, http.verify_mode
+    end
+  end
+
+  def test_build_http_client_no_ssl_for_http
+    with_temp_config do |dir|
+      downloader = build_downloader(dir)
+      uri = URI.parse('http://example.com/path')
+      http = downloader.send(:build_http_client, uri)
+      refute http.use_ssl?
+    end
+  end
+
+  def test_skips_attachment_with_invalid_url
+    with_temp_config do |dir|
+      downloader = build_downloader(dir)
+      workspace = mock_workspace
+      message = build_message(attachments: [{ 'image_url' => 'not a valid url' }])
+
+      paths = downloader.download_message_files([message], workspace)
+      assert_empty paths
+    end
+  end
+
   def test_multiple_messages_with_mixed_files
     with_temp_config do |dir|
       downloader = build_downloader(dir)

@@ -438,4 +438,21 @@ class MentionReplacerTest < Minitest::Test
     text = '<!subteam^SNULL>'
     assert_equal '@SNULL', @replacer.replace(text, @workspace)
   end
+
+  def test_channel_api_returns_response_without_name_skips_cache
+    mock_api = Object.new
+    mock_api.define_singleton_method(:get) do |_w, _m, _p = {}|
+      { 'ok' => true, 'channel' => { 'name' => nil } }
+    end
+    mock_api.define_singleton_method(:post_form) do |_w, _m, _p = {}|
+      { 'ok' => true, 'channel' => { 'name' => nil } }
+    end
+    mock_api.define_singleton_method(:post) do |_w, _m, _p = {}|
+      { 'ok' => true, 'channel' => { 'name' => nil } }
+    end
+    replacer = Slk::Formatters::MentionReplacer.new(
+      cache_store: @cache, api_client: mock_api
+    )
+    replacer.replace('<#CNIL>', @workspace)
+  end
 end

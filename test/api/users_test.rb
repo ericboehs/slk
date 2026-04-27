@@ -171,6 +171,15 @@ class UsersApiTest < Minitest::Test
     assert_match(/Failed to parse/, debug.first)
   end
 
+  def test_muted_channels_invalid_json_without_on_debug
+    @mock_client.stub('users.prefs.get', {
+                        'ok' => true,
+                        'prefs' => { 'all_notifications_prefs' => '{not json' }
+                      })
+    api = Slk::Api::Users.new(@mock_client, @workspace) # no on_debug
+    assert_equal [], api.muted_channels
+  end
+
   def test_muted_channels_legacy_empty_string_falls_through
     @mock_client.stub('users.prefs.get', { 'ok' => true, 'prefs' => { 'muted_channels' => '' } })
     assert_equal [], @api.muted_channels

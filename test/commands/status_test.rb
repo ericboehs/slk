@@ -278,4 +278,64 @@ class StatusCommandTest < Minitest::Test
     # Successfully cleared
     assert_includes @io.string, 'cleared'
   end
+
+  def test_display_status_with_inline_image_when_supported
+    Dir.mktmpdir do |dir|
+      emoji_dir = File.join(dir, 'test')
+      FileUtils.mkdir_p(emoji_dir)
+      File.binwrite(File.join(emoji_dir, 'computer.png'), "\x89PNG\r\n\n#{'a' * 80}")
+
+      @mock_client.stub('users.profile.get', {
+                          'ok' => true,
+                          'profile' => {
+                            'status_text' => 'Coding', 'status_emoji' => ':computer:',
+                            'status_expiration' => Time.now.to_i + 3600
+                          }
+                        })
+      runner = create_runner
+      runner.config.define_singleton_method(:emoji_dir) { dir }
+      command = Slk::Commands::Status.new([], runner: runner)
+      command.stub(:inline_images_supported?, true) do
+        command.stub(:print_inline_image_with_text, ->(_p, _t, **_o) { true }) do
+          command.execute
+        end
+      end
+    end
+  end
+
+  def test_find_workspace_emoji_returns_nil_for_empty_emoji
+    runner = create_runner
+    command = Slk::Commands::Status.new([], runner: runner)
+    assert_nil command.send(:find_workspace_emoji, 'test', '')
+  end
+
+  def test_find_workspace_emoji_returns_nil_when_dir_missing
+    runner = create_runner
+    command = Slk::Commands::Status.new([], runner: runner)
+    runner.config.define_singleton_method(:emoji_dir) { '/no/such/path' }
+    assert_nil command.send(:find_workspace_emoji, 'test', 'foo')
+  end
+
+  def test_print_status_with_image_text_only
+    runner = create_runner
+    command = Slk::Commands::Status.new([], runner: runner)
+    captured = []
+    command.stub(:print_inline_image_with_text, ->(_p, t, **_o) { captured << t }) do
+      status = Slk::Models::Status.new(text: '', emoji: ':a:', expiration: 0)
+      command.send(:print_status_with_image, '/tmp/img.png', status)
+    end
+    refute_includes captured.first, '('
+  end
+
+  def test_print_status_with_image_text_and_remaining
+    runner = create_runner
+    command = Slk::Commands::Status.new([], runner: runner)
+    captured = []
+    command.stub(:print_inline_image_with_text, ->(_p, t, **_o) { captured << t }) do
+      status = Slk::Models::Status.new(text: 'Working', emoji: ':a:', expiration: Time.now.to_i + 3600)
+      command.send(:print_status_with_image, '/tmp/img.png', status)
+    end
+    assert_match(/Working/, captured.first)
+    assert_match(/\(/, captured.first)
+  end
 end

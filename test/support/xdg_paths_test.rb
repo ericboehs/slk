@@ -127,7 +127,44 @@ class XdgPathsTest < Minitest::Test
     end
   end
 
+  def test_windows_branches_for_config_and_cache_dirs
+    with_windows_constant(true) do
+      with_env('APPDATA' => 'C:/AppData', 'LOCALAPPDATA' => 'C:/Local') do
+        paths = Slk::Support::XdgPaths.new
+        assert_equal 'C:/AppData/slk', paths.config_dir
+        assert_equal 'C:/Local/slk', paths.cache_dir
+      end
+    end
+  end
+
+  def test_windows_default_paths_when_appdata_unset
+    with_windows_constant(true) do
+      with_env('APPDATA' => nil, 'LOCALAPPDATA' => nil) do
+        paths = Slk::Support::XdgPaths.new
+        assert_includes paths.config_dir, 'AppData/Roaming/slk'
+        assert_includes paths.cache_dir, 'AppData/Local/slk'
+      end
+    end
+  end
+
+  def test_normalize_path_with_windows_constant
+    with_windows_constant(true) do
+      paths = Slk::Support::XdgPaths.new
+      assert_equal 'a/b', paths.send(:normalize_path, 'a\\b')
+    end
+  end
+
   private
+
+  def with_windows_constant(value)
+    original = Slk::Support::XdgPaths::WINDOWS
+    Slk::Support::XdgPaths.send(:remove_const, :WINDOWS)
+    Slk::Support::XdgPaths.const_set(:WINDOWS, value)
+    yield
+  ensure
+    Slk::Support::XdgPaths.send(:remove_const, :WINDOWS)
+    Slk::Support::XdgPaths.const_set(:WINDOWS, original)
+  end
 
   def with_env(vars)
     old_values = {}

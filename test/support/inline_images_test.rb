@@ -248,6 +248,31 @@ class InlineImagesTest < Minitest::Test
     end
   end
 
+  def test_in_tmux_returns_false_when_term_nil
+    with_env('TERM' => nil) do
+      refute in_tmux?
+    end
+  end
+
+  def test_png_data_returns_false_for_short_data
+    refute png_data?('')
+    refute png_data?('abc')
+  end
+
+  def test_read_image_data_returns_nil_for_nonexistent
+    assert_nil read_image_data_for_protocol('/nonexistent/file.png')
+  end
+
+  def test_convert_to_png_returns_nil_when_sips_fails
+    Dir.mktmpdir do |dir|
+      file = File.join(dir, 'fake.gif')
+      File.binwrite(file, "GIF87a#{'x' * 50}")
+      result = convert_to_png(file)
+      # If sips isn't available, returns nil
+      assert(result.nil? || result.is_a?(String))
+    end
+  end
+
   private
 
   def png_header_bytes

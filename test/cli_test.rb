@@ -274,6 +274,62 @@ class CLITest < Minitest::Test
     refute_nil runner.api_client.on_request
   end
 
+  def test_handle_error_skips_log_path_when_nil
+    cli = Slk::CLI.new(['help'], output: @output)
+    cli.define_singleton_method(:log_error) { |_| nil }
+    cli.define_singleton_method(:run_command) { |*| raise StandardError, 'oops' }
+    result = cli.run
+    assert_equal 1, result
+    refute_includes @output.stdout, 'Details logged to:'
+  end
+
+  def test_handle_error_includes_log_path_when_present
+    cli = Slk::CLI.new(['help'], output: @output)
+    cli.define_singleton_method(:log_error) { |_| '/tmp/log.txt' }
+    cli.define_singleton_method(:run_command) { |*| raise StandardError, 'oops' }
+    cli.run
+    assert_includes @output.stdout, 'Details logged to: /tmp/log.txt'
+  end
+
+  def test_build_runner_with_markdown_creates_markdown_output
+    cli = Slk::CLI.new(['help', '--markdown'])
+    runner = cli.send(:build_runner, ['--markdown'])
+    assert_instance_of Slk::Formatters::MarkdownOutput, runner.output
+  end
+
+  def test_verbose_response_callback_with_non_rate_wait_code_no_warning
+    cli = Slk::CLI.new(['help', '-v'], output: @output)
+    runner = cli.send(:build_runner, ['-v'])
+    runner.api_client.on_response.call('test', 'ok', { 'sleep_seconds' => 1 })
+    refute_includes @output.stderr, 'Rate limited'
+  end
+
+  def test_very_verbose_response_header_without_req_id
+    cli = Slk::CLI.new(['help', '-vv'], output: @output)
+    runner = cli.send(:build_runner, ['-vv'])
+    headers = { 'elapsed_ms' => 5, 'X-RateLimit-Remaining' => 3 }
+    runner.api_client.on_response.call('test', 200, headers)
+  end
+
+  def test_very_verbose_request_body_under_limit
+    cli = Slk::CLI.new(['help', '-vv'], output: @output)
+    runner = cli.send(:build_runner, ['-vv'])
+    runner.api_client.on_request_body.call('m', 'short body')
+  end
+
+  def test_very_verbose_response_body_over_limit
+    cli = Slk::CLI.new(['help', '-vv'], output: @output)
+    runner = cli.send(:build_runner, ['-vv'])
+    runner.api_client.on_response_body.call('m', 'x' * 600)
+  end
+
+  def test_log_api_call_count_only_in_verbose
+    cli = Slk::CLI.new(['help'], output: @output)
+    cli.define_singleton_method(:log_api_call_count) { |_| @logged = true }
+    cli.run
+    assert_nil cli.instance_variable_get(:@logged)
+  end
+
   # Mock output class for testing
   class MockOutput
     attr_reader :stdout, :stderr

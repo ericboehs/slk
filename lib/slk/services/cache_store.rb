@@ -22,7 +22,7 @@ module Slk
       # carry an optional fetched_at epoch for TTL checks.
       def get_meta(workspace_name, key, ttl: nil)
         load_meta_cache(workspace_name)
-        entry = @meta_cache[workspace_name]&.dig(key)
+        entry = @meta_cache[workspace_name][key]
         return nil unless entry
         return nil if ttl && entry['fetched_at'] && Time.now.to_i - entry['fetched_at'] > ttl
 
@@ -153,12 +153,12 @@ module Slk
       # Cache status
       def user_cache_size(workspace_name)
         load_user_cache(workspace_name)
-        @user_cache[workspace_name]&.size || 0
+        @user_cache[workspace_name].size
       end
 
       def channel_cache_size(workspace_name)
         load_channel_cache(workspace_name)
-        @channel_cache[workspace_name]&.size || 0
+        @channel_cache[workspace_name].size
       end
 
       def user_cache_file_exists?(workspace_name)

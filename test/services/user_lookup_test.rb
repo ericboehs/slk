@@ -299,6 +299,22 @@ class UserLookupTest < Minitest::Test
     end
   end
 
+  def test_resolve_name_or_bot_bot_api_error_without_on_debug
+    with_temp_config do
+      api_client = ErrorRaisingApiClient.new
+      lookup = build_lookup(api_client: api_client) # no on_debug
+      assert_nil lookup.resolve_name_or_bot('B999')
+    end
+  end
+
+  def test_find_id_by_name_api_error_without_on_debug
+    with_temp_config do
+      api_client = ErrorRaisingApiClient.new
+      lookup = build_lookup(api_client: api_client) # no on_debug
+      assert_nil lookup.find_id_by_name('Foo')
+    end
+  end
+
   private
 
   def build_lookup(cache: nil, api_client: nil, on_debug: nil)

@@ -166,6 +166,36 @@ class BaseCommandTest < Minitest::Test
     assert_match(/"a": 1/, @io.string)
   end
 
+  def test_default_width_when_tty
+    cmd = create_test_command([])
+    $stdout.stub(:tty?, true) do
+      assert_equal 72, cmd.send(:default_width)
+    end
+  end
+
+  def test_default_width_when_not_tty
+    cmd = create_test_command([])
+    $stdout.stub(:tty?, false) do
+      assert_nil cmd.send(:default_width)
+    end
+  end
+
+  def test_unknown_options_predicate_returns_falsy_when_none
+    cmd = create_test_command([])
+    refute cmd.send(:unknown_options?)
+  end
+
+  def test_check_unknown_options_returns_nil_when_empty
+    cmd = create_test_command([])
+    cmd.instance_variable_set(:@unknown_options, [])
+    assert_nil cmd.send(:check_unknown_options)
+  end
+
+  def test_unknown_options_predicate_returns_true_when_present
+    cmd = create_test_command(['--bogus'])
+    assert cmd.send(:unknown_options?)
+  end
+
   def build_runner
     create_test_command([]).runner
   end

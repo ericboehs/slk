@@ -131,4 +131,18 @@ class EmojiReplacerTest < Minitest::Test
     # Second arg is reserved for future use
     assert_equal "\u{1F525}", @replacer.replace(':fire:', mock_workspace('test'))
   end
+
+  def test_loads_gemoji_corrupted_json_without_on_debug
+    Dir.mktmpdir do |dir|
+      old_xdg = ENV.fetch('XDG_CACHE_HOME', nil)
+      ENV['XDG_CACHE_HOME'] = dir
+      cache_path = File.join(dir, 'slk', 'gemoji.json')
+      FileUtils.mkdir_p(File.dirname(cache_path))
+      File.write(cache_path, '{not json')
+      replacer = Slk::Formatters::EmojiReplacer.new # no on_debug
+      refute_nil replacer.lookup_emoji('fire')
+    ensure
+      ENV['XDG_CACHE_HOME'] = old_xdg
+    end
+  end
 end

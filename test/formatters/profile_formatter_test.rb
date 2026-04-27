@@ -102,4 +102,15 @@ class ProfileFormatterTest < Minitest::Test
     @formatter.compact(make_profile(custom_fields: [long]))
     assert_includes @io.string, 'A very long label h… V'
   end
+
+  def test_compact_with_empty_title
+    @formatter.compact(make_profile(title: ''))
+    out = @io.string
+    refute_includes out, 'Engineer'
+  end
+
+  def test_compact_deactivated_account
+    @formatter.compact(make_profile(deleted: true))
+    assert_includes @io.string, 'deactivated account'
+  end
 end
