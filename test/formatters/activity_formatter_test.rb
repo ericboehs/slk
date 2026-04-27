@@ -141,6 +141,36 @@ class ActivityFormatterTest < Minitest::Test
     refute_includes out, '└─'
   end
 
+  def test_dispatch_unknown_type_with_nil_does_not_call_debug
+    bad = { 'feed_ts' => '1', 'item' => { 'type' => nil } }
+    capture_stdout { @formatter.display_all([bad], @workspace, options: {}) }
+    refute(@debug.any? { |m| m.include?('Unknown') })
+  end
+
+  def test_show_message_preview_returns_when_message_nil
+    fetch = proc { |_w, _c, _ts| }
+    options = { show_messages: true, fetch_message: fetch }
+    out = capture_stdout { @formatter.display_all([reaction_item], @workspace, options: options) }
+    refute_includes out, '└─'
+  end
+
+  def test_thread_with_show_messages_no_thread_ts
+    item = {
+      'feed_ts' => '1', 'item' => {
+        'type' => 'thread_v2',
+        'bundle_info' => { 'payload' => { 'thread_entry' => { 'channel_id' => 'C1' } } }
+      }
+    }
+    fetch_called = false
+    fetch = proc { |_w, _c, _ts|
+      fetch_called = true
+      stub_message('hi')
+    }
+    options = { show_messages: true, fetch_message: fetch }
+    capture_stdout { @formatter.display_all([item], @workspace, options: options) }
+    refute fetch_called
+  end
+
   private
 
   def stub_message(text, user: 'U1')

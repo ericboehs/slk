@@ -290,6 +290,47 @@ class MessageFormatterTest < Minitest::Test
     assert_kind_of String, out
   end
 
+  def test_format_json_no_workspace
+    message = create_message
+    result = @formatter.format_json(message)
+    refute_includes result.keys, :user_name
+  end
+
+  def test_format_json_with_no_names_omits_reaction_user_names
+    @cache.set_user('test', 'U1', 'alice')
+    msg = create_message_with_reactions(
+      text: 'Hi', reactions: [{ 'name' => 'thumbsup', 'count' => 1, 'users' => ['U1'] }]
+    )
+    result = @formatter.format_json(msg, workspace: mock_workspace('test'),
+                                         options: { no_names: true })
+    user = result[:reactions].first[:users].first
+    refute_includes user.keys, :name
+  end
+
+  def test_format_json_reaction_no_workspace_skips_user_name
+    msg = create_message_with_reactions(
+      text: 'Hi', reactions: [{ 'name' => 'thumbsup', 'count' => 1, 'users' => ['U1'] }]
+    )
+    result = @formatter.format_json(msg)
+    user = result[:reactions].first[:users].first
+    refute_includes user.keys, :name
+  end
+
+  def test_format_json_channel_id_no_workspace_skips_channel_name
+    msg = create_message
+    result = @formatter.format_json(msg, options: { channel_id: 'C1' })
+    assert_equal 'C1', result[:channel_id]
+    refute_includes result.keys, :channel_name
+  end
+
+  def test_format_json_channel_id_no_cached_name
+    msg = create_message
+    result = @formatter.format_json(msg, workspace: mock_workspace('test'),
+                                         options: { channel_id: 'C_unknown' })
+    assert_equal 'C_unknown', result[:channel_id]
+    refute_includes result.keys, :channel_name
+  end
+
   private
 
   # rubocop:disable Naming/MethodParameterName

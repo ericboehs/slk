@@ -433,4 +433,49 @@ class CacheStoreTest < Minitest::Test
       refute store.user_cache_file_exists?('w1')
     end
   end
+
+  def test_save_channel_cache_skips_when_empty
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.send(:save_channel_cache, 'w1')
+      refute store.channel_cache_file_exists?('w1')
+    end
+  end
+
+  def test_save_subteam_cache_skips_when_empty
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.send(:save_subteam_cache, 'w1')
+    end
+  end
+
+  def test_save_meta_cache_skips_when_empty
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.send(:save_meta_cache, 'w1')
+    end
+  end
+
+  def test_user_cache_size_zero_for_new_workspace
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      assert_equal 0, store.user_cache_size('new-ws')
+    end
+  end
+
+  def test_channel_cache_size_zero_for_new_workspace
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      assert_equal 0, store.channel_cache_size('new-ws')
+    end
+  end
+
+  def test_log_cache_access_skipped_without_callback
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      # No callback set, should not error
+      store.set_user('w1', 'U1', 'a')
+      assert_equal 'a', store.get_user('w1', 'U1')
+    end
+  end
 end

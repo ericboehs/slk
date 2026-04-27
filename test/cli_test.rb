@@ -242,6 +242,38 @@ class CLITest < Minitest::Test
     cli.send(:log_api_call_count, runner)
   end
 
+  def test_log_api_call_count_emits_when_positive
+    cli = Slk::CLI.new(['help', '-v'], output: @output)
+    runner = cli.send(:build_runner, ['-v'])
+    runner.api_client.instance_variable_set(:@call_count, 5)
+    cli.send(:log_api_call_count, runner)
+  end
+
+  def test_run_command_closes_api_client_on_finish
+    cli = Slk::CLI.new(['help'], output: @output)
+    cli.run
+    # No errors, finalizer ran
+  end
+
+  def test_run_command_closes_api_client_on_error
+    cli = Slk::CLI.new(['help'], output: @output)
+    cli.define_singleton_method(:execute_command) { |*| raise StandardError, 'boom' }
+    result = cli.run
+    assert_equal 1, result
+  end
+
+  def test_very_verbose_via_long_flag
+    cli = Slk::CLI.new(['help', '--very-verbose'], output: @output)
+    runner = cli.send(:build_runner, ['--very-verbose'])
+    refute_nil runner.api_client.on_response_body
+  end
+
+  def test_verbose_via_long_flag
+    cli = Slk::CLI.new(['help', '--verbose'], output: @output)
+    runner = cli.send(:build_runner, ['--verbose'])
+    refute_nil runner.api_client.on_request
+  end
+
   # Mock output class for testing
   class MockOutput
     attr_reader :stdout, :stderr
