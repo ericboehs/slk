@@ -52,9 +52,7 @@ module Slk
         fetch_id_by_name(name)
       end
 
-      # Find all users matching `name` across users.list and the meta cache.
-      # Delegates to UserMatcher to keep this class focused on cache lookups.
-      # @return [Array<Hash>] raw user hashes (users.list shape)
+      # @return [Array<Hash>] raw users.list-shaped hashes for all matches
       def find_all_by_name(name)
         UserMatcher.new(
           api_client: @api, workspace: @workspace,

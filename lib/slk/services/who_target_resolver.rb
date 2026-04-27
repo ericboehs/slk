@@ -3,7 +3,6 @@
 module Slk
   module Services
     # Resolves the positional target for `slk who` into one or more user_ids.
-    # Handles raw IDs, "me"/empty, and name lookups (with --all/--pick/picker).
     class WhoTargetResolver
       def initialize(workspace:, cache_store:, api_client:, output:, options:)
         @workspace = workspace

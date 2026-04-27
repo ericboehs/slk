@@ -14,16 +14,14 @@ module Slk
         @on_debug = on_debug
       end
 
-      # @return [Array<Hash>] users.list-shaped hashes (deduped by id)
+      # Returns users.list-shaped hashes (deduped by id). Raises ApiError on
+      # network/auth failures so callers don't conflate them with "no matches".
       def find_all(name)
         return [] if name.to_s.empty? || @api.nil?
 
         target = name.downcase
         candidates = list_members + cached_profile_users
         unique_by_id(candidates.select { |u| matches?(u, target) })
-      rescue ApiError => e
-        @on_debug&.call("User list lookup failed: #{e.message}")
-        []
       end
 
       def matches?(user, target_lower)

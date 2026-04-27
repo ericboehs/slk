@@ -67,8 +67,8 @@ module Slk
 
       def build_profile(user_id)
         profile = ProfileBuilder.build(
-          profile_response: cached("up_#{user_id}", PROFILE_TTL) { @users_api.profile_for(user_id) },
-          info_response: cached("ui_#{user_id}", PROFILE_TTL) { @users_api.info(user_id) },
+          profile_response: fetch_profile_response(user_id),
+          info_response: cache_or_fetch("ui_#{user_id}", ttl: PROFILE_TTL) { @users_api.info(user_id) },
           schema_response: schema,
           workspace_team_id: workspace_team_id
         )
@@ -76,6 +76,17 @@ module Slk
       rescue ApiError => e
         @on_debug&.call("Profile resolve failed for #{user_id}: #{e.message}")
         raise
+      end
+
+      # Only swallow `user_not_found` (Slack Connect external users); other
+      # errors must propagate so the card isn't silently degraded.
+      def fetch_profile_response(user_id)
+        cache_or_fetch("up_#{user_id}", ttl: PROFILE_TTL) { @users_api.profile_for(user_id) }
+      rescue ApiError => e
+        raise unless e.message.include?('user_not_found')
+
+        @on_debug&.call("up_#{user_id}: #{e.message} (falling back to users.info)")
+        nil
       end
 
       def attach_extras(profile, user_id)
@@ -99,10 +110,6 @@ module Slk
 
       def workspace_team_id
         @workspace_team_id ||= cache_or_fetch('workspace_team_id') { @team_api.info.dig('team', 'id') }
-      end
-
-      def cached(key, ttl, &)
-        cache_or_fetch(key, ttl: ttl, &)
       end
 
       def cache_or_fetch(key, ttl: nil, empty: nil, &)

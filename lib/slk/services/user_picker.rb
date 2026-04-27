@@ -2,8 +2,9 @@
 
 module Slk
   module Services
-    # Interactive disambiguation when a name resolves to multiple users.
-    # Lists matches with index + flags (deactivated, bot) and reads a choice.
+    # Disambiguates between multiple matching users. Prompts at a TTY; raises
+    # ApiError in non-interactive contexts so callers don't silently get the
+    # wrong user when name resolution is ambiguous.
     class UserPicker
       def initialize(output:, stdin: $stdin, prompt_io: $stderr)
         @output = output
@@ -11,11 +12,14 @@ module Slk
         @prompt_io = prompt_io
       end
 
-      # Returns the chosen user_id from `matches` (an Array of users.list user
-      # hashes). Falls back to the first match when not on a TTY.
       def pick(matches)
         return matches.first['id'] if matches.size == 1
-        return matches.first['id'] unless interactive?
+
+        unless interactive?
+          raise ApiError,
+                "Ambiguous match (#{matches.size} users): #{ids(matches).join(', ')}. " \
+                'Use --pick N or --all to disambiguate non-interactively.'
+        end
 
         list(matches)
         matches[read_index(matches.size)]['id']
@@ -36,8 +40,7 @@ module Slk
         profile = user['profile'] || {}
         name = profile['real_name'] || profile['display_name'] || user['name']
         suffix = profile['title'].to_s.empty? ? '' : " — #{profile['title']}"
-        tag = flag_suffix(user)
-        "#{name} (#{user['id']})#{suffix}#{tag}"
+        "#{name} (#{user['id']})#{suffix}#{flag_suffix(user)}"
       end
 
       def flag_suffix(user)
@@ -45,6 +48,10 @@ module Slk
         flags << 'deactivated' if user['deleted']
         flags << 'bot' if user['is_bot']
         flags.empty? ? '' : " [#{flags.join(', ')}]"
+      end
+
+      def ids(matches)
+        matches.map { |u| u['id'] }
       end
 
       def read_index(count)

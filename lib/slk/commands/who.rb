@@ -27,7 +27,7 @@ module Slk
         when '--full' then @options[:full] = true
         when '--no-cache', '--refresh' then @options[:refresh] = true
         when '--all' then @options[:all] = true
-        when '--pick' then @options[:pick] = Integer(args.shift, exception: false)
+        when '--pick' then @options[:pick] = parse_pick(args.shift)
         else return super
         end
         true
@@ -54,6 +54,12 @@ module Slk
       end
 
       private
+
+      def parse_pick(value)
+        Integer(value)
+      rescue ArgumentError, TypeError
+        raise ApiError, "--pick expects an integer (got #{value.inspect})"
+      end
 
       def run
         workspace = runner.workspace(@options[:workspace])
