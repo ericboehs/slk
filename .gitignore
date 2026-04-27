@@ -16,3 +16,6 @@ vendor/bundle/
 *.swo
 *~
 .plan/
+
+# Local-only fixtures with real workspace data (spike captures)
+/tests/

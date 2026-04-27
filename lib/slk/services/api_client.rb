@@ -29,6 +29,7 @@ module Slk
         @on_request_body = nil
         @on_response_body = nil
         @http_cache = {}
+        @rate_resets = {}
       end
 
       # Close all cached HTTP connections
@@ -75,15 +76,65 @@ module Slk
       end
 
       def execute_request(method, query_params = nil, body: nil, &)
+        attempt_request(method, query_params, body: body, retried: false, &)
+      rescue *NETWORK_ERRORS => e
+        raise ApiError, "Network error: #{e.message}"
+      end
+
+      def attempt_request(method, query_params, body:, retried:, &)
+        send_one_request(method, query_params, body: body, &)
+      rescue RateLimitError => e
+        wait = wait_for(e)
+        raise e if retried || wait.nil?
+
+        announce_wait(method, wait)
+        sleep(wait)
+        attempt_request(method, query_params, body: body, retried: true, &)
+      end
+
+      def send_one_request(method, query_params, body:, &)
+        await_reset(method)
         log_request(method)
         log_request_body(method, body)
         uri = build_uri(method, query_params)
         response, elapsed_ms = timed_request(uri, &)
+        track_rate_limit(method, response)
         log_response(method, response, elapsed_ms)
         log_response_body(method, response.body)
         handle_response(response, method)
-      rescue *NETWORK_ERRORS => e
-        raise ApiError, "Network error: #{e.message}"
+      end
+
+      def wait_for(error)
+        max = ENV.fetch('SLK_MAX_RETRY_AFTER', '60').to_i
+        seconds = error.retry_after || ENV.fetch('SLK_DEFAULT_RETRY_AFTER', '30').to_i
+        return nil unless seconds.positive? && seconds <= max
+
+        seconds
+      end
+
+      def announce_wait(method, seconds)
+        @on_response&.call(method, 'rate-wait', { 'sleep_seconds' => seconds })
+      end
+
+      # Predictive throttle: when X-RateLimit-Remaining hits 0, sleep until
+      # X-RateLimit-Reset before issuing the next call to that method.
+      def track_rate_limit(method, response)
+        remaining = response['X-RateLimit-Remaining']&.to_i
+        reset = response['X-RateLimit-Reset']&.to_i
+        @rate_resets[method] = reset if remaining&.zero? && reset&.positive?
+      end
+
+      def await_reset(method)
+        reset = @rate_resets[method] or return
+        wait = reset - Time.now.to_i
+        return @rate_resets.delete(method) if wait <= 0
+
+        max = ENV.fetch('SLK_MAX_RETRY_AFTER', '60').to_i
+        return if wait > max
+
+        announce_wait(method, wait)
+        sleep(wait)
+        @rate_resets.delete(method)
       end
 
       def build_uri(method, query_params)
@@ -174,19 +225,29 @@ module Slk
       end
 
       def handle_rate_limit(response)
-        retry_after = response['Retry-After']
-        raise ApiError, "Rate limited - retry after #{retry_after} seconds" if retry_after
-
-        raise ApiError, 'Rate limited - please wait and try again'
+        retry_after = response['Retry-After']&.to_i
+        message = retry_after ? "Rate limited — retry after #{retry_after}s" : 'Rate limited — please wait'
+        raise RateLimitError.new(message, retry_after: retry_after)
       end
 
       def parse_success_response(response)
         result = JSON.parse(response.body)
+        raise_rate_limit(response) if result['error'] == 'ratelimited'
         raise ApiError, result['error'] || 'Unknown error' unless result['ok']
 
         result
       rescue JSON::ParserError
         raise ApiError, 'Invalid JSON response from Slack API'
+      end
+
+      def raise_rate_limit(response)
+        retry_after = response['Retry-After']&.to_i
+        message = if retry_after
+                    "Rate limited by Slack — retry after #{retry_after}s"
+                  else
+                    'Rate limited by Slack — wait a minute and try again'
+                  end
+        raise RateLimitError.new(message, retry_after: retry_after)
       end
     end
     # rubocop:enable Metrics/ClassLength

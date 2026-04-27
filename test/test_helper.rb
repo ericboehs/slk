@@ -89,6 +89,10 @@ module Slk
       def post_form(workspace, method, params = {})
         post(workspace, method, params)
       end
+
+      def call_count
+        @calls.size
+      end
     end
 
     # Mock workspace

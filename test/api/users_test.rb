@@ -140,6 +140,26 @@ class UsersApiTest < Minitest::Test
     refute_includes muted, 'C456'
   end
 
+  def test_profile_for_passes_user_id_and_include_labels
+    @mock_client.stub('users.profile.get', { 'ok' => true, 'profile' => { 'real_name' => 'Alice' } })
+
+    response = @api.profile_for('U123ABC')
+    assert_equal 'Alice', response['profile']['real_name']
+
+    call = @mock_client.calls.last
+    assert_equal 'users.profile.get', call[:method]
+    assert_equal 'U123ABC', call[:params][:user]
+    assert_equal true, call[:params][:include_labels]
+  end
+
+  def test_profile_for_omits_include_labels_when_disabled
+    @mock_client.stub('users.profile.get', { 'ok' => true, 'profile' => {} })
+    @api.profile_for('U123ABC', include_labels: false)
+
+    call = @mock_client.calls.last
+    refute call[:params].key?(:include_labels)
+  end
+
   def test_muted_channels_returns_empty_when_no_data
     @mock_client.stub('users.prefs.get', {
                         'ok' => true,

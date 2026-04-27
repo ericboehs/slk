@@ -12,8 +12,30 @@ module Slk
         @user_cache = {}
         @channel_cache = {}
         @subteam_cache = {}
+        @meta_cache = {}
         @on_warning = nil
         @on_cache_access = nil
+      end
+
+      # Workspace metadata cache (auth.test user_id, team.info team_id,
+      # team.profile.get schema). One JSON file per workspace; entries can
+      # carry an optional fetched_at epoch for TTL checks.
+      def get_meta(workspace_name, key, ttl: nil)
+        load_meta_cache(workspace_name)
+        entry = @meta_cache[workspace_name]&.dig(key)
+        return nil unless entry
+        return nil if ttl && entry['fetched_at'] && Time.now.to_i - entry['fetched_at'] > ttl
+
+        log_cache_access('meta', workspace_name, key, entry['value'])
+        entry['value']
+      end
+
+      def set_meta(workspace_name, key, value, persist: true)
+        load_meta_cache(workspace_name)
+        @meta_cache[workspace_name] ||= {}
+        @meta_cache[workspace_name][key] = { 'value' => value, 'fetched_at' => Time.now.to_i }
+        save_meta_cache(workspace_name) if persist
+        value
       end
 
       # User cache methods
@@ -206,6 +228,23 @@ module Slk
 
       def subteam_cache_file(workspace_name)
         @paths.cache_file("subteams-#{workspace_name}.json")
+      end
+
+      def meta_cache_file(workspace_name)
+        @paths.cache_file("meta-#{workspace_name}.json")
+      end
+
+      def load_meta_cache(workspace_name)
+        return if @meta_cache.key?(workspace_name)
+
+        @meta_cache[workspace_name] = load_cache_file(meta_cache_file(workspace_name), 'Meta', workspace_name)
+      end
+
+      def save_meta_cache(workspace_name)
+        return if @meta_cache[workspace_name].nil? || @meta_cache[workspace_name].empty?
+
+        @paths.ensure_cache_dir
+        File.write(meta_cache_file(workspace_name), JSON.pretty_generate(@meta_cache[workspace_name]))
       end
 
       def log_cache_access(type, workspace, key, result)

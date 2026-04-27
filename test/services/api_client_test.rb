@@ -75,6 +75,33 @@ class ApiClientTest < Minitest::Test
     assert_includes Slk::Services::ApiClient::NETWORK_ERRORS, OpenSSL::SSL::SSLError
   end
 
+  # Rate limit handling tests
+  def test_rate_limit_error_carries_retry_after
+    error = Slk::RateLimitError.new('test', retry_after: 5)
+    assert_equal 5, error.retry_after
+    assert_kind_of Slk::ApiError, error
+  end
+
+  def test_rate_limit_error_without_retry_after
+    error = Slk::RateLimitError.new('test')
+    assert_nil error.retry_after
+  end
+
+  def test_wait_for_returns_retry_after_when_within_cap
+    error = Slk::RateLimitError.new('test', retry_after: 10)
+    assert_equal 10, @client.send(:wait_for, error)
+  end
+
+  def test_wait_for_returns_nil_beyond_cap
+    error = Slk::RateLimitError.new('test', retry_after: 600)
+    assert_nil @client.send(:wait_for, error)
+  end
+
+  def test_wait_for_falls_back_to_default_when_header_missing
+    error = Slk::RateLimitError.new('test')
+    assert_equal 30, @client.send(:wait_for, error)
+  end
+
   # BASE_URL tests
   def test_base_url_defaults_to_slack_api
     # Temporarily unset env var to test default

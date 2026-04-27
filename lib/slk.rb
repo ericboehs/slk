@@ -12,6 +12,17 @@ require 'io/console'
 module Slk
   class Error < StandardError; end
   class ApiError < Error; end
+
+  # Slack rate-limit error. Carries Retry-After in seconds when present.
+  class RateLimitError < ApiError
+    attr_reader :retry_after
+
+    def initialize(message, retry_after: nil)
+      super(message)
+      @retry_after = retry_after
+    end
+  end
+
   class ConfigError < Error; end
   class EncryptionError < Error; end
   class TokenStoreError < Error; end
@@ -34,6 +45,8 @@ module Slk
     autoload :Preset, 'slk/models/preset'
     autoload :SearchResult, 'slk/models/search_result'
     autoload :SavedItem, 'slk/models/saved_item'
+    autoload :Profile, 'slk/models/profile'
+    autoload :ProfileField, 'slk/models/profile_field'
   end
 
   # Application services for configuration, caching, and API communication
@@ -57,6 +70,9 @@ module Slk
     autoload :SetupWizard, 'slk/services/setup_wizard'
     autoload :UserLookup, 'slk/services/user_lookup'
     autoload :MessageResolver, 'slk/services/message_resolver'
+    autoload :ProfileBuilder, 'slk/services/profile_builder'
+    autoload :ProfileResolver, 'slk/services/profile_resolver'
+    autoload :MetaCache, 'slk/services/meta_cache'
   end
 
   # Output formatters for messages, durations, and emoji
@@ -75,6 +91,8 @@ module Slk
     autoload :SearchFormatter, 'slk/formatters/search_formatter'
     autoload :SavedItemFormatter, 'slk/formatters/saved_item_formatter'
     autoload :TextProcessor, 'slk/formatters/text_processor'
+    autoload :ProfileFormatter, 'slk/formatters/profile_formatter'
+    autoload :ProfileFieldRenderer, 'slk/formatters/profile_field_renderer'
   end
 
   # CLI commands implementing user-facing functionality
@@ -96,6 +114,9 @@ module Slk
     autoload :Config, 'slk/commands/config'
     autoload :Help, 'slk/commands/help'
     autoload :Later, 'slk/commands/later'
+    autoload :Debug, 'slk/commands/debug'
+    autoload :Who, 'slk/commands/who'
+    autoload :Org, 'slk/commands/org'
   end
 
   # Thin wrappers around Slack API endpoints
@@ -111,6 +132,7 @@ module Slk
     autoload :Activity, 'slk/api/activity'
     autoload :Search, 'slk/api/search'
     autoload :Saved, 'slk/api/saved'
+    autoload :Team, 'slk/api/team'
   end
 
   # Utility classes for paths, parsing, and helpers
