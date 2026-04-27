@@ -83,7 +83,7 @@ module Slk
       def fetch_profile_response(user_id)
         cache_or_fetch("up_#{user_id}", ttl: PROFILE_TTL) { @users_api.profile_for(user_id) }
       rescue ApiError => e
-        raise unless e.message.include?('user_not_found')
+        raise unless e.code == :user_not_found
 
         @on_debug&.call("up_#{user_id}: #{e.message} (falling back to users.info)")
         nil

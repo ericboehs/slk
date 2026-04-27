@@ -11,14 +11,31 @@ require 'io/console'
 # Slack CLI - A command-line interface for Slack
 module Slk
   class Error < StandardError; end
-  class ApiError < Error; end
+
+  # Errors from any Slack-API-shaped failure: HTTP errors, network errors,
+  # logical Slack errors (user_not_found, missing_scope, etc.), JSON parse
+  # failures. The optional `code` symbol lets callers match specific cases
+  # (e.g. `e.code == :user_not_found`) without parsing message strings.
+  #
+  # Codes used:
+  #   :network_error, :http_error, :unauthorized, :invalid_json,
+  #   :ratelimited, plus any literal Slack `error` value (`:user_not_found`,
+  #   `:missing_scope`, `:account_inactive`, etc.).
+  class ApiError < Error
+    attr_reader :code
+
+    def initialize(message, code: nil)
+      super(message)
+      @code = code
+    end
+  end
 
   # Slack rate-limit error. Carries Retry-After in seconds when present.
   class RateLimitError < ApiError
     attr_reader :retry_after
 
     def initialize(message, retry_after: nil)
-      super(message)
+      super(message, code: :ratelimited)
       @retry_after = retry_after
     end
   end

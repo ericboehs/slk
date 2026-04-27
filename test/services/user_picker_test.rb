@@ -4,12 +4,11 @@ require 'test_helper'
 
 class UserPickerTest < Minitest::Test
   def setup
-    @output = test_output
     @prompt = StringIO.new
   end
 
   def picker(stdin:)
-    Slk::Services::UserPicker.new(output: @output, stdin: stdin, prompt_io: @prompt)
+    Slk::Services::UserPicker.new(stdin: stdin, prompt_io: @prompt)
   end
 
   def user(id, **attrs)
@@ -50,9 +49,8 @@ class UserPickerTest < Minitest::Test
                user('U2', real: 'Alice', deleted: true)]
     chosen = picker(stdin: tty_stdin("2\n")).pick(matches)
     assert_equal 'U2', chosen
-    listing = @output.instance_variable_get(:@io).string
-    assert_includes listing, '[1] Alice (U1) — Eng'
-    assert_includes listing, '[2] Alice (U2) [deactivated]'
+    assert_includes @prompt.string, '[1] Alice (U1) — Eng'
+    assert_includes @prompt.string, '[2] Alice (U2) [deactivated]'
   end
 
   def test_reprompts_on_invalid_choice
@@ -71,7 +69,6 @@ class UserPickerTest < Minitest::Test
     matches = [user('U1', real: 'Alice'),
                user('B1', name: 'helperbot', bot: true)]
     picker(stdin: tty_stdin("2\n")).pick(matches)
-    listing = @output.instance_variable_get(:@io).string
-    assert_includes listing, '[bot]'
+    assert_includes @prompt.string, '[bot]'
   end
 end

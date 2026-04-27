@@ -6,8 +6,7 @@ module Slk
     # ApiError in non-interactive contexts so callers don't silently get the
     # wrong user when name resolution is ambiguous.
     class UserPicker
-      def initialize(output:, stdin: $stdin, prompt_io: $stderr)
-        @output = output
+      def initialize(stdin: $stdin, prompt_io: $stderr)
         @stdin = stdin
         @prompt_io = prompt_io
       end
@@ -32,8 +31,8 @@ module Slk
       end
 
       def list(matches)
-        @output.puts('Multiple users match — pick one:')
-        matches.each_with_index { |u, i| @output.puts("  [#{i + 1}] #{describe(u)}") }
+        @prompt_io.puts('Multiple users match — pick one:')
+        matches.each_with_index { |u, i| @prompt_io.puts("  [#{i + 1}] #{describe(u)}") }
       end
 
       def describe(user)

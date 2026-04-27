@@ -96,31 +96,12 @@ module Slk
       end
 
       def fetch_id_by_name(name)
-        return nil unless @api
-
-        users_api = Api::Users.new(@api, @workspace, on_debug: @on_debug)
-        users = users_api.list['members'] || []
-        user = find_user_by_name(users, name)
+        user = find_all_by_name(name).first
         cache_user_from_api(user) if user
         user&.dig('id')
       rescue ApiError => e
         @on_debug&.call("User list lookup failed: #{e.message}")
         nil
-      end
-
-      def find_user_by_name(users, name)
-        users.find { |u| user_name_matches?(u, name.downcase) }
-      end
-
-      def user_name_matches?(user, target_lower)
-        name_candidates(user).any? { |c| c.downcase == target_lower }
-      end
-
-      def name_candidates(user)
-        profile = user['profile'] || {}
-        full = [profile['first_name'], profile['last_name']].compact.join(' ').strip
-        [user['name'], profile['display_name'], profile['real_name'], full]
-          .map(&:to_s).reject(&:empty?)
       end
 
       def cache_user_from_api(user_data)

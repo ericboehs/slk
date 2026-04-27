@@ -78,7 +78,7 @@ module Slk
       def execute_request(method, query_params = nil, body: nil, &)
         attempt_request(method, query_params, body: body, retried: false, &)
       rescue *NETWORK_ERRORS => e
-        raise ApiError, "Network error: #{e.message}"
+        raise ApiError.new("Network error: #{e.message}", code: :network_error)
       end
 
       def attempt_request(method, query_params, body:, retried:, &)
@@ -218,9 +218,10 @@ module Slk
       def handle_response(response, _method)
         case response
         when Net::HTTPSuccess then parse_success_response(response)
-        when Net::HTTPUnauthorized then raise ApiError, 'Invalid token or session expired'
+        when Net::HTTPUnauthorized
+          raise ApiError.new('Invalid token or session expired', code: :unauthorized)
         when Net::HTTPTooManyRequests then handle_rate_limit(response)
-        else raise ApiError, "HTTP #{response.code}: #{response.message}"
+        else raise ApiError.new("HTTP #{response.code}: #{response.message}", code: :http_error)
         end
       end
 
@@ -233,11 +234,14 @@ module Slk
       def parse_success_response(response)
         result = JSON.parse(response.body)
         raise_rate_limit(response) if result['error'] == 'ratelimited'
-        raise ApiError, result['error'] || 'Unknown error' unless result['ok']
+        unless result['ok']
+          message = result['error'] || 'Unknown error'
+          raise ApiError.new(message, code: message.to_sym)
+        end
 
         result
       rescue JSON::ParserError
-        raise ApiError, 'Invalid JSON response from Slack API'
+        raise ApiError.new('Invalid JSON response from Slack API', code: :invalid_json)
       end
 
       def raise_rate_limit(response)

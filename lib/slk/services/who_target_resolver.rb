@@ -34,7 +34,7 @@ module Slk
         return matches.map { |u| u['id'] } if @options[:all]
         return [pick_by_index(matches)] if @options[:pick]
 
-        [UserPicker.new(output: @output).pick(matches)]
+        [UserPicker.new.pick(matches)]
       end
 
       def pick_by_index(matches)
