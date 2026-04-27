@@ -57,6 +57,7 @@ module Slk
         resolver = runner.profile_resolver(workspace.name, refresh: @options[:refresh])
         user_id = resolve_user_id(workspace)
         target = resolver.resolve(user_id)
+        @self_user_id = self_user_id(workspace)
 
         case @options[:direction] || :up
         when :up then render_up(resolver, target)
@@ -73,9 +74,9 @@ module Slk
         end
 
         chain.reverse_each.with_index do |profile, depth|
-          render_node(profile, depth)
+          render_node(profile, depth, you: profile.user_id == @self_user_id)
         end
-        render_node(target, chain.size, you: true)
+        render_node(target, chain.size, you: target.user_id == @self_user_id)
       end
 
       def render_down(target)
