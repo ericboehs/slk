@@ -312,7 +312,89 @@ class LaterCommandTest < Minitest::Test
     assert_match(/Could not load content for 1 item/, @io.string)
   end
 
+  def test_counts_completed_excludes_overdue_section
+    @saved_api.expect_list({
+                             'ok' => true,
+                             'saved_items' => [
+                               { 'item_id' => 'C1', 'item_type' => 'message', 'state' => 'completed' }
+                             ]
+                           })
+    runner = build_runner
+    command = Slk::Commands::Later.new(['--counts', '--completed'], runner: runner)
+    command.execute
+    refute_match(/Overdue:/, @io.string)
+    assert_match(/Total: 1/, @io.string)
+  end
+
+  def test_help_text_contains_all_options
+    runner = build_runner
+    command = Slk::Commands::Later.new(['--help'], runner: runner)
+    command.execute
+    %w[--limit --completed --in-progress --counts --no-content
+       --workspace-emoji --no-emoji --width --no-wrap --json
+       --workspace --verbose --quiet].each do |opt|
+      assert_match(/#{Regexp.escape(opt)}/, @io.string)
+    end
+  end
+
+  def test_workspace_emoji_skipped_in_markdown_mode
+    @saved_api.expect_list({
+                             'ok' => true,
+                             'saved_items' => [
+                               { 'item_id' => 'C123', 'item_type' => 'message', 'state' => 'saved' }
+                             ]
+                           })
+    runner = build_runner
+    command = Slk::Commands::Later.new(
+      ['--workspace-emoji', '--markdown', '--no-content'], runner: runner
+    )
+    result = command.execute
+    assert_equal 0, result
+  end
+
+  def test_print_emoji_or_code_with_existing_emoji
+    runner = build_runner
+    command = Slk::Commands::Later.new(['--no-content'], runner: runner)
+    Dir.mktmpdir do |dir|
+      emoji_dir = File.join(dir, 'test')
+      FileUtils.mkdir_p(emoji_dir)
+      emoji_file = File.join(emoji_dir, 'partyparrot.png')
+      File.binwrite(emoji_file, "\x89PNG\r\n\u001A\n#{'a' * 80}")
+      command.send(:instance_variable_set, :@options, { workspace_emoji: true })
+
+      runner.config.define_singleton_method(:emoji_dir) { dir }
+
+      out = capture_stdout do
+        command.send(:print_with_workspace_emoji, ':partyparrot:', mock_workspace('test'))
+      end
+      assert_kind_of String, out
+    end
+  end
+
+  def test_find_workspace_emoji_returns_nil_for_empty_name
+    runner = build_runner
+    command = Slk::Commands::Later.new([], runner: runner)
+    runner.config.define_singleton_method(:emoji_dir) { nil }
+    assert_nil command.send(:find_workspace_emoji, 'test', '')
+  end
+
+  def test_find_workspace_emoji_returns_nil_for_missing_dir
+    runner = build_runner
+    command = Slk::Commands::Later.new([], runner: runner)
+    runner.config.define_singleton_method(:emoji_dir) { '/nonexistent/path' }
+    assert_nil command.send(:find_workspace_emoji, 'test', 'foo')
+  end
+
   private
+
+  def capture_stdout
+    old = $stdout
+    $stdout = StringIO.new
+    yield
+    $stdout.string
+  ensure
+    $stdout = old
+  end
 
   def build_runner
     saved_api = @saved_api

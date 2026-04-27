@@ -128,6 +128,61 @@ class OrgCommandTest < Minitest::Test
     refute_includes io_string, 'Boss3'
   end
 
+  def test_resolve_user_id_with_me_keyword
+    result = execute_with_args(['me'])
+    assert_equal 0, result
+  end
+
+  def test_resolve_user_id_with_invalid_target_raises
+    cmd = Slk::Commands::Org.new(['nonsense'], runner: runner)
+    result = cmd.execute
+    # API error returns 1
+    assert_equal 1, result
+    assert_match(/Could not resolve user/, @output.instance_variable_get(:@err).string)
+  end
+
+  def test_unknown_user_via_lookup
+    @mock_client.stub('users.list', { 'ok' => true, 'members' => [
+                        { 'id' => 'UALEX1', 'name' => 'alex', 'real_name' => 'Alex' }
+                      ] })
+    @mock_client.stub('users.profile.get',
+                      { 'ok' => true, 'profile' => { 'real_name' => 'Alex', 'fields' => {} } })
+    @mock_client.stub('users.info', { 'ok' => true, 'user' => { 'id' => 'UALEX1', 'team_id' => 'THOME' } })
+    result = execute_with_args(['@alex'])
+    assert_equal 0, result
+  end
+
+  def test_resolve_user_id_via_at_handle_when_not_found_raises_api_error
+    @mock_client.stub('users.list', { 'ok' => true, 'members' => [] })
+    cmd = Slk::Commands::Org.new(['@unknownuser'], runner: runner)
+    result = cmd.execute
+    assert_equal 1, result
+  end
+
+  def test_self_user_id_is_cached
+    cache = Slk::Services::CacheStore.new(paths: temp_paths)
+    cache.set_meta(@workspace.name, 'self_user_id', 'UCACHED')
+    runner_obj = Slk::Runner.new(output: @output, api_client: @mock_client, cache_store: cache)
+    workspace = @workspace
+    runner_obj.define_singleton_method(:workspace) { |_n = nil| workspace }
+
+    @mock_client.stub('users.profile.get',
+                      { 'ok' => true, 'profile' => { 'real_name' => 'Cached User', 'fields' => {} } })
+    @mock_client.stub('users.info', { 'ok' => true, 'user' => { 'id' => 'UCACHED', 'team_id' => 'THOME' } })
+
+    cmd = Slk::Commands::Org.new(['me'], runner: runner_obj)
+    result = cmd.execute
+    assert_equal 0, result
+  end
+
+  def test_help_shows_options
+    result = execute_with_args(['--help'])
+    assert_equal 0, result
+    assert_includes io_string, '--up'
+    assert_includes io_string, '--down'
+    assert_includes io_string, '--depth'
+  end
+
   private
 
   def stub_chain(target_id:, boss_id:, boss_name:, target_name: 'Eric')

@@ -461,8 +461,8 @@ class TokenStoreTest < Minitest::Test
 
   def can_create_test_ssh_key?
     require 'open3'
-    _, _, status = Open3.capture3('ssh-keygen', '-V')
-    status.success?
+    Open3.capture3('ssh-keygen', '-?')
+    true
   rescue Errno::ENOENT
     false
   end

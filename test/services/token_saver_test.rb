@@ -144,6 +144,34 @@ class TokenSaverTest < Minitest::Test
     end
   end
 
+  def test_save_skips_chmod_on_windows
+    Dir.mktmpdir do |dir|
+      paths = mock_paths(dir)
+      saver = Slk::Services::TokenSaver.new(encryption: @encryption, paths: paths)
+
+      Gem.stub(:win_platform?, true) do
+        saver.save({ 'workspace' => 'token123' }, nil)
+      end
+      assert File.exist?(File.join(dir, 'tokens.json'))
+    end
+  end
+
+  def test_save_encrypted_wraps_file_errors
+    Dir.mktmpdir do |dir|
+      paths = mock_paths(dir)
+      fake_enc = Object.new
+      fake_enc.define_singleton_method(:encrypt) { |_c, _k, out| File.write(out, 'data') }
+      saver = Slk::Services::TokenSaver.new(encryption: fake_enc, paths: paths)
+
+      FileUtils.stub(:mv, ->(*_a) { raise Errno::ENOSPC, 'no space' }) do
+        error = assert_raises(Slk::TokenStoreError) do
+          saver.save({ 'x' => 'xoxb-y' }, '/path/to/key')
+        end
+        assert_match(/Failed to save encrypted tokens/, error.message)
+      end
+    end
+  end
+
   def test_save_with_cleanup_removes_plain_when_encrypting
     skip unless @encryption.available?
     skip unless can_create_test_ssh_key?
@@ -180,8 +208,8 @@ class TokenSaverTest < Minitest::Test
 
   def can_create_test_ssh_key?
     require 'open3'
-    _, _, status = Open3.capture3('ssh-keygen', '-V')
-    status.success?
+    Open3.capture3('ssh-keygen', '-?')
+    true
   rescue Errno::ENOENT
     false
   end

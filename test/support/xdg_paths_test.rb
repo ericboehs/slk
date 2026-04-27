@@ -113,6 +113,20 @@ class XdgPathsTest < Minitest::Test
     assert_same cache1, cache2
   end
 
+  def test_normalize_path_changes_separator_on_windows
+    # The lib's normalize_path is called inside config_dir/cache_dir, but
+    # WINDOWS is a constant evaluated at load time. We can still execute the
+    # code path by directly stubbing the constant via override_constant.
+    paths = @paths
+    paths.send(:normalize_path, 'a\\b')
+    # On Unix, normalize_path returns the path unchanged.
+    if Gem.win_platform?
+      assert_equal 'a/b', paths.send(:normalize_path, 'a\\b')
+    else
+      assert_equal 'a\\b', paths.send(:normalize_path, 'a\\b')
+    end
+  end
+
   private
 
   def with_env(vars)

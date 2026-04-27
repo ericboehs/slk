@@ -83,4 +83,52 @@ class EmojiReplacerTest < Minitest::Test
     refute_match regex, ':'
     refute_match regex, '::'
   end
+
+  def test_custom_emoji_returns_nil_skip
+    replacer = Slk::Formatters::EmojiReplacer.new(custom_emoji: { 'foo' => 'https://...' })
+    assert_nil replacer.lookup_emoji('foo')
+  end
+
+  def test_with_custom_emoji_creates_new_replacer
+    replacer = Slk::Formatters::EmojiReplacer.new
+    new_replacer = replacer.with_custom_emoji({ 'foo' => 'url' })
+    refute_same replacer, new_replacer
+    assert_nil new_replacer.lookup_emoji('foo')
+  end
+
+  def test_loads_gemoji_cache_when_present
+    Dir.mktmpdir do |dir|
+      old_xdg = ENV.fetch('XDG_CACHE_HOME', nil)
+      ENV['XDG_CACHE_HOME'] = dir
+      cache_path = File.join(dir, 'slk', 'gemoji.json')
+      FileUtils.mkdir_p(File.dirname(cache_path))
+      File.write(cache_path, JSON.dump({ 'custom_thing' => "\u{1F389}" }))
+      replacer = Slk::Formatters::EmojiReplacer.new
+      assert_equal "\u{1F389}", replacer.lookup_emoji('custom_thing')
+    ensure
+      ENV['XDG_CACHE_HOME'] = old_xdg
+    end
+  end
+
+  def test_loads_gemoji_cache_handles_corrupted_json
+    Dir.mktmpdir do |dir|
+      old_xdg = ENV.fetch('XDG_CACHE_HOME', nil)
+      ENV['XDG_CACHE_HOME'] = dir
+      cache_path = File.join(dir, 'slk', 'gemoji.json')
+      FileUtils.mkdir_p(File.dirname(cache_path))
+      File.write(cache_path, '{not json')
+      debug_msgs = []
+      replacer = Slk::Formatters::EmojiReplacer.new(on_debug: ->(m) { debug_msgs << m })
+      # Falls back to built-in map
+      refute_nil replacer.lookup_emoji('fire')
+      assert(debug_msgs.any? { |m| m.include?('Failed to load gemoji') })
+    ensure
+      ENV['XDG_CACHE_HOME'] = old_xdg
+    end
+  end
+
+  def test_replace_with_workspace_arg_ignored
+    # Second arg is reserved for future use
+    assert_equal "\u{1F525}", @replacer.replace(':fire:', mock_workspace('test'))
+  end
 end

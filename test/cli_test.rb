@@ -172,6 +172,76 @@ class CLITest < Minitest::Test
     assert_includes @output.stderr, 'Something unexpected'
   end
 
+  def test_unknown_command_falls_through_to_preset_when_exists
+    cli = Slk::CLI.new(['my-preset'], output: @output)
+    cli.define_singleton_method(:preset_exists?) { |_n| true }
+    cli.define_singleton_method(:run_command) do |name, args|
+      @captured_args = [name, args]
+      0
+    end
+    result = cli.run
+    assert_equal 0, result
+    assert_equal ['preset', ['my-preset']], cli.instance_variable_get(:@captured_args)
+  end
+
+  def test_verbose_flag_sets_up_logging
+    cli = Slk::CLI.new(['help', '-v'], output: @output)
+    runner = cli.send(:build_runner, ['-v'])
+    refute_nil runner.api_client.on_request
+  end
+
+  def test_very_verbose_flag_sets_up_full_logging
+    cli = Slk::CLI.new(['help', '-vv'], output: @output)
+    runner = cli.send(:build_runner, ['-vv'])
+    refute_nil runner.api_client.on_request
+    refute_nil runner.api_client.on_response_body
+    refute_nil runner.cache_store.on_cache_access
+  end
+
+  def test_verbose_logging_callbacks_invoke_debug
+    cli = Slk::CLI.new(['help', '-v'], output: @output)
+    runner = cli.send(:build_runner, ['-v'])
+    runner.api_client.on_request.call('test.method', 5)
+    runner.api_client.on_response.call('test.method', 'rate-wait', { 'sleep_seconds' => 1 })
+    # Debug output goes to a debug method - just confirm no errors raised.
+  end
+
+  def test_very_verbose_response_header_callback
+    cli = Slk::CLI.new(['help', '-vv'], output: @output)
+    runner = cli.send(:build_runner, ['-vv'])
+    headers = { 'elapsed_ms' => 12, 'X-Slack-Req-Id' => 'r1', 'X-RateLimit-Remaining' => 5 }
+    runner.api_client.on_response.call('test', 200, headers)
+    runner.api_client.on_request_body.call('test', 'a' * 600)
+    runner.api_client.on_response_body.call('test', 'b' * 200)
+    runner.cache_store.on_cache_access.call('user', 'ws', 'k', true, 'val')
+    runner.cache_store.on_cache_access.call('user', 'ws', 'k', false, nil)
+  end
+
+  def test_very_verbose_skips_response_header_when_empty
+    cli = Slk::CLI.new(['help', '-vv'], output: @output)
+    runner = cli.send(:build_runner, ['-vv'])
+    runner.api_client.on_response.call('test', 200, {})
+    # No exception raised
+  end
+
+  def test_show_unknown_command_returns_one
+    cli = Slk::CLI.new(['no-such-cmd'], output: @output)
+    cli.define_singleton_method(:preset_exists?) { |_n| false }
+    assert_equal 1, cli.run
+  end
+
+  def test_run_command_returns_one_for_unknown_command
+    cli = Slk::CLI.new(['help'], output: @output)
+    assert_equal 1, cli.send(:run_command, 'totally-bogus', [])
+  end
+
+  def test_log_api_call_count_skips_when_zero
+    cli = Slk::CLI.new(['help', '-v'], output: @output)
+    runner = cli.send(:build_runner, ['-v'])
+    # call_count = 0, should not emit
+    cli.send(:log_api_call_count, runner)
+  end
+
   # Mock output class for testing
   class MockOutput
     attr_reader :stdout, :stderr

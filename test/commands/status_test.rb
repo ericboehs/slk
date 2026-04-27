@@ -221,4 +221,61 @@ class StatusCommandTest < Minitest::Test
     assert_equal 0, result
     refute_includes @err.string, 'Unknown option'
   end
+
+  def test_set_status_default_emoji_when_none_provided
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+    runner = create_runner
+    Slk::Commands::Status.new(['Lunch'], runner: runner).execute
+    call = @mock_client.calls.find { |c| c[:method] == 'users.profile.set' }
+    assert_equal ':speech_balloon:', call[:params][:profile][:status_emoji]
+  end
+
+  def test_get_status_with_explicit_workspace_option
+    @mock_client.stub('users.profile.get', { 'ok' => true,
+                                             'profile' => { 'status_text' => '', 'status_emoji' => '' } })
+    runner = create_runner(workspaces: [mock_workspace('one'), mock_workspace('two')])
+    Slk::Commands::Status.new(['-w', 'one'], runner: runner).execute
+    refute_includes @io.string, 'two'
+  end
+
+  def test_get_status_multi_workspace_shows_workspace_label
+    @mock_client.stub('users.profile.get', { 'ok' => true,
+                                             'profile' => { 'status_text' => 'Hi',
+                                                            'status_emoji' => ':wave:' } })
+    runner = create_runner(workspaces: [mock_workspace('one'), mock_workspace('two')])
+    Slk::Commands::Status.new([], runner: runner).execute
+    assert_includes @io.string, 'one'
+    assert_includes @io.string, 'two'
+  end
+
+  def test_set_status_presence_active_translates_to_auto
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+    @mock_client.stub('users.setPresence', { 'ok' => true })
+    runner = create_runner
+    Slk::Commands::Status.new(['Working', '-p', 'active'], runner: runner).execute
+    presence_call = @mock_client.calls.find { |c| c[:method] == 'users.setPresence' }
+    assert_equal 'auto', presence_call[:params][:presence]
+  end
+
+  def test_show_all_workspaces_hint_with_multiple
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+    runner = create_runner(workspaces: [mock_workspace('a'), mock_workspace('b')])
+    Slk::Commands::Status.new(['Hello'], runner: runner).execute
+    assert_match(/--all/, @io.string)
+  end
+
+  def test_show_all_workspaces_hint_skipped_with_workspace
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+    runner = create_runner(workspaces: [mock_workspace('a'), mock_workspace('b')])
+    Slk::Commands::Status.new(['Hello', '-w', 'a'], runner: runner).execute
+    refute_match(/Tip/, @io.string)
+  end
+
+  def test_clear_with_workspace_filter
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+    runner = create_runner(workspaces: [mock_workspace('a'), mock_workspace('b')])
+    Slk::Commands::Status.new(['clear', '-w', 'a'], runner: runner).execute
+    # Successfully cleared
+    assert_includes @io.string, 'cleared'
+  end
 end

@@ -63,6 +63,105 @@ class ProfileResolverTest < Minitest::Test
     assert_equal 'Boss B', profile.resolved_users['U003'].real_name
   end
 
+  def test_resolve_swallows_other_api_errors_without_on_debug
+    @users.add('U001', team_id: 'T_HOME')
+    @users.fail_profile_with('U001', :rate_limited)
+    resolver = Slk::Services::ProfileResolver.new(users_api: @users, team_api: @team)
+    refute_nil resolver.resolve('U001')
+  end
+
+  def test_user_not_found_fallback_without_on_debug
+    @users.add('U001', team_id: 'T_HOME')
+    @users.fail_profile_with('U001', :user_not_found)
+    resolver = Slk::Services::ProfileResolver.new(users_api: @users, team_api: @team)
+    refute_nil resolver.resolve('U001')
+  end
+
+  def test_presence_failure_without_on_debug
+    @users.add('U001', team_id: 'T_HOME')
+    @users.fail_presence!
+    resolver = Slk::Services::ProfileResolver.new(users_api: @users, team_api: @team)
+    assert_nil resolver.resolve('U001').presence
+  end
+
+  def test_schema_failure_without_on_debug
+    @users.add('U001', team_id: 'T_HOME')
+    @team.fail_schema!
+    resolver = Slk::Services::ProfileResolver.new(users_api: @users, team_api: @team)
+    refute_nil resolver.resolve('U001')
+  end
+
+  def test_team_info_failure_without_on_debug
+    @users.add('U_ext', team_id: 'T_OTHER')
+    @team.fail_team_info!('T_OTHER')
+    resolver = Slk::Services::ProfileResolver.new(users_api: @users, team_api: @team)
+    assert resolver.resolve('U_ext').external?
+  end
+
+  def test_resolve_with_people_skips_for_external_user
+    @users.add('U_ext', team_id: 'T_OTHER', supervisor: 'U001')
+    @team.set_team('T_OTHER', name: 'External Co')
+    @users.add('U001', team_id: 'T_HOME', real_name: 'Boss A')
+    profile = @resolver.resolve_with_people('U_ext')
+    assert profile.external?
+    assert_empty profile.resolved_users
+  end
+
+  def test_resolve_user_not_found_returns_profile
+    @users.add('U001', team_id: 'T_HOME', real_name: 'Eric')
+    @users.fail_profile_with('U001', :user_not_found)
+    profile = @resolver.resolve('U001')
+    refute_nil profile
+  end
+
+  def test_resolve_swallows_rate_limited_with_debug
+    debug_msgs = []
+    resolver = Slk::Services::ProfileResolver.new(
+      users_api: @users, team_api: @team, on_debug: ->(m) { debug_msgs << m }
+    )
+    @users.add('U001', team_id: 'T_HOME')
+    @users.fail_profile_with('U001', :rate_limited)
+    refute_nil resolver.resolve('U001')
+    assert(debug_msgs.any? { |m| m.include?('failed') })
+  end
+
+  def test_resolve_handles_presence_fetch_failure
+    debug_msgs = []
+    resolver = Slk::Services::ProfileResolver.new(
+      users_api: @users, team_api: @team, on_debug: ->(m) { debug_msgs << m }
+    )
+    @users.add('U001', team_id: 'T_HOME')
+    @users.fail_presence!
+    profile = resolver.resolve('U001')
+    refute_nil profile
+    assert_nil profile.presence
+  end
+
+  def test_team_info_failure_for_home_team_name
+    debug_msgs = []
+    resolver = Slk::Services::ProfileResolver.new(
+      users_api: @users, team_api: @team, on_debug: ->(m) { debug_msgs << m }
+    )
+    @users.add('U_ext', team_id: 'T_OTHER')
+    @team.fail_team_info!('T_OTHER')
+    profile = resolver.resolve('U_ext')
+    refute_nil profile
+    assert profile.external?
+    assert_nil profile.home_team_name
+  end
+
+  def test_schema_failure_returns_empty_schema
+    debug_msgs = []
+    resolver = Slk::Services::ProfileResolver.new(
+      users_api: @users, team_api: @team, on_debug: ->(m) { debug_msgs << m }
+    )
+    @users.add('U001', team_id: 'T_HOME')
+    @team.fail_schema!
+    profile = resolver.resolve('U001')
+    refute_nil profile
+    assert_empty profile.custom_fields
+  end
+
   class FakeUsersApi
     attr_reader :calls
 
@@ -81,8 +180,21 @@ class ProfileResolverTest < Minitest::Test
       }
     end
 
+    def fail_profile_with(user_id, code)
+      @profile_failures ||= {}
+      @profile_failures[user_id] = code
+    end
+
+    def fail_presence!
+      @fail_presence = true
+    end
+
     def profile_for(user_id, include_labels: true) # rubocop:disable Lint/UnusedMethodArgument
       @calls['users.profile.get'] << user_id
+      if @profile_failures && (code = @profile_failures[user_id])
+        raise Slk::ApiError.new("error: #{code}", code: code)
+      end
+
       @users.fetch(user_id) { raise Slk::ApiError, "user_not_found: #{user_id}" }[:profile]
     end
 
@@ -92,6 +204,8 @@ class ProfileResolverTest < Minitest::Test
     end
 
     def get_presence_for(_user_id)
+      raise Slk::ApiError, 'presence failed' if @fail_presence
+
       { 'presence' => 'active' }
     end
 
@@ -121,12 +235,25 @@ class ProfileResolverTest < Minitest::Test
       @teams[team_id] = { 'id' => team_id, 'name' => name }
     end
 
+    def fail_team_info!(team_id)
+      @failures ||= []
+      @failures << team_id
+    end
+
+    def fail_schema!
+      @schema_fails = true
+    end
+
     def info(team_id = nil)
+      raise Slk::ApiError, "info failed: #{team_id}" if @failures&.include?(team_id)
+
       team = @teams[team_id || @team_id] || { 'id' => team_id, 'name' => nil }
       { 'ok' => true, 'team' => team }
     end
 
     def profile_schema
+      raise Slk::ApiError, 'schema failed' if @schema_fails
+
       {
         'ok' => true,
         'profile' => {

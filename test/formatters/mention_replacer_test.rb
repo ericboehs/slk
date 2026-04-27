@@ -382,4 +382,60 @@ class MentionReplacerTest < Minitest::Test
     assert_equal 1, debug_messages.size
     assert_match(/User lookup failed for UFAIL/, debug_messages.first)
   end
+
+  def test_channel_api_returns_no_ok_returns_nil
+    mock_api = MockApiClient.new
+    mock_api.stub('conversations.info', { 'ok' => false, 'error' => 'not_found' })
+    replacer = Slk::Formatters::MentionReplacer.new(cache_store: @cache, api_client: mock_api)
+    text = '<#CNULL1>'
+    assert_equal '#CNULL1', replacer.replace(text, @workspace)
+  end
+
+  def test_channel_api_debug_called_on_error
+    debug = []
+    mock_api = Object.new
+    mock_api.define_singleton_method(:get) do |_w, _m, _p = {}|
+      raise Slk::ApiError, 'channel fail'
+    end
+    mock_api.define_singleton_method(:post_form) do |_w, _m, _p = {}|
+      raise Slk::ApiError, 'channel fail'
+    end
+    replacer = Slk::Formatters::MentionReplacer.new(
+      cache_store: @cache, api_client: mock_api, on_debug: ->(m) { debug << m }
+    )
+    replacer.replace('<#CFAIL>', @workspace)
+    assert(debug.any? { |m| m.include?('Channel lookup failed') })
+  end
+
+  def test_subteam_api_debug_called_on_error
+    debug = []
+    mock_api = Object.new
+    mock_api.define_singleton_method(:post) do |_w, _m, _p = {}|
+      raise Slk::ApiError, 'subteam fail'
+    end
+    mock_api.define_singleton_method(:post_form) do |_w, _m, _p = {}|
+      raise Slk::ApiError, 'subteam fail'
+    end
+    replacer = Slk::Formatters::MentionReplacer.new(
+      cache_store: @cache, api_client: mock_api, on_debug: ->(m) { debug << m }
+    )
+    replacer.replace('<!subteam^SFAIL>', @workspace)
+    assert(debug.any? { |m| m.include?('Subteam lookup failed') })
+  end
+
+  def test_lookup_user_name_public_api
+    @cache.set_user('test', 'U_x', 'Alice')
+    name = @replacer.lookup_user_name(@workspace, 'U_x')
+    assert_equal 'Alice', name
+  end
+
+  def test_no_api_client_for_channel_returns_id
+    text = '<#CNULL>'
+    assert_equal '#CNULL', @replacer.replace(text, @workspace)
+  end
+
+  def test_no_api_client_for_subteam_returns_id
+    text = '<!subteam^SNULL>'
+    assert_equal '@SNULL', @replacer.replace(text, @workspace)
+  end
 end

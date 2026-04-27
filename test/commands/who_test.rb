@@ -111,4 +111,80 @@ class WhoCommandTest < Minitest::Test
     execute_with_args(['USELF'])
     assert_includes io_string, 'Eric'
   end
+
+  def test_help_option
+    result = execute_with_args(['--help'])
+    assert_equal 0, result
+    assert_includes io_string, 'slk who'
+    assert_includes io_string, '--full'
+    assert_includes io_string, '--all'
+    assert_includes io_string, '--pick'
+  end
+
+  def test_pick_option_with_invalid_value_raises
+    err = assert_raises(Slk::ApiError) do
+      Slk::Commands::Who.new(['--pick', 'foo'], runner: runner).execute
+    end
+    assert_match(/--pick expects an integer/, err.message)
+  end
+
+  def test_pick_option_with_integer
+    cmd = Slk::Commands::Who.new(['--pick', '2'], runner: runner)
+    assert_equal 2, cmd.options[:pick]
+  end
+
+  def test_refresh_option
+    cmd = Slk::Commands::Who.new(['--refresh'], runner: runner)
+    assert_equal true, cmd.options[:refresh]
+  end
+
+  def test_no_cache_option_aliases_refresh
+    cmd = Slk::Commands::Who.new(['--no-cache'], runner: runner)
+    assert_equal true, cmd.options[:refresh]
+  end
+
+  def test_all_option
+    cmd = Slk::Commands::Who.new(['--all'], runner: runner)
+    assert_equal true, cmd.options[:all]
+  end
+
+  def test_api_error_handling
+    cmd = Slk::Commands::Who.new(['USELF'], runner: runner)
+    cmd.define_singleton_method(:resolve_profiles) { |_w| raise Slk::ApiError, 'failure' }
+    result = cmd.execute
+    assert_equal 1, result
+  end
+
+  def test_json_with_multiple_profiles
+    stub_who_resolver_two_results
+    execute_with_args(['--json', '--all'])
+    parsed = JSON.parse(io_string)
+    assert_kind_of Array, parsed
+    assert_equal 2, parsed.size
+  end
+
+  def test_render_two_profiles_uses_separator
+    stub_who_resolver_two_results
+    execute_with_args(['--all'])
+    out = io_string
+    assert_includes out, '—' * 40
+  end
+
+  private
+
+  def stub_who_resolver_two_results
+    @mock_client.stub('users.profile.get', { 'ok' => true, 'profile' => self_profile })
+    @mock_client.stub('users.info', { 'ok' => true, 'user' => self_info })
+    return if Slk::Services::WhoTargetResolver.method_defined?(:_orig_resolve)
+
+    Slk::Services::WhoTargetResolver.alias_method(:_orig_resolve, :resolve)
+    Slk::Services::WhoTargetResolver.define_method(:resolve) { |_t| %w[USELF USELF] }
+  end
+
+  def teardown
+    return unless Slk::Services::WhoTargetResolver.method_defined?(:_orig_resolve)
+
+    Slk::Services::WhoTargetResolver.alias_method(:resolve, :_orig_resolve)
+    Slk::Services::WhoTargetResolver.remove_method(:_orig_resolve)
+  end
 end

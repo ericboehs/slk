@@ -68,6 +68,80 @@ class ProfileTest < Minitest::Test
     profile = Slk::Models::Profile.new(**base_args, is_external: true, team_id: 'T999')
     assert profile.external?
   end
+
+  def test_best_name_falls_back_to_user_id
+    profile = Slk::Models::Profile.new(**base_args, display_name: '', real_name: '')
+    assert_equal 'U123', profile.best_name
+  end
+
+  def test_presence_label_active
+    profile = Slk::Models::Profile.new(**base_args, presence: 'active')
+    assert_equal 'Active', profile.presence_label
+  end
+
+  def test_presence_label_away
+    profile = Slk::Models::Profile.new(**base_args, presence: 'away')
+    assert_equal 'Away', profile.presence_label
+  end
+
+  def test_presence_label_nil_for_unknown
+    profile = Slk::Models::Profile.new(**base_args, presence: nil)
+    assert_nil profile.presence_label
+  end
+
+  def test_people_fields_filters_user_type
+    fields = [field, field(label: 'Bio', type: 'text', value: 'about me')]
+    profile = Slk::Models::Profile.new(**base_args, custom_fields: fields)
+    assert_equal ['Supervisor'], profile.people_fields.map(&:label)
+  end
+
+  def test_fields_in_section_filters_by_section_id
+    fields = [
+      field(section_id: 'A', label: 'A1', value: 'v'),
+      field(section_id: 'B', label: 'B1', value: 'v')
+    ]
+    profile = Slk::Models::Profile.new(**base_args, custom_fields: fields)
+    assert_equal ['A1'], profile.fields_in_section('A').map(&:label)
+  end
+
+  def test_section_finder
+    sections = [{ 'id' => 'S1', 'label' => 'First' }, { 'id' => 'S2', 'label' => 'Second' }]
+    profile = Slk::Models::Profile.new(**base_args, sections: sections)
+    assert_equal 'First', profile.section('S1')['label']
+    assert_nil profile.section('SX')
+  end
+
+  def test_supervisor_ids_falls_back_to_first_non_inverse
+    fields = [field(label: 'Mentor', value: 'U_men')]
+    profile = Slk::Models::Profile.new(**base_args, custom_fields: fields)
+    assert_equal ['U_men'], profile.supervisor_ids
+  end
+
+  def test_supervisor_ids_empty_when_only_inverse
+    fields = [field(label: 'Reports', value: 'U_r', inverse: true)]
+    profile = Slk::Models::Profile.new(**base_args, custom_fields: fields)
+    assert_empty profile.supervisor_ids
+  end
+
+  def test_reports_field_returns_inverse_user_field
+    fields = [
+      field(label: 'Supervisor', value: 'U1'),
+      field(label: 'Reports', value: 'U2,U3', inverse: true)
+    ]
+    profile = Slk::Models::Profile.new(**base_args, custom_fields: fields)
+    assert_equal 'Reports', profile.reports_field.label
+  end
+
+  def test_visible_fields_sorts_by_ordering
+    fields = [
+      field(ordering: 3, value: 'c'),
+      field(ordering: 1, value: 'a'),
+      field(ordering: 2, value: 'b')
+    ]
+    profile = Slk::Models::Profile.new(**base_args, custom_fields: fields)
+    orderings = profile.visible_fields.map(&:ordering)
+    assert_equal [1, 2, 3], orderings
+  end
 end
 
 class ProfileFieldTest < Minitest::Test

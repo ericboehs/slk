@@ -161,6 +161,136 @@ class SshKeyManagerTest < Minitest::Test
     assert cleared, 'Config ssh_key should be set to nil'
   end
 
+  def test_unset_with_no_old_key_and_no_encrypted_tokens
+    config = mock_config(ssh_key: nil)
+    token_store = mock_token_store
+
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    with_temp_config do
+      result = manager.unset
+      assert result[:success]
+    end
+  end
+
+  def test_unset_prompts_when_old_key_unknown_and_tokens_exist
+    config = mock_config(ssh_key: nil)
+    token_store = mock_token_store
+
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    with_temp_config do |dir|
+      tokens_age_path = "#{dir}/slk/tokens.age"
+      FileUtils.mkdir_p(File.dirname(tokens_age_path))
+      File.write(tokens_age_path, 'encrypted')
+
+      $stdin = StringIO.new("/some/path/to/key\n")
+      result = manager.unset
+      assert result[:success]
+    ensure
+      $stdin = STDIN
+    end
+  end
+
+  def test_unset_cancels_when_no_path_provided
+    config = mock_config(ssh_key: nil)
+    token_store = mock_token_store
+
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    with_temp_config do |dir|
+      tokens_age_path = "#{dir}/slk/tokens.age"
+      FileUtils.mkdir_p(File.dirname(tokens_age_path))
+      File.write(tokens_age_path, 'encrypted')
+
+      $stdin = StringIO.new("\n")
+      result = manager.unset
+      refute result[:success]
+      assert_match(/cancelled/i, result[:error])
+    ensure
+      $stdin = STDIN
+    end
+  end
+
+  def test_set_returns_error_on_disk_full
+    config = mock_config
+    token_store = mock_token_store(migrate_encryption: ->(_o, _n, _ctx) { raise Errno::ENOSPC, 'No space' })
+
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    result = manager.set('/path/to/key')
+    refute result[:success]
+    assert_match(/Disk full/, result[:error])
+  end
+
+  def test_set_returns_error_on_invalid_argument
+    config = mock_config
+    token_store = mock_token_store(migrate_encryption: ->(_o, _n, _ctx) { raise ArgumentError, 'bad arg' })
+
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    result = manager.set('/path/to/key')
+    refute result[:success]
+    assert_match(/Invalid path: bad arg/, result[:error])
+  end
+
+  def test_prompt_pub_key_callback_returns_path
+    captured_path = nil
+    config = mock_config
+    token_store = mock_token_store(migrate_encryption: lambda { |_o, _n, ctx|
+      cb = ctx[:on_prompt_pub_key]
+      captured_path = cb&.call('/private/key') if cb
+    })
+
+    Tempfile.create(['key', '.pub']) do |tf|
+      manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+      $stdin = StringIO.new("#{tf.path}\n")
+      manager.set('/path/to/key')
+      assert_equal File.expand_path(tf.path), captured_path
+    ensure
+      $stdin = STDIN
+    end
+  end
+
+  def test_prompt_pub_key_callback_cancels
+    captured_path = :unchanged
+    config = mock_config
+    token_store = mock_token_store(migrate_encryption: lambda { |_o, _n, ctx|
+      cb = ctx[:on_prompt_pub_key]
+      captured_path = cb&.call('/private/key') if cb
+    })
+
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    $stdin = StringIO.new("\n")
+    manager.set('/path/to/key')
+    assert_nil captured_path
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_set_returns_error_on_eperm
+    config = mock_config
+    token_store = mock_token_store(migrate_encryption: ->(_o, _n, _ctx) { raise Errno::EPERM, 'denied' })
+
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    result = manager.set('/path/to/key')
+    refute result[:success]
+    assert_match(/Permission denied/, result[:error])
+  end
+
+  def test_set_returns_error_on_read_only_fs
+    config = mock_config
+    token_store = mock_token_store(migrate_encryption: ->(_o, _n, _ctx) { raise Errno::EROFS, 'ro' })
+
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    result = manager.set('/path/to/key')
+    refute result[:success]
+    assert_match(/Read-only/, result[:error])
+  end
+
+  def test_unset_prompt_uses_existing_old_key
+    config = mock_config(ssh_key: '/old/key')
+    token_store = mock_token_store
+    manager = Slk::Commands::SshKeyManager.new(config: config, token_store: token_store, output: @output)
+    result = manager.unset
+    assert result[:success]
+  end
+
   private
 
   def mock_config(ssh_key: nil, on_set: nil)
@@ -175,7 +305,7 @@ class SshKeyManagerTest < Minitest::Test
     Object.new.tap do |store|
       store.define_singleton_method(:on_info=) { |cb| ctx[:on_info] = cb }
       store.define_singleton_method(:on_warning=) { |cb| ctx[:on_warning] = cb }
-      store.define_singleton_method(:on_prompt_pub_key=) { |_cb| nil }
+      store.define_singleton_method(:on_prompt_pub_key=) { |cb| ctx[:on_prompt_pub_key] = cb }
       store.define_singleton_method(:migrate_encryption) do |o, n|
         migrate_encryption&.call(o, n, ctx)
       end
@@ -184,8 +314,8 @@ class SshKeyManagerTest < Minitest::Test
 
   def can_create_test_ssh_key?
     require 'open3'
-    _, _, status = Open3.capture3('ssh-keygen', '-V')
-    status.success?
+    Open3.capture3('ssh-keygen', '-?')
+    true
   rescue Errno::ENOENT
     false
   end

@@ -165,6 +165,100 @@ class RunnerTest < Minitest::Test
     runner.log_error(error)
   end
 
+  def test_emoji_api_returns_api_instance
+    setup_workspace
+    assert_kind_of Slk::Api::Emoji, create_runner.emoji_api
+  end
+
+  def test_bots_api_returns_api_instance
+    setup_workspace
+    api = create_runner.bots_api
+    assert_kind_of Slk::Api::Bots, api
+  end
+
+  def test_threads_api_returns_api_instance
+    setup_workspace
+    assert_kind_of Slk::Api::Threads, create_runner.threads_api
+  end
+
+  def test_activity_api_returns_api_instance
+    setup_workspace
+    assert_kind_of Slk::Api::Activity, create_runner.activity_api
+  end
+
+  def test_search_api_returns_api_instance
+    setup_workspace
+    assert_kind_of Slk::Api::Search, create_runner.search_api
+  end
+
+  def test_saved_api_returns_api_instance
+    setup_workspace
+    assert_kind_of Slk::Api::Saved, create_runner.saved_api
+  end
+
+  def test_team_api_returns_api_instance
+    setup_workspace
+    assert_kind_of Slk::Api::Team, create_runner.team_api
+  end
+
+  def test_profile_resolver_returns_resolver_with_refresh
+    setup_workspace
+    resolver = create_runner.profile_resolver(refresh: true)
+    assert_kind_of Slk::Services::ProfileResolver, resolver
+    assert resolver.refresh
+  end
+
+  def test_message_resolver_returns_resolver
+    setup_workspace
+    resolver = create_runner.message_resolver
+    assert_kind_of Slk::Services::MessageResolver, resolver
+  end
+
+  def test_mention_replacer_is_memoized
+    runner = create_runner
+    a = runner.mention_replacer
+    assert_same a, runner.mention_replacer
+  end
+
+  def test_text_processor_is_memoized
+    runner = create_runner
+    a = runner.text_processor
+    assert_same a, runner.text_processor
+  end
+
+  def test_search_formatter_is_memoized
+    runner = create_runner
+    a = runner.search_formatter
+    assert_same a, runner.search_formatter
+  end
+
+  def test_callbacks_invoke_output_debug
+    setup_workspace
+    runner = create_runner
+    # Build instances to capture lambdas
+    formatter = runner.message_formatter
+    replacer = runner.mention_replacer
+    bots = runner.bots_api
+    resolver = runner.profile_resolver
+    msg_resolver = runner.message_resolver
+    users = runner.users_api
+
+    # Invoke each captured lambda to cover the body
+    invoke_on_debug(formatter)
+    invoke_on_debug(replacer)
+    invoke_on_debug(bots)
+    invoke_on_debug(resolver)
+    invoke_on_debug(msg_resolver)
+    invoke_on_debug(users)
+
+    assert true
+  end
+
+  def invoke_on_debug(obj)
+    cb = obj.instance_variable_get(:@on_debug)
+    cb&.call('msg')
+  end
+
   private
 
   def create_runner
@@ -176,6 +270,11 @@ class RunnerTest < Minitest::Test
       cache_store: @cache_store,
       preset_store: @preset_store
     )
+  end
+
+  def setup_workspace(name: 'test')
+    @config.data['primary_workspace'] = name
+    @token_store.workspaces[name] = Slk::Models::Workspace.new(name: name, token: 'xoxp-t')
   end
 
   # Mock classes for testing

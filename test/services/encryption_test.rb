@@ -293,6 +293,108 @@ class EncryptionTest < Minitest::Test
     end
   end
 
+  def test_validate_key_type_returns_nil_when_prompt_returns_nil
+    skip unless can_create_test_ssh_key?
+
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/test_key"
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      File.delete("#{key_path}.pub")
+
+      @encryption.on_prompt_pub_key = ->(_path) {}
+      error = assert_raises(Slk::EncryptionError) { @encryption.validate_key_type!(key_path) }
+      assert_match(/Public key not found/, error.message)
+    end
+  end
+
+  def test_validate_key_type_when_prompted_path_does_not_exist
+    skip unless can_create_test_ssh_key?
+
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/test_key"
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      File.delete("#{key_path}.pub")
+
+      @encryption.on_prompt_pub_key = ->(_path) { '/nonexistent/path.pub' }
+      error = assert_raises(Slk::EncryptionError) { @encryption.validate_key_type!(key_path) }
+      assert_match(/Public key not found/, error.message)
+    end
+  end
+
+  def test_decrypt_raises_on_age_failure
+    skip unless @encryption.available?
+    skip unless can_create_test_ssh_key?
+
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/test_key"
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      bad_path = "#{dir}/bad.age"
+      File.write(bad_path, 'not a valid age file')
+
+      error = assert_raises(Slk::EncryptionError) do
+        @encryption.decrypt(bad_path, key_path)
+      end
+      assert_match(/Failed to decrypt/, error.message)
+    end
+  end
+
+  def test_validate_skips_when_ssh_keygen_missing
+    skip unless can_create_test_ssh_key?
+
+    Dir.mktmpdir do |dir|
+      key_path = "#{dir}/test_key"
+      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+
+      # Stub Open3.capture3 to simulate ssh-keygen not found
+      Open3.stub(:capture3, ->(*_a) { ['', 'command not found', stub_status(false)] }) do
+        # Should not raise, validation skipped
+        assert @encryption.validate_key_type!(key_path)
+      end
+    end
+  end
+
+  def test_decrypt_handles_enoent_during_age
+    Dir.mktmpdir do |dir|
+      encrypted_path = "#{dir}/tokens.age"
+      File.write(encrypted_path, 'data')
+      key_path = "#{dir}/key"
+      File.write(key_path, 'dummy')
+
+      encryption = Slk::Services::Encryption.new
+      encryption.define_singleton_method(:available?) { true }
+      Open3.stub(:capture3, ->(*_a) { raise Errno::ENOENT, 'not found' }) do
+        error = assert_raises(Slk::EncryptionError) do
+          encryption.decrypt(encrypted_path, key_path)
+        end
+        assert_match(/Decryption failed/, error.message)
+      end
+    end
+  end
+
+  def test_encrypt_raises_on_age_failure
+    skip unless @encryption.available?
+
+    Dir.mktmpdir do |dir|
+      out_path = "#{dir}/out.age"
+      pub = "#{dir}/key.pub"
+      key = "#{dir}/key"
+      File.write(pub, 'ssh-ed25519 BAD_KEY_DATA')
+      File.write(key, 'dummy private')
+
+      error = assert_raises(Slk::EncryptionError) do
+        @encryption.encrypt('hello', key, out_path)
+      end
+      assert_match(/Failed to encrypt/, error.message)
+    end
+  end
+
+  def test_available_returns_false_when_age_missing
+    encryption = Slk::Services::Encryption.new
+    Open3.stub(:capture3, ->(*_a) { raise Errno::ENOENT, 'no age' }) do
+      refute encryption.available?
+    end
+  end
+
   # Integration test (only runs if age is available and test SSH keys exist)
   def test_encrypt_and_decrypt_roundtrip
     skip unless @encryption.available?
@@ -320,9 +422,13 @@ class EncryptionTest < Minitest::Test
 
   def can_create_test_ssh_key?
     require 'open3'
-    _, _, status = Open3.capture3('ssh-keygen', '-V')
-    status.success?
+    Open3.capture3('ssh-keygen', '-?')
+    true
   rescue Errno::ENOENT
     false
+  end
+
+  def stub_status(success)
+    Object.new.tap { |o| o.define_singleton_method(:success?) { success } }
   end
 end

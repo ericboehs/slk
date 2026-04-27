@@ -84,6 +84,44 @@ class UserMatcherTest < Minitest::Test
     assert_raises(Slk::ApiError) { matcher.find_all('alice') }
   end
 
+  def test_returns_empty_when_api_client_is_nil
+    matcher = Slk::Services::UserMatcher.new(
+      api_client: nil, workspace: @workspace, cache_store: @cache
+    )
+    assert_empty matcher.find_all('alice')
+  end
+
+  def test_skips_cache_lookup_when_cache_does_not_respond_to_each_meta
+    bare_cache = Object.new
+    matcher = Slk::Services::UserMatcher.new(
+      api_client: @api, workspace: @workspace, cache_store: bare_cache
+    )
+    stub_list([list_user(id: 'U1', display: 'Bob')])
+    assert_equal(['U1'], matcher.find_all('bob').map { |u| u['id'] })
+  end
+
+  def test_ignores_meta_entries_without_user_hash
+    stub_list([])
+    @cache.set_meta(@workspace.name, 'ui_U99', { 'random' => 'no user' })
+    assert_empty matcher.find_all('anything')
+  end
+
+  def test_ignores_user_hash_without_id
+    stub_list([])
+    @cache.set_meta(@workspace.name, 'ui_U99', { 'user' => { 'profile' => { 'real_name' => 'NoId' } } })
+    assert_empty matcher.find_all('NoId')
+  end
+
+  def test_skip_meta_when_value_is_not_hash
+    stub_list([])
+    fake = Object.new
+    fake.define_singleton_method(:each_meta) { |_w| [%w[ui_U1 string-value]].each }
+    matcher = Slk::Services::UserMatcher.new(
+      api_client: @api, workspace: @workspace, cache_store: fake
+    )
+    assert_empty matcher.find_all('alice')
+  end
+
   # Minimal fake of CacheStore covering only what UserMatcher needs.
   class FakeCacheStore
     def initialize

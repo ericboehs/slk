@@ -31,8 +31,166 @@ class InlineImagesTest < Minitest::Test
   end
 
   def test_inline_images_not_supported_with_other_terminal
-    with_env('TERM_PROGRAM' => 'Apple_Terminal', 'LC_TERMINAL' => nil, 'TERM' => 'xterm-256color') do
+    with_env(
+      'TERM_PROGRAM' => 'Apple_Terminal', 'LC_TERMINAL' => nil,
+      'TERM' => 'xterm-256color', 'GHOSTTY_RESOURCES_DIR' => nil
+    ) do
       refute inline_images_supported?
+    end
+  end
+
+  def test_kitty_graphics_supported_with_ghostty_term_program
+    with_env(
+      'TERM_PROGRAM' => 'ghostty', 'LC_TERMINAL' => nil, 'TERM' => 'xterm',
+      'GHOSTTY_RESOURCES_DIR' => nil
+    ) do
+      assert kitty_graphics_supported?
+      assert inline_images_supported?
+    end
+  end
+
+  def test_kitty_graphics_supported_with_ghostty_resources_dir
+    with_env(
+      'TERM_PROGRAM' => 'Apple_Terminal', 'LC_TERMINAL' => nil, 'TERM' => 'xterm',
+      'GHOSTTY_RESOURCES_DIR' => '/Applications/Ghostty.app/Contents/Resources/ghostty'
+    ) do
+      assert kitty_graphics_supported?
+    end
+  end
+
+  def test_kitty_graphics_supported_with_kitty_term
+    with_env(
+      'TERM_PROGRAM' => 'Apple_Terminal', 'LC_TERMINAL' => nil, 'TERM' => 'xterm-kitty',
+      'GHOSTTY_RESOURCES_DIR' => nil
+    ) do
+      assert kitty_graphics_supported?
+    end
+  end
+
+  def test_lc_terminal_wezterm_supported
+    with_env('LC_TERMINAL' => 'WezTerm', 'TERM_PROGRAM' => nil, 'TERM' => 'xterm') do
+      assert iterm2_protocol_supported?
+    end
+  end
+
+  def test_print_inline_image_routes_to_kitty_when_supported
+    Dir.mktmpdir do |dir|
+      file = File.join(dir, 'a.png')
+      File.binwrite(file, png_header_bytes)
+      printed = capture_stdout do
+        with_env(
+          'TERM_PROGRAM' => 'ghostty', 'LC_TERMINAL' => nil, 'TERM' => 'xterm',
+          'GHOSTTY_RESOURCES_DIR' => nil
+        ) do
+          print_inline_image(file)
+        end
+      end
+      assert_includes printed, "\e_Ga=T"
+    end
+  end
+
+  def test_print_inline_image_routes_to_iterm_when_not_kitty
+    Dir.mktmpdir do |dir|
+      file = File.join(dir, 'a.png')
+      File.binwrite(file, png_header_bytes)
+      printed = capture_stdout do
+        with_env(
+          'TERM_PROGRAM' => 'iTerm.app', 'LC_TERMINAL' => nil, 'TERM' => 'xterm',
+          'GHOSTTY_RESOURCES_DIR' => nil
+        ) do
+          print_inline_image(file)
+        end
+      end
+      assert_includes printed, "\e]1337;File=inline=1"
+    end
+  end
+
+  def test_print_inline_image_routes_tmux_iterm
+    Dir.mktmpdir do |dir|
+      file = File.join(dir, 'a.png')
+      File.binwrite(file, png_header_bytes)
+      printed = capture_stdout do
+        with_env(
+          'TERM_PROGRAM' => 'iTerm.app', 'LC_TERMINAL' => nil,
+          'TERM' => 'screen-256color', 'GHOSTTY_RESOURCES_DIR' => nil
+        ) do
+          print_inline_image(file)
+        end
+      end
+      assert_includes printed, "\ePtmux;"
+    end
+  end
+
+  def test_print_inline_image_routes_tmux_kitty
+    Dir.mktmpdir do |dir|
+      file = File.join(dir, 'a.png')
+      File.binwrite(file, png_header_bytes)
+      printed = capture_stdout do
+        with_env(
+          'TERM_PROGRAM' => 'ghostty', 'LC_TERMINAL' => nil,
+          'TERM' => 'screen-256color', 'GHOSTTY_RESOURCES_DIR' => nil
+        ) do
+          # Reset memo so previous tests don't taint
+          @tmux_client_is_kitty_compatible = nil
+          print_inline_image(file)
+        end
+      end
+      assert_includes printed, "\ePtmux;"
+    end
+  end
+
+  def test_png_data_detection
+    assert png_data?(png_header_bytes)
+    refute png_data?('not png')
+    refute png_data?(nil.to_s)
+  end
+
+  def test_in_tmux_with_tmux_program
+    with_env('TERM' => 'tmux-256color') do
+      assert in_tmux?
+    end
+  end
+
+  def test_print_inline_image_with_text_iterm
+    Dir.mktmpdir do |dir|
+      file = File.join(dir, 'a.png')
+      File.binwrite(file, png_header_bytes)
+      printed = capture_stdout do
+        with_env(
+          'TERM_PROGRAM' => 'iTerm.app', 'LC_TERMINAL' => nil, 'TERM' => 'xterm',
+          'GHOSTTY_RESOURCES_DIR' => nil
+        ) do
+          assert print_inline_image_with_text(file, 'hello')
+        end
+      end
+      assert_includes printed, 'hello'
+    end
+  end
+
+  def test_print_inline_image_with_text_tmux_iterm
+    @tmux_client_is_kitty_compatible = false
+    Dir.mktmpdir do |dir|
+      file = File.join(dir, 'a.png')
+      File.binwrite(file, png_header_bytes)
+      printed = capture_stdout do
+        with_env(
+          'TERM_PROGRAM' => 'iTerm.app', 'LC_TERMINAL' => nil,
+          'TERM' => 'screen-256color', 'GHOSTTY_RESOURCES_DIR' => nil
+        ) do
+          stub(:tmux_client_is_kitty_compatible?, false) do
+            print_inline_image_with_text(file, 'tag')
+          end
+        end
+      end
+      assert_includes printed, 'tag'
+      assert_includes printed, "\e[1A"
+    end
+  end
+
+  def test_tmux_client_kitty_compatible_when_not_in_tmux
+    @tmux_client_is_kitty_compatible = nil
+    with_env('TERM' => 'xterm', 'GHOSTTY_RESOURCES_DIR' => nil, 'TERM_PROGRAM' => nil) do
+      refute tmux_client_is_kitty_compatible?
     end
   end
 
@@ -91,6 +249,19 @@ class InlineImagesTest < Minitest::Test
   end
 
   private
+
+  def png_header_bytes
+    "#{[137, 80, 78, 71, 13, 10, 26, 10].pack('C*')}rest_of_data"
+  end
+
+  def capture_stdout
+    old = $stdout
+    $stdout = StringIO.new
+    yield
+    $stdout.string
+  ensure
+    $stdout = old
+  end
 
   def with_env(env_vars)
     old_values = {}
