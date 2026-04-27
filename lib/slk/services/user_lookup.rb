@@ -52,6 +52,16 @@ module Slk
         fetch_id_by_name(name)
       end
 
+      # Find all users matching `name` across users.list and the meta cache.
+      # Delegates to UserMatcher to keep this class focused on cache lookups.
+      # @return [Array<Hash>] raw user hashes (users.list shape)
+      def find_all_by_name(name)
+        UserMatcher.new(
+          api_client: @api, workspace: @workspace,
+          cache_store: @cache, on_debug: @on_debug
+        ).find_all(name)
+      end
+
       private
 
       def fetch_and_cache_name(user_id)
@@ -101,11 +111,18 @@ module Slk
       end
 
       def find_user_by_name(users, name)
-        users.find do |u|
-          u['name'] == name ||
-            u.dig('profile', 'display_name') == name ||
-            u.dig('profile', 'real_name') == name
-        end
+        users.find { |u| user_name_matches?(u, name.downcase) }
+      end
+
+      def user_name_matches?(user, target_lower)
+        name_candidates(user).any? { |c| c.downcase == target_lower }
+      end
+
+      def name_candidates(user)
+        profile = user['profile'] || {}
+        full = [profile['first_name'], profile['last_name']].compact.join(' ').strip
+        [user['name'], profile['display_name'], profile['real_name'], full]
+          .map(&:to_s).reject(&:empty?)
       end
 
       def cache_user_from_api(user_data)

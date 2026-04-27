@@ -69,6 +69,9 @@ module Slk
     autoload :TargetResolver, 'slk/services/target_resolver'
     autoload :SetupWizard, 'slk/services/setup_wizard'
     autoload :UserLookup, 'slk/services/user_lookup'
+    autoload :UserMatcher, 'slk/services/user_matcher'
+    autoload :UserPicker, 'slk/services/user_picker'
+    autoload :WhoTargetResolver, 'slk/services/who_target_resolver'
     autoload :MessageResolver, 'slk/services/message_resolver'
     autoload :ProfileBuilder, 'slk/services/profile_builder'
     autoload :ProfileResolver, 'slk/services/profile_resolver'
@@ -93,6 +96,7 @@ module Slk
     autoload :TextProcessor, 'slk/formatters/text_processor'
     autoload :ProfileFormatter, 'slk/formatters/profile_formatter'
     autoload :ProfileFieldRenderer, 'slk/formatters/profile_field_renderer'
+    autoload :ProfileRows, 'slk/formatters/profile_rows'
   end
 
   # CLI commands implementing user-facing functionality

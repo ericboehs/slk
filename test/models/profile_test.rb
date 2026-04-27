@@ -11,7 +11,7 @@ class ProfileTest < Minitest::Test
       status_text: '', status_emoji: '', status_expiration: 0,
       tz: nil, tz_label: nil, tz_offset: 0, start_date: nil,
       is_admin: false, is_owner: false, is_bot: false, is_external: false,
-      team_id: nil, home_team_name: nil, presence: nil,
+      deleted: false, team_id: nil, home_team_name: nil, presence: nil,
       sections: [], custom_fields: [], resolved_users: {}
     }
   end
@@ -20,7 +20,7 @@ class ProfileTest < Minitest::Test
     Slk::Models::ProfileField.new(
       id: 'Xf01', label: 'Supervisor', value: 'U999', alt: '', type: 'user',
       ordering: 1, section_id: 'Sec1', hidden: false, inverse: false
-    ).then { |f| Slk::Models::ProfileField.new(**f.to_h.merge(overrides)) }
+    ).then { |f| Slk::Models::ProfileField.new(**f.to_h, **overrides) }
   end
 
   def test_best_name_prefers_display
@@ -29,13 +29,13 @@ class ProfileTest < Minitest::Test
   end
 
   def test_best_name_falls_back_to_real_name
-    profile = Slk::Models::Profile.new(**base_args.merge(display_name: ''))
+    profile = Slk::Models::Profile.new(**base_args, display_name: '')
     assert_equal 'Alice', profile.best_name
   end
 
   def test_supervisor_ids_splits_comma_separated
     fields = [field(value: 'U001,U002,U003')]
-    profile = Slk::Models::Profile.new(**base_args.merge(custom_fields: fields))
+    profile = Slk::Models::Profile.new(**base_args, custom_fields: fields)
     assert_equal %w[U001 U002 U003], profile.supervisor_ids
   end
 
@@ -44,13 +44,13 @@ class ProfileTest < Minitest::Test
       field(label: 'Mentor', value: 'U_mentor'),
       field(label: 'Supervisor', value: 'U_super')
     ]
-    profile = Slk::Models::Profile.new(**base_args.merge(custom_fields: fields))
+    profile = Slk::Models::Profile.new(**base_args, custom_fields: fields)
     assert_equal ['U_super'], profile.supervisor_ids
   end
 
   def test_supervisor_ids_skips_inverse_fields
     fields = [field(label: 'Direct Reports', value: 'U_report', inverse: true)]
-    profile = Slk::Models::Profile.new(**base_args.merge(custom_fields: fields))
+    profile = Slk::Models::Profile.new(**base_args, custom_fields: fields)
     assert_empty profile.supervisor_ids
   end
 
@@ -60,12 +60,12 @@ class ProfileTest < Minitest::Test
       field(label: 'Hidden', value: 'V', hidden: true),
       field(label: 'Visible', value: 'V')
     ]
-    profile = Slk::Models::Profile.new(**base_args.merge(custom_fields: fields))
+    profile = Slk::Models::Profile.new(**base_args, custom_fields: fields)
     assert_equal ['Visible'], profile.visible_fields.map(&:label)
   end
 
   def test_external_flag
-    profile = Slk::Models::Profile.new(**base_args.merge(is_external: true, team_id: 'T999'))
+    profile = Slk::Models::Profile.new(**base_args, is_external: true, team_id: 'T999')
     assert profile.external?
   end
 end
@@ -94,7 +94,7 @@ class ProfileFieldTest < Minitest::Test
     )
     assert_equal 'https://example.com', field.link_text
 
-    with_alt = Slk::Models::ProfileField.new(**field.to_h.merge(alt: 'Example'))
+    with_alt = Slk::Models::ProfileField.new(**field.to_h, alt: 'Example')
     assert_equal 'Example', with_alt.link_text
   end
 end

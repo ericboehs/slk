@@ -17,7 +17,7 @@ class ProfileFormatterTest < Minitest::Test
   end
 
   def make_profile(overrides = {})
-    Slk::Models::Profile.new(**default_profile_args.merge(overrides))
+    Slk::Models::Profile.new(**default_profile_args, **overrides)
   end
 
   def default_profile_args
@@ -28,7 +28,7 @@ class ProfileFormatterTest < Minitest::Test
       image_url: nil, status_text: '', status_emoji: '', status_expiration: 0,
       tz: nil, tz_label: nil, tz_offset: 0, start_date: nil,
       is_admin: false, is_owner: false, is_bot: false, is_external: false,
-      team_id: nil, home_team_name: nil, presence: nil,
+      deleted: false, team_id: nil, home_team_name: nil, presence: nil,
       sections: [], custom_fields: [], resolved_users: {}
     }
   end

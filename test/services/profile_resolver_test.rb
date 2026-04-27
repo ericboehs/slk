@@ -20,7 +20,7 @@ class ProfileResolverTest < Minitest::Test
     @users.add('U001', real_name: 'Alice', team_id: 'T_HOME')
     @resolver.resolve('U001')
     @resolver.resolve('U001')
-    assert_equal 1, @users.calls['users.profile.get'].count { |c| c == 'U001' }
+    assert_equal(1, @users.calls['users.profile.get'].count { |c| c == 'U001' })
   end
 
   def test_external_user_attaches_home_team_name

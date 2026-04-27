@@ -13,7 +13,8 @@ module Slk
       :title, :email, :phone, :pronouns, :image_url,
       :status_text, :status_emoji, :status_expiration,
       :tz, :tz_label, :tz_offset, :start_date,
-      :is_admin, :is_owner, :is_bot, :is_external, :team_id, :home_team_name,
+      :is_admin, :is_owner, :is_bot, :is_external, :deleted,
+      :team_id, :home_team_name,
       :presence, :sections, :custom_fields, :resolved_users
     ) do
       def presence_label

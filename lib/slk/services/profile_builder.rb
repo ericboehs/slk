@@ -9,8 +9,8 @@ module Slk
 
       # rubocop:disable Metrics/MethodLength
       def build(profile_response:, info_response: nil, schema_response: nil, workspace_team_id: nil)
-        profile_data = extract_profile(profile_response)
         info_data = extract_info(info_response)
+        profile_data = extract_profile(profile_response, info_data)
         schema = extract_schema(schema_response)
         team_id = info_data['team_id'] || profile_data['team']
 
@@ -29,10 +29,14 @@ module Slk
       end
       # rubocop:enable Metrics/MethodLength
 
-      def extract_profile(response)
-        return {} unless response.is_a?(Hash)
+      # Slack Connect external users often fail users.profile.get with
+      # user_not_found, but users.info still returns the same fields nested at
+      # user.profile. Fall back to that so we render a useful card.
+      def extract_profile(response, info_data = {})
+        primary = response.is_a?(Hash) ? (response['profile'] || {}) : {}
+        return primary unless primary.empty?
 
-        response['profile'] || {}
+        info_data['profile'] || {}
       end
 
       def extract_info(response)
@@ -92,37 +96,34 @@ module Slk
       end
 
       def flags(info_data, team_id, workspace_team_id)
-        is_external = workspace_team_id && team_id && team_id != workspace_team_id
         {
           is_admin: info_data['is_admin'] || false,
           is_owner: info_data['is_owner'] || false,
           is_bot: info_data['is_bot'] || false,
-          is_external: is_external ? true : false
+          is_external: external?(team_id, workspace_team_id),
+          deleted: info_data['deleted'] == true
         }
+      end
+
+      def external?(team_id, workspace_team_id)
+        !!(workspace_team_id && team_id && team_id != workspace_team_id)
       end
 
       def build_fields(profile_fields, schema_fields_by_id)
         profile_fields.map do |field_id, field_data|
-          schema = schema_fields_by_id[field_id] || {}
-          build_field(field_id, field_data, schema)
+          build_field(field_id, field_data, schema_fields_by_id[field_id] || {})
         end
       end
 
-      # rubocop:disable Metrics/MethodLength
       def build_field(field_id, field_data, schema)
         Models::ProfileField.new(
-          id: field_id,
-          label: field_data['label'] || schema['label'] || field_id,
-          value: field_data['value'].to_s,
-          alt: field_data['alt'].to_s,
-          type: schema['type'] || 'text',
-          ordering: schema['ordering'].to_i,
+          id: field_id, label: field_data['label'] || schema['label'] || field_id,
+          value: field_data['value'].to_s, alt: field_data['alt'].to_s,
+          type: schema['type'] || 'text', ordering: schema['ordering'].to_i,
           section_id: schema['section_id'],
-          hidden: schema['is_hidden'] == true,
-          inverse: schema['is_inverse'] == true
+          hidden: schema['is_hidden'] == true, inverse: schema['is_inverse'] == true
         )
       end
-      # rubocop:enable Metrics/MethodLength
     end
   end
 end

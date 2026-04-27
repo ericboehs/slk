@@ -38,6 +38,14 @@ module Slk
         value
       end
 
+      # Iterate raw meta cache entries: yields [key, entry_hash] for each key
+      # in the workspace's meta cache. Used to scan cached users.info responses
+      # for Slack Connect users that aren't returned by users.list.
+      def each_meta(workspace_name)
+        load_meta_cache(workspace_name)
+        (@meta_cache[workspace_name] || {}).each
+      end
+
       # User cache methods
       def get_user(workspace_name, user_id)
         load_user_cache(workspace_name)
