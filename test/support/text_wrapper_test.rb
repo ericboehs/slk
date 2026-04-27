@@ -64,4 +64,9 @@ class TextWrapperTest < Minitest::Test
     out = TW.wrap('hello   ', 10, 10)
     assert_includes out, 'hello'
   end
+
+  def test_wrap_drops_trailing_whitespace_pushed_past_width
+    out = TW.wrap('hello ', 5, 5)
+    assert_equal 'hello', out
+  end
 end

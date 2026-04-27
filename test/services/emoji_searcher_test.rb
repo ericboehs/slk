@@ -44,6 +44,11 @@ class EmojiSearcherTest < Minitest::Test
     assert(debug.any? { |m| m.include?('cache corrupted') })
   end
 
+  def test_search_handles_corrupted_gemoji_json_without_on_debug
+    File.write(File.join(@cache_dir, 'gemoji.json'), '{not valid')
+    assert_empty searcher.search('fire').fetch('standard', [])
+  end
+
   def test_search_workspace_emoji
     workspace_dir = File.join(@emoji_dir, 'ws1')
     FileUtils.mkdir_p(workspace_dir)
