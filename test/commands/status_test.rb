@@ -221,4 +221,121 @@ class StatusCommandTest < Minitest::Test
     assert_equal 0, result
     refute_includes @err.string, 'Unknown option'
   end
+
+  def test_set_status_default_emoji_when_none_provided
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+    runner = create_runner
+    Slk::Commands::Status.new(['Lunch'], runner: runner).execute
+    call = @mock_client.calls.find { |c| c[:method] == 'users.profile.set' }
+    assert_equal ':speech_balloon:', call[:params][:profile][:status_emoji]
+  end
+
+  def test_get_status_with_explicit_workspace_option
+    @mock_client.stub('users.profile.get', { 'ok' => true,
+                                             'profile' => { 'status_text' => '', 'status_emoji' => '' } })
+    runner = create_runner(workspaces: [mock_workspace('one'), mock_workspace('two')])
+    Slk::Commands::Status.new(['-w', 'one'], runner: runner).execute
+    refute_includes @io.string, 'two'
+  end
+
+  def test_get_status_multi_workspace_shows_workspace_label
+    @mock_client.stub('users.profile.get', { 'ok' => true,
+                                             'profile' => { 'status_text' => 'Hi',
+                                                            'status_emoji' => ':wave:' } })
+    runner = create_runner(workspaces: [mock_workspace('one'), mock_workspace('two')])
+    Slk::Commands::Status.new([], runner: runner).execute
+    assert_includes @io.string, 'one'
+    assert_includes @io.string, 'two'
+  end
+
+  def test_set_status_presence_active_translates_to_auto
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+    @mock_client.stub('users.setPresence', { 'ok' => true })
+    runner = create_runner
+    Slk::Commands::Status.new(['Working', '-p', 'active'], runner: runner).execute
+    presence_call = @mock_client.calls.find { |c| c[:method] == 'users.setPresence' }
+    assert_equal 'auto', presence_call[:params][:presence]
+  end
+
+  def test_show_all_workspaces_hint_with_multiple
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+    runner = create_runner(workspaces: [mock_workspace('a'), mock_workspace('b')])
+    Slk::Commands::Status.new(['Hello'], runner: runner).execute
+    assert_match(/--all/, @io.string)
+  end
+
+  def test_show_all_workspaces_hint_skipped_with_workspace
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+    runner = create_runner(workspaces: [mock_workspace('a'), mock_workspace('b')])
+    Slk::Commands::Status.new(['Hello', '-w', 'a'], runner: runner).execute
+    refute_match(/Tip/, @io.string)
+  end
+
+  def test_clear_with_workspace_filter
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+    runner = create_runner(workspaces: [mock_workspace('a'), mock_workspace('b')])
+    Slk::Commands::Status.new(['clear', '-w', 'a'], runner: runner).execute
+    # Successfully cleared
+    assert_includes @io.string, 'cleared'
+  end
+
+  def test_display_status_with_inline_image_when_supported
+    Dir.mktmpdir do |dir|
+      emoji_dir = File.join(dir, 'test')
+      FileUtils.mkdir_p(emoji_dir)
+      File.binwrite(File.join(emoji_dir, 'computer.png'), "\x89PNG\r\n\n#{'a' * 80}")
+
+      @mock_client.stub('users.profile.get', {
+                          'ok' => true,
+                          'profile' => {
+                            'status_text' => 'Coding', 'status_emoji' => ':computer:',
+                            'status_expiration' => Time.now.to_i + 3600
+                          }
+                        })
+      runner = create_runner
+      runner.config.define_singleton_method(:emoji_dir) { dir }
+      command = Slk::Commands::Status.new([], runner: runner)
+      command.stub(:inline_images_supported?, true) do
+        command.stub(:print_inline_image_with_text, ->(_p, _t, **_o) { true }) do
+          command.execute
+        end
+      end
+    end
+  end
+
+  def test_find_workspace_emoji_returns_nil_for_empty_emoji
+    runner = create_runner
+    command = Slk::Commands::Status.new([], runner: runner)
+    assert_nil command.send(:find_workspace_emoji, 'test', '')
+  end
+
+  def test_find_workspace_emoji_returns_nil_when_dir_missing
+    runner = create_runner
+    command = Slk::Commands::Status.new([], runner: runner)
+    runner.config.define_singleton_method(:emoji_dir) { '/no/such/path' }
+    assert_nil command.send(:find_workspace_emoji, 'test', 'foo')
+  end
+
+  def test_print_status_with_image_text_only
+    runner = create_runner
+    command = Slk::Commands::Status.new([], runner: runner)
+    captured = []
+    command.stub(:print_inline_image_with_text, ->(_p, t, **_o) { captured << t }) do
+      status = Slk::Models::Status.new(text: '', emoji: ':a:', expiration: 0)
+      command.send(:print_status_with_image, '/tmp/img.png', status)
+    end
+    refute_includes captured.first, '('
+  end
+
+  def test_print_status_with_image_text_and_remaining
+    runner = create_runner
+    command = Slk::Commands::Status.new([], runner: runner)
+    captured = []
+    command.stub(:print_inline_image_with_text, ->(_p, t, **_o) { captured << t }) do
+      status = Slk::Models::Status.new(text: 'Working', emoji: ':a:', expiration: Time.now.to_i + 3600)
+      command.send(:print_status_with_image, '/tmp/img.png', status)
+    end
+    assert_match(/Working/, captured.first)
+    assert_match(/\(/, captured.first)
+  end
 end

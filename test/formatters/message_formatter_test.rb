@@ -137,6 +137,200 @@ class MessageFormatterTest < Minitest::Test
     assert_equal '2024-01-15 14:30:45', result
   end
 
+  def test_format_renders_simple_message
+    @cache.set_user('test', 'U123ABC', 'alice')
+    msg = create_message(text: 'Hello')
+    out = @formatter.format(msg, workspace: mock_workspace('test'))
+    assert_includes out, 'alice'
+    assert_includes out, 'Hello'
+  end
+
+  def test_format_simple_renders_inline
+    @cache.set_user('test', 'U123ABC', 'alice')
+    msg = create_message(text: 'Hello')
+    out = @formatter.format_simple(msg, workspace: mock_workspace('test'))
+    assert_includes out, 'alice: Hello'
+  end
+
+  def test_format_no_names_returns_user_id
+    msg = create_message(user: 'U123ABC', text: 'Hi')
+    out = @formatter.format(msg, workspace: mock_workspace('test'), options: { no_names: true })
+    assert_includes out, 'U123ABC'
+  end
+
+  def test_format_with_thread_indicator
+    msg = create_message_with_thread(
+      ts: '1234567890.123456', thread_ts: '1234567890.123456',
+      text: 'parent', reply_count: 3
+    )
+    out = @formatter.format(msg, workspace: mock_workspace('test'))
+    assert_includes out, '3 replies'
+  end
+
+  def test_format_with_single_thread_reply_uses_singular
+    msg = create_message_with_thread(
+      ts: '1234567890.123456', thread_ts: '1234567890.123456',
+      text: 'parent', reply_count: 1
+    )
+    out = @formatter.format(msg, workspace: mock_workspace('test'))
+    assert_includes out, '1 reply'
+    refute_includes out, '1 replies'
+  end
+
+  def test_format_with_files_shows_file_label
+    data = {
+      'ts' => '1234567890.123456', 'user' => 'U123ABC', 'text' => '',
+      'files' => [{ 'id' => 'F1', 'name' => 'doc.pdf' }]
+    }
+    msg = Slk::Models::Message.from_api(data)
+    out = @formatter.format(msg, workspace: mock_workspace('test'))
+    assert_includes out, '[File: doc.pdf]'
+  end
+
+  def test_format_no_files_option_hides_files
+    data = {
+      'ts' => '1234567890.123456', 'user' => 'U123ABC', 'text' => 'hello',
+      'files' => [{ 'id' => 'F1', 'name' => 'doc.pdf' }]
+    }
+    msg = Slk::Models::Message.from_api(data)
+    out = @formatter.format(msg, workspace: mock_workspace('test'), options: { no_files: true })
+    refute_includes out, 'doc.pdf'
+  end
+
+  def test_format_uses_local_file_path_when_provided
+    data = {
+      'ts' => '1234567890.123456', 'user' => 'U123ABC', 'text' => '',
+      'files' => [{ 'id' => 'F1', 'name' => 'doc.pdf' }]
+    }
+    msg = Slk::Models::Message.from_api(data)
+    out = @formatter.format(
+      msg, workspace: mock_workspace('test'),
+           options: { file_paths: { 'F1' => '/local/cache/doc.pdf' } }
+    )
+    assert_includes out, '/local/cache/doc.pdf'
+  end
+
+  def test_format_with_reactions_shows_summary
+    msg = create_message_with_reactions(
+      text: 'Hi', reactions: [{ 'name' => 'thumbsup', 'count' => 2, 'users' => %w[U1 U2] }]
+    )
+    out = @formatter.format(msg, workspace: mock_workspace('test'))
+    assert_includes out, "\u{1F44D}"
+  end
+
+  def test_format_no_reactions_option_hides_reactions
+    msg = create_message_with_reactions(
+      text: 'Hi', reactions: [{ 'name' => 'thumbsup', 'count' => 2, 'users' => %w[U1 U2] }]
+    )
+    out = @formatter.format(msg, workspace: mock_workspace('test'), options: { no_reactions: true })
+    refute_includes out, "\u{1F44D}"
+  end
+
+  def test_format_simple_with_reactions_inline
+    msg = create_message_with_reactions(
+      text: 'Hi', reactions: [{ 'name' => 'thumbsup', 'count' => 1, 'users' => ['U1'] }]
+    )
+    out = @formatter.format_simple(msg, workspace: mock_workspace('test'))
+    assert_includes out, 'Hi'
+  end
+
+  def test_format_uses_embedded_username_when_present
+    data = {
+      'ts' => '1.0', 'user' => 'U_BOT', 'text' => 'hi',
+      'username' => 'incoming-webhook'
+    }
+    msg = Slk::Models::Message.from_api(data)
+    out = @formatter.format(msg, workspace: mock_workspace('test'))
+    assert_includes out, 'incoming-webhook'
+  end
+
+  def test_format_wraps_text_when_width_set
+    long = (['word'] * 30).join(' ')
+    msg = create_message(text: long)
+    out = @formatter.format(msg, workspace: mock_workspace('test'), options: { width: 50 })
+    # Wrapping inserts newlines for word-wrappable text
+    assert_operator out.lines.size, :>, 1
+  end
+
+  def test_format_with_in_thread_skips_thread_indicator
+    msg = create_message_with_thread(
+      ts: '1.0', thread_ts: '1.0', text: 'parent', reply_count: 5
+    )
+    out = @formatter.format(msg, workspace: mock_workspace('test'),
+                                 options: { in_thread: true })
+    refute_includes out, 'replies'
+  end
+
+  def test_format_with_no_threads_option_skips_thread_indicator
+    msg = create_message_with_thread(
+      ts: '1.0', thread_ts: '1.0', text: 'parent', reply_count: 5
+    )
+    out = @formatter.format(msg, workspace: mock_workspace('test'),
+                                 options: { no_threads: true })
+    refute_includes out, 'replies'
+  end
+
+  def test_format_simple_no_reactions
+    msg = create_message_with_reactions(
+      text: 'Hi', reactions: [{ 'name' => 'fire', 'count' => 1, 'users' => ['U1'] }]
+    )
+    out = @formatter.format_simple(msg, workspace: mock_workspace('test'),
+                                        options: { no_reactions: true })
+    refute_includes out, "\u{1F525}"
+  end
+
+  def test_format_with_reaction_timestamps
+    msg = create_message_with_reaction_timestamps(
+      text: 'Hi',
+      reactions: [{ 'name' => 'fire', 'count' => 1, 'users' => ['U1'],
+                    'user_timestamps' => { 'U1' => '1700000000.0' } }]
+    )
+    out = @formatter.format(msg, workspace: mock_workspace('test'),
+                                 options: { reaction_timestamps: true })
+    assert_kind_of String, out
+  end
+
+  def test_format_json_no_workspace
+    message = create_message
+    result = @formatter.format_json(message)
+    refute_includes result.keys, :user_name
+  end
+
+  def test_format_json_with_no_names_omits_reaction_user_names
+    @cache.set_user('test', 'U1', 'alice')
+    msg = create_message_with_reactions(
+      text: 'Hi', reactions: [{ 'name' => 'thumbsup', 'count' => 1, 'users' => ['U1'] }]
+    )
+    result = @formatter.format_json(msg, workspace: mock_workspace('test'),
+                                         options: { no_names: true })
+    user = result[:reactions].first[:users].first
+    refute_includes user.keys, :name
+  end
+
+  def test_format_json_reaction_no_workspace_skips_user_name
+    msg = create_message_with_reactions(
+      text: 'Hi', reactions: [{ 'name' => 'thumbsup', 'count' => 1, 'users' => ['U1'] }]
+    )
+    result = @formatter.format_json(msg)
+    user = result[:reactions].first[:users].first
+    refute_includes user.keys, :name
+  end
+
+  def test_format_json_channel_id_no_workspace_skips_channel_name
+    msg = create_message
+    result = @formatter.format_json(msg, options: { channel_id: 'C1' })
+    assert_equal 'C1', result[:channel_id]
+    refute_includes result.keys, :channel_name
+  end
+
+  def test_format_json_channel_id_no_cached_name
+    msg = create_message
+    result = @formatter.format_json(msg, workspace: mock_workspace('test'),
+                                         options: { channel_id: 'C_unknown' })
+    assert_equal 'C_unknown', result[:channel_id]
+    refute_includes result.keys, :channel_name
+  end
+
   private
 
   # rubocop:disable Naming/MethodParameterName

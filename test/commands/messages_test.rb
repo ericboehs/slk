@@ -348,6 +348,202 @@ class MessagesCommandTest < Minitest::Test
     refute use_inline_images, 'Expected inline images to be disabled in markdown mode'
   end
 
+  def test_help_option
+    command = build_command(['--help'])
+    assert_equal 0, command.execute
+    assert_includes @io.string, 'slk messages'
+    assert_includes @io.string, 'TARGET'
+    assert_includes @io.string, '--limit'
+  end
+
+  def test_unknown_option
+    command = build_command(['#general', '--bogus'])
+    assert_equal 1, command.execute
+    assert_includes @err.string, 'Unknown option'
+  end
+
+  def test_api_error_handling
+    @mock_client.stub('conversations.history', { 'ok' => false, 'error' => 'rate' })
+
+    def @mock_client.post(workspace, method, params = {})
+      @calls << { workspace: workspace.name, method: method, params: params }
+      raise Slk::ApiError, 'rate'
+    end
+
+    command = build_command(['#general'])
+    stub_target_resolver(command)
+    assert_equal 1, command.execute
+    assert_includes @err.string, 'Failed to fetch'
+  end
+
+  def test_threads_option_renders_inline
+    @mock_client.stub('conversations.history', {
+                        'ok' => true,
+                        'messages' => [
+                          { 'ts' => '1.0', 'user' => 'U1', 'text' => 'parent',
+                            'reply_count' => 1, 'thread_ts' => '1.0' }
+                        ]
+                      })
+    @mock_client.stub('conversations.replies', {
+                        'ok' => true,
+                        'messages' => [
+                          { 'ts' => '1.0', 'user' => 'U1', 'text' => 'parent', 'thread_ts' => '1.0' },
+                          { 'ts' => '1.1', 'user' => 'U2', 'text' => 'reply', 'thread_ts' => '1.0' }
+                        ]
+                      })
+
+    command = build_command(['#general', '--threads'])
+    stub_target_resolver(command)
+    assert_equal 0, command.execute
+    assert_includes @io.string, 'parent'
+    assert_includes @io.string, 'reply'
+  end
+
+  def test_thread_paginated_replies
+    page1 = thread_page_response(['1.0', '1.1'], 'cursor1', has_more: true)
+    page2 = thread_page_response(['1.2'], nil, has_more: false)
+    @mock_client.stub('conversations.replies', page1)
+
+    call_count = 0
+    @mock_client.define_singleton_method(:post_form) do |ws, m, params = {}|
+      @calls << { workspace: ws.name, method: m, params: params }
+      call_count += 1
+      call_count == 1 ? page1 : page2
+    end
+
+    command = build_command(['#general'])
+    stub_target_resolver(command, thread_ts: '1.0')
+    assert_equal 0, command.execute
+  end
+
+  def test_invalid_since_format
+    @mock_client.stub('conversations.history', { 'ok' => true, 'messages' => [] })
+    command = build_command(['#general', '--since', 'garbage'])
+    stub_target_resolver(command)
+    assert_equal 1, command.execute
+    assert_includes @err.string, 'Invalid date'
+  end
+
+  def test_no_messages_displayed_when_empty
+    @mock_client.stub('conversations.history', { 'ok' => true, 'messages' => [] })
+    command = build_command(['#general'])
+    stub_target_resolver(command)
+    assert_equal 0, command.execute
+  end
+
+  def test_file_summary_displayed_when_files_present
+    @mock_client.stub('conversations.history', {
+                        'ok' => true,
+                        'messages' => [{ 'ts' => '1.0', 'user' => 'U1', 'text' => 'hi',
+                                         'files' => [{ 'name' => 'foo.txt' }] }]
+                      })
+    command = build_command(['#general'])
+    stub_target_resolver(command)
+    assert_equal 0, command.execute
+    assert_includes @io.string, 'not downloaded'
+  end
+
+  def test_workspace_emoji_path_when_unsupported
+    @mock_client.stub('conversations.history', {
+                        'ok' => true,
+                        'messages' => [{ 'ts' => '1.0', 'user' => 'U1', 'text' => 'hi :smile:' }]
+                      })
+    command = build_command(['#general', '--workspace-emoji'])
+    stub_target_resolver(command)
+    assert_equal 0, command.execute
+  end
+
+  def test_find_workspace_emoji_returns_nil_for_empty_name
+    command = build_command(['#general'])
+    assert_nil command.send(:find_workspace_emoji, 'test', '')
+  end
+
+  def test_find_workspace_emoji_returns_nil_for_missing_dir
+    command = build_command(['#general'])
+    assert_nil command.send(:find_workspace_emoji, 'test', 'nonexistent')
+  end
+
+  def test_reaction_timestamps_enriches
+    @mock_client.stub('conversations.history', {
+                        'ok' => true,
+                        'messages' => [{ 'ts' => '1.0', 'user' => 'U1', 'text' => 'hi' }]
+                      })
+    @mock_client.stub('activity.feed', { 'ok' => true, 'items' => [] })
+    command = build_command(['#general', '--reaction-timestamps'])
+    stub_target_resolver(command)
+    assert_equal 0, command.execute
+  end
+
+  def test_explicit_limit_skips_default
+    @mock_client.stub('conversations.history', { 'ok' => true, 'messages' => [] })
+    command = build_command(['#general', '-n', '7'])
+    stub_target_resolver(command)
+    assert_equal 0, command.execute
+    options = command.instance_variable_get(:@options)
+    assert_equal 7, options[:limit]
+  end
+
+  def test_fetch_attachments_option
+    @mock_client.stub('conversations.history', {
+                        'ok' => true,
+                        'messages' => [{ 'ts' => '1.0', 'user' => 'U1', 'text' => 'hi' }]
+                      })
+    fake_dl = Object.new
+    fake_dl.define_singleton_method(:download_message_files) { |_, _| {} }
+    Slk::Services::FileDownloader.stub(:new, fake_dl) do
+      command = build_command(['#general', '--fetch-attachments'])
+      stub_target_resolver(command)
+      assert_equal 0, command.execute
+    end
+  end
+
+  def test_print_file_summary_with_multiple_files
+    @mock_client.stub('conversations.history', {
+                        'ok' => true,
+                        'messages' => [{ 'ts' => '1.0', 'user' => 'U1', 'text' => 'hi',
+                                         'files' => [{ 'name' => 'a.txt' }, { 'name' => 'b.txt' }] }]
+                      })
+    command = build_command(['#general'])
+    stub_target_resolver(command)
+    assert_equal 0, command.execute
+    assert_includes @io.string, '2 files'
+  end
+
+  def test_no_files_no_summary
+    @mock_client.stub('conversations.history', {
+                        'ok' => true,
+                        'messages' => [{ 'ts' => '1.0', 'user' => 'U1', 'text' => 'hello' }]
+                      })
+    command = build_command(['#general'])
+    stub_target_resolver(command)
+    assert_equal 0, command.execute
+    refute_includes @io.string, 'not downloaded'
+  end
+
+  def test_print_file_summary_with_one_file
+    @mock_client.stub('conversations.history', {
+                        'ok' => true,
+                        'messages' => [{ 'ts' => '1.0', 'user' => 'U1', 'text' => 'hi',
+                                         'files' => [{ 'name' => 'a.txt' }] }]
+                      })
+    command = build_command(['#general'])
+    stub_target_resolver(command)
+    assert_equal 0, command.execute
+    assert_includes @io.string, '1 file'
+  end
+
+  def thread_page_response(timestamps, next_cursor, has_more:)
+    response = {
+      'ok' => true,
+      'messages' => timestamps.map do |ts|
+        { 'ts' => ts, 'user' => 'U1', 'text' => "msg-#{ts}", 'thread_ts' => '1.0' }
+      end,
+      'has_more' => has_more
+    }
+    response['response_metadata'] = { 'next_cursor' => next_cursor } if next_cursor
+    response
+  end
+
   private
 
   def stub_target_resolver(command, thread_ts: nil, msg_ts: nil)

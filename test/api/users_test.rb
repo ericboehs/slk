@@ -140,6 +140,89 @@ class UsersApiTest < Minitest::Test
     refute_includes muted, 'C456'
   end
 
+  def test_profile_for_passes_user_id_and_include_labels
+    @mock_client.stub('users.profile.get', { 'ok' => true, 'profile' => { 'real_name' => 'Alice' } })
+
+    response = @api.profile_for('U123ABC')
+    assert_equal 'Alice', response['profile']['real_name']
+
+    call = @mock_client.calls.last
+    assert_equal 'users.profile.get', call[:method]
+    assert_equal 'U123ABC', call[:params][:user]
+    assert_equal true, call[:params][:include_labels]
+  end
+
+  def test_profile_for_omits_include_labels_when_disabled
+    @mock_client.stub('users.profile.get', { 'ok' => true, 'profile' => {} })
+    @api.profile_for('U123ABC', include_labels: false)
+
+    call = @mock_client.calls.last
+    refute call[:params].key?(:include_labels)
+  end
+
+  def test_muted_channels_handles_invalid_json_silently
+    @mock_client.stub('users.prefs.get', {
+                        'ok' => true,
+                        'prefs' => { 'all_notifications_prefs' => '{not json' }
+                      })
+    debug = []
+    api = Slk::Api::Users.new(@mock_client, @workspace, on_debug: ->(m) { debug << m })
+    assert_equal [], api.muted_channels
+    assert_match(/Failed to parse/, debug.first)
+  end
+
+  def test_muted_channels_invalid_json_without_on_debug
+    @mock_client.stub('users.prefs.get', {
+                        'ok' => true,
+                        'prefs' => { 'all_notifications_prefs' => '{not json' }
+                      })
+    api = Slk::Api::Users.new(@mock_client, @workspace) # no on_debug
+    assert_equal [], api.muted_channels
+  end
+
+  def test_muted_channels_legacy_empty_string_falls_through
+    @mock_client.stub('users.prefs.get', { 'ok' => true, 'prefs' => { 'muted_channels' => '' } })
+    assert_equal [], @api.muted_channels
+  end
+
+  def test_muted_channels_with_no_channels_in_new_format
+    @mock_client.stub('users.prefs.get', {
+                        'ok' => true,
+                        'prefs' => { 'all_notifications_prefs' => JSON.generate({}) }
+                      })
+    assert_equal [], @api.muted_channels
+  end
+
+  def test_get_presence_for_passes_user_id
+    @mock_client.stub('users.getPresence', { 'ok' => true, 'presence' => 'active' })
+    @api.get_presence_for('U999')
+    assert_equal 'U999', @mock_client.calls.last[:params][:user]
+  end
+
+  def test_info_passes_user_id
+    @mock_client.stub('users.info', { 'ok' => true, 'user' => { 'id' => 'U1' } })
+    @api.info('U1')
+    assert_equal 'U1', @mock_client.calls.last[:params][:user]
+  end
+
+  def test_list_with_cursor_includes_pagination_param
+    @mock_client.stub('users.list', { 'ok' => true, 'members' => [] })
+    @api.list(cursor: 'next_cursor')
+    assert_equal 'next_cursor', @mock_client.calls.last[:params][:cursor]
+  end
+
+  def test_conversations_with_cursor
+    @mock_client.stub('users.conversations', { 'ok' => true, 'channels' => [] })
+    @api.conversations(cursor: 'next')
+    assert_equal 'next', @mock_client.calls.last[:params][:cursor]
+  end
+
+  def test_conversations_without_cursor
+    @mock_client.stub('users.conversations', { 'ok' => true, 'channels' => [] })
+    @api.conversations
+    refute @mock_client.calls.last[:params].key?(:cursor)
+  end
+
   def test_muted_channels_returns_empty_when_no_data
     @mock_client.stub('users.prefs.get', {
                         'ok' => true,

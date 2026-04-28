@@ -89,4 +89,17 @@ class DndApiTest < Minitest::Test
 
     assert_nil @api.snooze_remaining
   end
+
+  def test_snooze_remaining_returns_nil_when_endtime_missing
+    @mock_client.stub('dnd.info', { 'ok' => true, 'snooze_enabled' => true })
+    assert_nil @api.snooze_remaining
+  end
+
+  def test_snooze_remaining_returns_nil_when_already_expired
+    @mock_client.stub('dnd.info', {
+                        'ok' => true, 'snooze_enabled' => true,
+                        'snooze_endtime' => Time.now.to_i - 100
+                      })
+    assert_nil @api.snooze_remaining
+  end
 end

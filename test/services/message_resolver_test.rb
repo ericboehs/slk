@@ -18,7 +18,10 @@ class MessageResolverTest < Minitest::Test
 
     def history(channel:, limit:, oldest:, latest:)
       @calls << { channel: channel, limit: limit, oldest: oldest, latest: latest }
-      @responses.shift || { 'ok' => false }
+      response = @responses.shift || { 'ok' => false }
+      raise Slk::ApiError, 'boom' if response == :raise
+
+      response
     end
   end
 
@@ -86,6 +89,12 @@ class MessageResolverTest < Minitest::Test
     result = @resolver.fetch_by_ts('C123', '1234567890.123456')
 
     assert_nil result
+  end
+
+  def test_fetch_by_ts_swallows_api_error_without_on_debug
+    @api.expect_history(:raise)
+    resolver = Slk::Services::MessageResolver.new(conversations_api: @api)
+    assert_nil resolver.fetch_by_ts('C123', '1234567890.123456')
   end
 
   def test_fetch_by_ts_uses_time_window_around_timestamp

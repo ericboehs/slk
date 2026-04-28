@@ -11,7 +11,35 @@ require 'io/console'
 # Slack CLI - A command-line interface for Slack
 module Slk
   class Error < StandardError; end
-  class ApiError < Error; end
+
+  # Errors from any Slack-API-shaped failure: HTTP errors, network errors,
+  # logical Slack errors (user_not_found, missing_scope, etc.), JSON parse
+  # failures. The optional `code` symbol lets callers match specific cases
+  # (e.g. `e.code == :user_not_found`) without parsing message strings.
+  #
+  # Codes used:
+  #   :network_error, :http_error, :unauthorized, :invalid_json,
+  #   :ratelimited, plus any literal Slack `error` value (`:user_not_found`,
+  #   `:missing_scope`, `:account_inactive`, etc.).
+  class ApiError < Error
+    attr_reader :code
+
+    def initialize(message, code: nil)
+      super(message)
+      @code = code
+    end
+  end
+
+  # Slack rate-limit error. Carries Retry-After in seconds when present.
+  class RateLimitError < ApiError
+    attr_reader :retry_after
+
+    def initialize(message, retry_after: nil)
+      super(message, code: :ratelimited)
+      @retry_after = retry_after
+    end
+  end
+
   class ConfigError < Error; end
   class EncryptionError < Error; end
   class TokenStoreError < Error; end
@@ -34,6 +62,8 @@ module Slk
     autoload :Preset, 'slk/models/preset'
     autoload :SearchResult, 'slk/models/search_result'
     autoload :SavedItem, 'slk/models/saved_item'
+    autoload :Profile, 'slk/models/profile'
+    autoload :ProfileField, 'slk/models/profile_field'
   end
 
   # Application services for configuration, caching, and API communication
@@ -56,7 +86,13 @@ module Slk
     autoload :TargetResolver, 'slk/services/target_resolver'
     autoload :SetupWizard, 'slk/services/setup_wizard'
     autoload :UserLookup, 'slk/services/user_lookup'
+    autoload :UserMatcher, 'slk/services/user_matcher'
+    autoload :UserPicker, 'slk/services/user_picker'
+    autoload :WhoTargetResolver, 'slk/services/who_target_resolver'
     autoload :MessageResolver, 'slk/services/message_resolver'
+    autoload :ProfileBuilder, 'slk/services/profile_builder'
+    autoload :ProfileResolver, 'slk/services/profile_resolver'
+    autoload :MetaCache, 'slk/services/meta_cache'
   end
 
   # Output formatters for messages, durations, and emoji
@@ -75,6 +111,9 @@ module Slk
     autoload :SearchFormatter, 'slk/formatters/search_formatter'
     autoload :SavedItemFormatter, 'slk/formatters/saved_item_formatter'
     autoload :TextProcessor, 'slk/formatters/text_processor'
+    autoload :ProfileFormatter, 'slk/formatters/profile_formatter'
+    autoload :ProfileFieldRenderer, 'slk/formatters/profile_field_renderer'
+    autoload :ProfileRows, 'slk/formatters/profile_rows'
   end
 
   # CLI commands implementing user-facing functionality
@@ -96,6 +135,9 @@ module Slk
     autoload :Config, 'slk/commands/config'
     autoload :Help, 'slk/commands/help'
     autoload :Later, 'slk/commands/later'
+    autoload :Debug, 'slk/commands/debug'
+    autoload :Who, 'slk/commands/who'
+    autoload :Org, 'slk/commands/org'
   end
 
   # Thin wrappers around Slack API endpoints
@@ -111,6 +153,7 @@ module Slk
     autoload :Activity, 'slk/api/activity'
     autoload :Search, 'slk/api/search'
     autoload :Saved, 'slk/api/saved'
+    autoload :Team, 'slk/api/team'
   end
 
   # Utility classes for paths, parsing, and helpers

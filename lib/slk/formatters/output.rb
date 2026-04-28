@@ -18,6 +18,8 @@ module Slk
 
       attr_reader :verbose, :quiet
 
+      def color? = @color
+
       def initialize(io: $stdout, err: $stderr, color: nil, verbose: false, quiet: false)
         @io = io
         @err = err

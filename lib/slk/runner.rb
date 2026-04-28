@@ -88,6 +88,23 @@ module Slk
       Api::Saved.new(@api_client, workspace(workspace_name))
     end
 
+    def team_api(workspace_name = nil)
+      Api::Team.new(@api_client, workspace(workspace_name))
+    end
+
+    def profile_resolver(workspace_name = nil, refresh: false)
+      ws = workspace(workspace_name)
+      resolver = Services::ProfileResolver.new(
+        users_api: users_api(workspace_name),
+        team_api: team_api(workspace_name),
+        cache_store: @cache_store,
+        workspace_name: ws.name,
+        on_debug: ->(msg) { @output.debug(msg) }
+      )
+      resolver.refresh = refresh
+      resolver
+    end
+
     def message_resolver(workspace_name = nil)
       Services::MessageResolver.new(
         conversations_api: conversations_api(workspace_name),

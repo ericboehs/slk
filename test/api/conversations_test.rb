@@ -151,4 +151,28 @@ class ConversationsApiTest < Minitest::Test
     assert_equal 'conversations.members', call[:method]
     assert_equal 'C123', call[:params][:channel]
   end
+
+  def test_history_with_latest
+    @mock_client.stub('conversations.history', { 'ok' => true, 'messages' => [] })
+    @api.history(channel: 'C1', latest: '1234.0')
+    assert_equal '1234.0', @mock_client.calls.last[:params][:latest]
+  end
+
+  def test_history_with_cursor
+    @mock_client.stub('conversations.history', { 'ok' => true, 'messages' => [] })
+    @api.history(channel: 'C1', cursor: 'next123')
+    assert_equal 'next123', @mock_client.calls.last[:params][:cursor]
+  end
+
+  def test_replies_with_cursor
+    @mock_client.stub('conversations.replies', { 'ok' => true, 'messages' => [] })
+    @api.replies(channel: 'C1', timestamp: '1.0', cursor: 'next123')
+    assert_equal 'next123', @mock_client.calls.last[:params][:cursor]
+  end
+
+  def test_members_with_cursor
+    @mock_client.stub('conversations.members', { 'ok' => true, 'members' => [] })
+    @api.members(channel: 'C1', cursor: 'next')
+    assert_equal 'next', @mock_client.calls.last[:params][:cursor]
+  end
 end

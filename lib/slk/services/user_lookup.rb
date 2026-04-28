@@ -52,6 +52,14 @@ module Slk
         fetch_id_by_name(name)
       end
 
+      # @return [Array<Hash>] raw users.list-shaped hashes for all matches
+      def find_all_by_name(name)
+        UserMatcher.new(
+          api_client: @api, workspace: @workspace,
+          cache_store: @cache, on_debug: @on_debug
+        ).find_all(name)
+      end
+
       private
 
       def fetch_and_cache_name(user_id)
@@ -88,24 +96,12 @@ module Slk
       end
 
       def fetch_id_by_name(name)
-        return nil unless @api
-
-        users_api = Api::Users.new(@api, @workspace, on_debug: @on_debug)
-        users = users_api.list['members'] || []
-        user = find_user_by_name(users, name)
+        user = find_all_by_name(name).first
         cache_user_from_api(user) if user
         user&.dig('id')
       rescue ApiError => e
         @on_debug&.call("User list lookup failed: #{e.message}")
         nil
-      end
-
-      def find_user_by_name(users, name)
-        users.find do |u|
-          u['name'] == name ||
-            u.dig('profile', 'display_name') == name ||
-            u.dig('profile', 'real_name') == name
-        end
       end
 
       def cache_user_from_api(user_data)

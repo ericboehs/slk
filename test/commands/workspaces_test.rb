@@ -138,6 +138,94 @@ class WorkspacesCommandTest < Minitest::Test
     assert_includes @io.string, 'remove'
   end
 
+  def test_add_workspace_first_sets_primary
+    fake_input = StringIO.new("alpha\nxoxb-token\n")
+    $stdin = fake_input
+    runner = create_runner
+    command = Slk::Commands::Workspaces.new(['add'], runner: runner)
+    assert_equal 0, command.execute
+    assert_includes @io.string, 'set as primary'
+    assert_equal 'alpha', @config.data['primary_workspace']
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_add_workspace_second_does_not_set_primary
+    @token_store.workspaces = { 'first' => mock_workspace('first') }
+    @config.data['primary_workspace'] = 'first'
+    fake_input = StringIO.new("second\nxoxb-token\n")
+    $stdin = fake_input
+    runner = create_runner
+    command = Slk::Commands::Workspaces.new(['add'], runner: runner)
+    assert_equal 0, command.execute
+    refute_includes @io.string, 'set as primary'
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_add_workspace_xoxc_prompts_cookie
+    fake_input = StringIO.new("oauth\nxoxc-token\nd=cookie\n")
+    $stdin = fake_input
+    runner = create_runner
+    command = Slk::Commands::Workspaces.new(['add'], runner: runner)
+    assert_equal 0, command.execute
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_add_workspace_empty_name
+    fake_input = StringIO.new("\n")
+    $stdin = fake_input
+    runner = create_runner
+    command = Slk::Commands::Workspaces.new(['add'], runner: runner)
+    command.execute
+    assert_includes @err.string, 'Name is required'
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_add_workspace_existing_name
+    @token_store.workspaces = { 'dup' => mock_workspace('dup') }
+    fake_input = StringIO.new("dup\n")
+    $stdin = fake_input
+    runner = create_runner
+    command = Slk::Commands::Workspaces.new(['add'], runner: runner)
+    command.execute
+    assert_includes @err.string, 'already exists'
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_add_workspace_empty_token
+    fake_input = StringIO.new("alpha\n\n")
+    $stdin = fake_input
+    runner = create_runner
+    command = Slk::Commands::Workspaces.new(['add'], runner: runner)
+    command.execute
+    assert_includes @err.string, 'Token is required'
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_remove_primary_with_remaining
+    @token_store.workspaces = { 'a' => mock_workspace('a'), 'b' => mock_workspace('b') }
+    @config.data['primary_workspace'] = 'a'
+    runner = create_runner
+    command = Slk::Commands::Workspaces.new(%w[remove a], runner: runner)
+    assert_equal 0, command.execute
+    assert_equal 'b', @config.data['primary_workspace']
+    assert_includes @io.string, 'Primary changed'
+  end
+
+  def test_remove_primary_last_workspace
+    @token_store.workspaces = { 'a' => mock_workspace('a') }
+    @config.data['primary_workspace'] = 'a'
+    runner = create_runner
+    command = Slk::Commands::Workspaces.new(%w[remove a], runner: runner)
+    assert_equal 0, command.execute
+    assert_nil @config.data['primary_workspace']
+  end
+
   class MockTokenStore
     attr_accessor :workspaces
 

@@ -20,7 +20,10 @@ module Slk
       'cache' => Commands::Cache,
       'emoji' => Commands::Emoji,
       'config' => Commands::Config,
-      'help' => Commands::Help
+      'help' => Commands::Help,
+      'debug' => Commands::Debug,
+      'who' => Commands::Who,
+      'org' => Commands::Org
     }.freeze
 
     def initialize(argv, output: nil)
@@ -139,6 +142,11 @@ module Slk
     def setup_verbose_logging(runner, output)
       runner.api_client.on_request = lambda { |method, count|
         output.debug("[API ##{count}] #{method}")
+      }
+      runner.api_client.on_response = lambda { |method, code, headers|
+        next unless code == 'rate-wait'
+
+        output.warn("Rate limited on #{method}; sleeping #{headers['sleep_seconds']}s and retrying...")
       }
     end
 

@@ -195,6 +195,44 @@ class SavedItemFormatterTest < Minitest::Test
     assert_includes @io.string, '[No text]'
   end
 
+  def test_truncated_message_with_nil_width
+    item = build_item
+    message = { 'text' => 'Hello world', 'user' => 'U123' }
+    @formatter.display_item(item, @workspace, message: message, truncate: true)
+    assert_includes @io.string, 'Hello world'
+  end
+
+  def test_truncated_message_with_width
+    item = build_item
+    message = { 'text' => ('hello' * 50), 'user' => 'U123' }
+    @formatter.display_item(item, @workspace, message: message, width: 30, truncate: true)
+    assert_includes @io.string, '...'
+  end
+
+  def test_truncated_message_short_text_not_truncated
+    item = build_item
+    message = { 'text' => 'short', 'user' => 'U123' }
+    @formatter.display_item(item, @workspace, message: message, width: 100, truncate: true)
+    refute_includes @io.string, '...'
+  end
+
+  def test_display_item_without_due_or_status_skips_header
+    item = build_item(state: '', date_due: nil)
+    @formatter.display_item(item, @workspace)
+    # Empty state still produces "[]" badge - branch tested
+    assert_includes @io.string, '[]'
+  end
+
+  def test_wrap_text_returns_text_when_no_width
+    wrapped = @formatter.send(:wrap_text, 'hello world', 5, nil)
+    assert_equal 'hello world', wrapped
+  end
+
+  def test_wrap_text_returns_empty_when_text_empty
+    wrapped = @formatter.send(:wrap_text, '', 5, 80)
+    assert_equal '', wrapped
+  end
+
   private
 
   def build_item(overrides = {})

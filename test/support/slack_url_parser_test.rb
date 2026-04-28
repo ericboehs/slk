@@ -84,4 +84,12 @@ class SlackUrlParserTest < Minitest::Test
     assert_equal '1766408491.040009', result.msg_ts
     assert result.message?
   end
+
+  def test_format_ts_returns_nil_for_nil_input
+    assert_nil @parser.send(:format_ts, nil)
+  end
+
+  def test_format_ts_returns_short_input_unchanged
+    assert_equal '12345', @parser.send(:format_ts, '12345')
+  end
 end

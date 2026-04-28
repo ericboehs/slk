@@ -145,6 +145,35 @@ class TokenLoaderTest < Minitest::Test
     end
   end
 
+  def test_load_auto_calls_decrypt_with_config_ssh_key
+    Dir.mktmpdir do |dir|
+      paths = mock_paths(dir)
+      File.write(File.join(dir, 'tokens.age'), 'enc')
+      fake_enc = Object.new
+      fake_enc.define_singleton_method(:decrypt) { |_f, _k| '{"a":"b"}' }
+
+      loader = Slk::Services::TokenLoader.new(encryption: fake_enc, paths: paths)
+      config = mock_config(ssh_key: '/some/key')
+
+      assert_equal({ 'a' => 'b' }, loader.load_auto(config))
+    end
+  end
+
+  def test_load_raises_when_decrypt_returns_nil
+    Dir.mktmpdir do |dir|
+      paths = mock_paths(dir)
+      File.write(File.join(dir, 'tokens.age'), 'enc')
+      fake_enc = Object.new
+      fake_enc.define_singleton_method(:decrypt) { |_f, _k| nil }
+
+      loader = Slk::Services::TokenLoader.new(encryption: fake_enc, paths: paths)
+      error = assert_raises(Slk::TokenStoreError) do
+        loader.load('/some/key')
+      end
+      assert_match(/disappeared unexpectedly/, error.message)
+    end
+  end
+
   # Integration test with real encryption (when age available)
   def test_load_decrypts_encrypted_file
     skip unless @encryption.available?
@@ -208,8 +237,8 @@ class TokenLoaderTest < Minitest::Test
 
   def can_create_test_ssh_key?
     require 'open3'
-    _, _, status = Open3.capture3('ssh-keygen', '-V')
-    status.success?
+    Open3.capture3('ssh-keygen', '-?')
+    true
   rescue Errno::ENOENT
     false
   end

@@ -306,4 +306,268 @@ class CacheStoreTest < Minitest::Test
       assert_equal ['user', false, nil], accesses.first
     end
   end
+
+  def test_meta_cache_set_and_get
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_meta('w1', 'self', 'U1')
+      assert_equal 'U1', store.get_meta('w1', 'self')
+    end
+  end
+
+  def test_meta_cache_ttl_expiration
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_meta('w1', 'k', 'v')
+      assert_nil store.get_meta('w1', 'k', ttl: -1)
+    end
+  end
+
+  def test_meta_cache_returns_nil_for_unknown_key
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      assert_nil store.get_meta('w1', 'missing')
+    end
+  end
+
+  def test_each_meta_returns_enumerator
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_meta('w1', 'a', 1)
+      store.set_meta('w1', 'b', 2)
+      keys = store.each_meta('w1').to_a.map(&:first)
+      assert_includes keys, 'a'
+      assert_includes keys, 'b'
+    end
+  end
+
+  def test_corrupted_meta_cache_triggers_warning
+    with_temp_config do |dir|
+      cache_dir = "#{dir}/cache/slk"
+      FileUtils.mkdir_p(cache_dir)
+      File.write("#{cache_dir}/meta-w1.json", 'not json')
+
+      warnings = []
+      store = Slk::Services::CacheStore.new
+      store.on_warning = ->(m) { warnings << m }
+      store.get_meta('w1', 'k')
+      assert(warnings.any? { |m| m.include?('Meta cache corrupted') })
+    end
+  end
+
+  def test_subteam_cache_set_and_get
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_subteam('w1', 'S1', 'team-handle')
+      assert_equal 'team-handle', store.get_subteam('w1', 'S1')
+    end
+  end
+
+  def test_clear_user_cache_globally
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_user('w1', 'U1', 'a', persist: true)
+      store.set_user('w2', 'U2', 'b', persist: true)
+      store.clear_user_cache
+      assert_nil store.get_user('w1', 'U1')
+      assert_nil store.get_user('w2', 'U2')
+    end
+  end
+
+  def test_clear_channel_cache_globally
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_channel('w1', 'general', 'C1')
+      store.set_channel('w2', 'random', 'C2')
+      store.clear_channel_cache
+      assert_nil store.get_channel_id('w1', 'general')
+    end
+  end
+
+  def test_user_and_channel_cache_file_exists
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      refute store.user_cache_file_exists?('w1')
+      refute store.channel_cache_file_exists?('w1')
+      store.set_user('w1', 'U1', 'a', persist: true)
+      store.set_channel('w1', 'general', 'C1')
+      assert store.user_cache_file_exists?('w1')
+      assert store.channel_cache_file_exists?('w1')
+    end
+  end
+
+  def test_safely_delete_handles_permission_errors
+    with_temp_config do |dir|
+      cache_dir = "#{dir}/cache/slk"
+      FileUtils.mkdir_p(cache_dir)
+      file = "#{cache_dir}/users-w1.json"
+      File.write(file, 'bad json')
+
+      warnings = []
+      store = Slk::Services::CacheStore.new
+      store.on_warning = ->(m) { warnings << m }
+
+      FileUtils.stub(:rm, ->(_f) { raise Errno::EACCES, file }) do
+        store.get_user('w1', 'U1')
+      end
+
+      assert(warnings.any? { |m| m.include?('Could not remove') })
+    end
+  end
+
+  def test_populate_user_cache_returns_size
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      users = [
+        Slk::Models::User.new(id: 'U1', name: 'a', real_name: 'Alice', display_name: 'al')
+      ]
+      assert_equal 1, store.populate_user_cache('w1', users)
+    end
+  end
+
+  def test_save_user_cache_skips_when_empty
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      # Triggering save with no entries should not create file
+      store.save_user_cache('w1')
+      refute store.user_cache_file_exists?('w1')
+    end
+  end
+
+  def test_save_channel_cache_skips_when_empty
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.send(:save_channel_cache, 'w1')
+      refute store.channel_cache_file_exists?('w1')
+    end
+  end
+
+  def test_save_subteam_cache_skips_when_empty
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.send(:save_subteam_cache, 'w1')
+    end
+  end
+
+  def test_save_meta_cache_skips_when_empty
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.send(:save_meta_cache, 'w1')
+    end
+  end
+
+  def test_user_cache_size_zero_for_new_workspace
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      assert_equal 0, store.user_cache_size('new-ws')
+    end
+  end
+
+  def test_channel_cache_size_zero_for_new_workspace
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      assert_equal 0, store.channel_cache_size('new-ws')
+    end
+  end
+
+  def test_log_cache_access_skipped_without_callback
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      # No callback set, should not error
+      store.set_user('w1', 'U1', 'a')
+      assert_equal 'a', store.get_user('w1', 'U1')
+    end
+  end
+
+  def test_get_meta_returns_nil_for_unknown_key
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      assert_nil store.get_meta('w1', 'unknown')
+    end
+  end
+
+  def test_set_meta_with_persist_false_does_not_write_file
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_meta('w1', 'k1', 'value', persist: false)
+      assert_equal 'value', store.get_meta('w1', 'k1')
+      paths = Slk::Support::XdgPaths.new
+      refute File.exist?(paths.cache_file('meta-w1.json'))
+    end
+  end
+
+  def test_get_meta_returns_nil_when_ttl_expired
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_meta('w1', 'k1', 'val', persist: false)
+      # Force fetched_at to be old
+      cache = store.instance_variable_get(:@meta_cache)
+      cache['w1']['k1']['fetched_at'] = Time.now.to_i - 1000
+      assert_nil store.get_meta('w1', 'k1', ttl: 100)
+    end
+  end
+
+  def test_get_meta_returns_value_when_ttl_within
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_meta('w1', 'k1', 'val', persist: false)
+      assert_equal 'val', store.get_meta('w1', 'k1', ttl: 100_000)
+    end
+  end
+
+  def test_load_corrupt_user_cache_warns_and_rebuilds
+    with_temp_config do
+      paths = Slk::Support::XdgPaths.new
+      paths.ensure_cache_dir
+      File.write(paths.cache_file('users-bad.json'), 'not valid json{{')
+      warnings = []
+      store = Slk::Services::CacheStore.new
+      store.on_warning = ->(msg) { warnings << msg }
+      assert_nil store.get_user('bad', 'U1')
+      assert(warnings.any? { |w| w.include?('corrupted') })
+    end
+  end
+
+  def test_safely_delete_file_warns_on_eacces
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      warnings = []
+      store.on_warning = ->(msg) { warnings << msg }
+      FileUtils.stub(:rm, ->(_) { raise Errno::EACCES, 'denied' }) do
+        store.send(:safely_delete_file, '/some/file')
+      end
+      assert(warnings.any? { |w| w.include?('Could not remove') })
+    end
+  end
+
+  def test_safely_delete_file_no_warning_callback
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      FileUtils.stub(:rm, ->(_) { raise Errno::EACCES, 'denied' }) do
+        # Should not raise, even without on_warning callback
+        store.send(:safely_delete_file, '/some/file')
+      end
+    end
+  end
+
+  def test_load_corrupt_cache_without_warning_callback
+    with_temp_config do
+      paths = Slk::Support::XdgPaths.new
+      paths.ensure_cache_dir
+      File.write(paths.cache_file('users-bad2.json'), 'not valid{{{')
+      store = Slk::Services::CacheStore.new # no on_warning
+      assert_nil store.get_user('bad2', 'U1')
+    end
+  end
+
+  def test_log_cache_access_emits_when_callback_set
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      events = []
+      store.on_cache_access = ->(*args) { events << args }
+      store.set_user('w1', 'U1', 'a')
+      store.get_user('w1', 'U1')
+      assert_equal 'user', events.first[0]
+    end
+  end
 end

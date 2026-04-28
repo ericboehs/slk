@@ -255,6 +255,66 @@ class UserLookupTest < Minitest::Test
     end
   end
 
+  def test_resolve_name_or_bot_returns_cached_when_available
+    with_temp_config do
+      cache = Slk::Services::CacheStore.new
+      cache.set_user('test', 'B999', 'CachedBot')
+      lookup = build_lookup(cache: cache)
+      assert_equal 'CachedBot', lookup.resolve_name_or_bot('B999')
+    end
+  end
+
+  def test_resolve_name_or_bot_returns_nil_for_empty
+    with_temp_config do
+      lookup = build_lookup
+      assert_nil lookup.resolve_name_or_bot('')
+      assert_nil lookup.resolve_name_or_bot(nil)
+    end
+  end
+
+  def test_resolve_name_or_bot_bot_api_error_logs_debug
+    with_temp_config do
+      api_client = ErrorRaisingApiClient.new
+      debug = []
+      lookup = build_lookup(api_client: api_client, on_debug: ->(m) { debug << m })
+      assert_nil lookup.resolve_name_or_bot('B999')
+      assert(debug.any? { |m| m.include?('Bot lookup failed') })
+    end
+  end
+
+  def test_resolve_name_or_bot_no_api_returns_nil
+    with_temp_config do
+      lookup = build_lookup(api_client: nil)
+      assert_nil lookup.resolve_name_or_bot('B999')
+    end
+  end
+
+  def test_find_id_by_name_api_error_logs_debug
+    with_temp_config do
+      api_client = ErrorRaisingApiClient.new
+      debug = []
+      lookup = build_lookup(api_client: api_client, on_debug: ->(m) { debug << m })
+      assert_nil lookup.find_id_by_name('Foo')
+      assert(debug.any? { |m| m.include?('User list lookup failed') })
+    end
+  end
+
+  def test_resolve_name_or_bot_bot_api_error_without_on_debug
+    with_temp_config do
+      api_client = ErrorRaisingApiClient.new
+      lookup = build_lookup(api_client: api_client) # no on_debug
+      assert_nil lookup.resolve_name_or_bot('B999')
+    end
+  end
+
+  def test_find_id_by_name_api_error_without_on_debug
+    with_temp_config do
+      api_client = ErrorRaisingApiClient.new
+      lookup = build_lookup(api_client: api_client) # no on_debug
+      assert_nil lookup.find_id_by_name('Foo')
+    end
+  end
+
   private
 
   def build_lookup(cache: nil, api_client: nil, on_debug: nil)
@@ -269,6 +329,14 @@ class UserLookupTest < Minitest::Test
   # Mock API client that raises errors
   class ErrorRaisingApiClient
     def post_form(_workspace, _method, _params = {})
+      raise Slk::ApiError, 'API error'
+    end
+
+    def post(_workspace, _method, _params = {})
+      raise Slk::ApiError, 'API error'
+    end
+
+    def get(_workspace, _method, _params = {})
       raise Slk::ApiError, 'API error'
     end
   end

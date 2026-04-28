@@ -49,6 +49,10 @@ module Slk
         }
       end
 
+      def get_presence_for(user_id)
+        @api.post_form(@workspace, 'users.getPresence', { user: user_id })
+      end
+
       def set_presence(presence) # rubocop:disable Naming/AccessorMethodName
         @api.post(@workspace, 'users.setPresence', { presence: presence })
       end
@@ -61,6 +65,12 @@ module Slk
 
       def info(user_id)
         @api.post_form(@workspace, 'users.info', { user: user_id })
+      end
+
+      def profile_for(user_id, include_labels: true)
+        params = { user: user_id }
+        params[:include_labels] = true if include_labels
+        @api.post_form(@workspace, 'users.profile.get', params)
       end
 
       def get_prefs # rubocop:disable Naming/AccessorMethodName

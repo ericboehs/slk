@@ -217,4 +217,69 @@ class DndCommandTest < Minitest::Test
     assert_equal 0, result
     assert_includes @io.string, 'DND:'
   end
+
+  def test_get_status_with_scheduled_dnd
+    @mock_client.stub('dnd.info', {
+                        'ok' => true, 'snooze_enabled' => false,
+                        'dnd_enabled' => true,
+                        'next_dnd_start_ts' => 1_700_000_000,
+                        'next_dnd_end_ts' => 1_700_028_800
+                      })
+    runner = create_runner
+    command = Slk::Commands::Dnd.new(['status'], runner: runner)
+    result = command.execute
+    assert_equal 0, result
+    assert_includes @io.string, 'Schedule'
+  end
+
+  def test_get_status_skips_scheduled_when_no_times
+    @mock_client.stub('dnd.info', { 'ok' => true, 'snooze_enabled' => false, 'dnd_enabled' => true })
+    runner = create_runner
+    command = Slk::Commands::Dnd.new(['status'], runner: runner)
+    result = command.execute
+    assert_equal 0, result
+    refute_includes @io.string, 'Schedule'
+  end
+
+  def test_get_status_multiple_workspaces_shows_workspace_name
+    workspaces = [mock_workspace('one'), mock_workspace('two')]
+    @mock_client.stub('dnd.info', { 'ok' => true, 'snooze_enabled' => false, 'dnd_enabled' => false })
+    runner = create_runner(workspaces: workspaces)
+    Slk::Commands::Dnd.new([], runner: runner).execute
+    assert_includes @io.string, 'one'
+    assert_includes @io.string, 'two'
+  end
+
+  def test_get_status_with_specific_workspace_option
+    @mock_client.stub('dnd.info', { 'ok' => true, 'snooze_enabled' => false, 'dnd_enabled' => false })
+    runner = create_runner(workspaces: [mock_workspace('one'), mock_workspace('two')])
+    Slk::Commands::Dnd.new(['status', '-w', 'one'], runner: runner).execute
+    # Result run completes
+  end
+
+  def test_snoozing_expired_when_no_remaining
+    @mock_client.stub('dnd.info', { 'ok' => true, 'snooze_enabled' => true, 'dnd_enabled' => false })
+    @mock_client.stub('dnd.info', { 'ok' => true, 'snooze_enabled' => true, 'dnd_enabled' => false })
+    # snooze_remaining returns nil when key absent
+    runner = create_runner
+    Slk::Commands::Dnd.new(['status'], runner: runner).execute
+    # Output may say expired or remaining; just check no errors
+    assert_includes @io.string, 'snoozing'
+  end
+
+  def test_show_all_workspaces_hint_appears
+    @mock_client.stub('dnd.endSnooze', { 'ok' => true })
+    runner = create_runner(workspaces: [mock_workspace('a'), mock_workspace('b')])
+    cmd = Slk::Commands::Dnd.new(['off'], runner: runner)
+    cmd.execute
+    # Multi workspace, no --all/-w → hint
+    assert_match(/--all/, @io.string)
+  end
+
+  def test_show_all_workspaces_hint_skipped_with_all_flag
+    @mock_client.stub('dnd.endSnooze', { 'ok' => true })
+    runner = create_runner(workspaces: [mock_workspace('a'), mock_workspace('b')])
+    Slk::Commands::Dnd.new(['off', '--all'], runner: runner).execute
+    refute_match(/Tip/, @io.string)
+  end
 end

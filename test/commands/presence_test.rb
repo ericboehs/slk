@@ -194,4 +194,46 @@ class PresenceCommandTest < Minitest::Test
     assert_includes @err.string, 'Unknown option'
     assert_includes @err.string, '-z'
   end
+
+  def test_get_presence_with_workspace_filter
+    @mock_client.stub('users.getPresence', { 'ok' => true,
+                                             'presence' => 'active', 'manual_away' => false })
+    workspaces = [mock_workspace('one'), mock_workspace('two')]
+    runner = create_runner(workspaces: workspaces)
+    Slk::Commands::Presence.new(['-w', 'one'], runner: runner).execute
+    refute_includes @io.string, 'two'
+  end
+
+  def test_format_presence_shows_away_manual
+    @mock_client.stub('users.getPresence', { 'ok' => true,
+                                             'presence' => 'away', 'manual_away' => true })
+    runner = create_runner
+    Slk::Commands::Presence.new([], runner: runner).execute
+    assert_match(/away/, @io.string)
+    assert_match(/manual/, @io.string)
+  end
+
+  def test_format_presence_unknown_state
+    @mock_client.stub('users.getPresence', { 'ok' => true,
+                                             'presence' => 'unknown', 'manual_away' => false })
+    runner = create_runner
+    Slk::Commands::Presence.new([], runner: runner).execute
+    assert_includes @io.string, 'unknown'
+  end
+
+  def test_set_presence_show_all_hint
+    @mock_client.stub('users.setPresence', { 'ok' => true })
+    workspaces = [mock_workspace('a'), mock_workspace('b')]
+    runner = create_runner(workspaces: workspaces)
+    Slk::Commands::Presence.new(['away'], runner: runner).execute
+    assert_match(/--all/, @io.string)
+  end
+
+  def test_set_presence_no_hint_with_all
+    @mock_client.stub('users.setPresence', { 'ok' => true })
+    workspaces = [mock_workspace('a'), mock_workspace('b')]
+    runner = create_runner(workspaces: workspaces)
+    Slk::Commands::Presence.new(['away', '--all'], runner: runner).execute
+    refute_match(/Tip/, @io.string)
+  end
 end

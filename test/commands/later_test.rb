@@ -312,7 +312,166 @@ class LaterCommandTest < Minitest::Test
     assert_match(/Could not load content for 1 item/, @io.string)
   end
 
+  def test_counts_completed_excludes_overdue_section
+    @saved_api.expect_list({
+                             'ok' => true,
+                             'saved_items' => [
+                               { 'item_id' => 'C1', 'item_type' => 'message', 'state' => 'completed' }
+                             ]
+                           })
+    runner = build_runner
+    command = Slk::Commands::Later.new(['--counts', '--completed'], runner: runner)
+    command.execute
+    refute_match(/Overdue:/, @io.string)
+    assert_match(/Total: 1/, @io.string)
+  end
+
+  def test_help_text_contains_all_options
+    runner = build_runner
+    command = Slk::Commands::Later.new(['--help'], runner: runner)
+    command.execute
+    %w[--limit --completed --in-progress --counts --no-content
+       --workspace-emoji --no-emoji --width --no-wrap --json
+       --workspace --verbose --quiet].each do |opt|
+      assert_match(/#{Regexp.escape(opt)}/, @io.string)
+    end
+  end
+
+  def test_workspace_emoji_skipped_in_markdown_mode
+    @saved_api.expect_list({
+                             'ok' => true,
+                             'saved_items' => [
+                               { 'item_id' => 'C123', 'item_type' => 'message', 'state' => 'saved' }
+                             ]
+                           })
+    runner = build_runner
+    command = Slk::Commands::Later.new(
+      ['--workspace-emoji', '--markdown', '--no-content'], runner: runner
+    )
+    result = command.execute
+    assert_equal 0, result
+  end
+
+  def test_print_emoji_or_code_with_existing_emoji
+    runner = build_runner
+    command = Slk::Commands::Later.new(['--no-content'], runner: runner)
+    Dir.mktmpdir do |dir|
+      emoji_dir = File.join(dir, 'test')
+      FileUtils.mkdir_p(emoji_dir)
+      emoji_file = File.join(emoji_dir, 'partyparrot.png')
+      File.binwrite(emoji_file, "\x89PNG\r\n\u001A\n#{'a' * 80}")
+      command.send(:instance_variable_set, :@options, { workspace_emoji: true })
+
+      runner.config.define_singleton_method(:emoji_dir) { dir }
+
+      out = capture_stdout do
+        command.send(:print_with_workspace_emoji, ':partyparrot:', mock_workspace('test'))
+      end
+      assert_kind_of String, out
+    end
+  end
+
+  def test_find_workspace_emoji_returns_nil_for_empty_name
+    runner = build_runner
+    command = Slk::Commands::Later.new([], runner: runner)
+    runner.config.define_singleton_method(:emoji_dir) { nil }
+    assert_nil command.send(:find_workspace_emoji, 'test', '')
+  end
+
+  def test_find_workspace_emoji_returns_nil_for_missing_dir
+    runner = build_runner
+    command = Slk::Commands::Later.new([], runner: runner)
+    runner.config.define_singleton_method(:emoji_dir) { '/nonexistent/path' }
+    assert_nil command.send(:find_workspace_emoji, 'test', 'foo')
+  end
+
+  def test_json_output_with_content_includes_message
+    @saved_api.expect_list({
+                             'ok' => true,
+                             'saved_items' => [
+                               { 'item_id' => 'C123', 'item_type' => 'message',
+                                 'ts' => '1234567890.123456', 'state' => 'saved' }
+                             ]
+                           })
+    @conversations_api.stub_history('C123', {
+                                      'ok' => true,
+                                      'messages' => [{ 'ts' => '1234567890.123456', 'text' => 'Hi', 'user' => 'U1' }]
+                                    })
+    runner = build_runner_with_cache
+    Slk::Commands::Later.new(['--json'], runner: runner).execute
+    output = JSON.parse(@io.string)
+    assert output[0].key?('message')
+  end
+
+  def test_create_buffer_output_markdown
+    runner = build_runner
+    command = Slk::Commands::Later.new(['--markdown'], runner: runner)
+    buffer = StringIO.new
+    out = command.send(:create_buffer_output, buffer)
+    assert_instance_of Slk::Formatters::MarkdownOutput, out
+  end
+
+  def test_create_buffer_output_regular
+    runner = build_runner
+    command = Slk::Commands::Later.new([], runner: runner)
+    buffer = StringIO.new
+    out = command.send(:create_buffer_output, buffer)
+    assert_instance_of Slk::Formatters::Output, out
+  end
+
+  def test_print_emoji_or_code_in_tmux_skips_space
+    runner = build_runner
+    command = Slk::Commands::Later.new([], runner: runner)
+    Dir.mktmpdir do |dir|
+      emoji_dir = File.join(dir, 'test')
+      FileUtils.mkdir_p(emoji_dir)
+      emoji_file = File.join(emoji_dir, 'wave.png')
+      File.binwrite(emoji_file, "\x89PNG\r\n\n#{'a' * 80}")
+      runner.config.define_singleton_method(:emoji_dir) { dir }
+      old_term = ENV.fetch('TERM', nil)
+      old_term_program = ENV.fetch('TERM_PROGRAM', nil)
+      ENV['TERM'] = 'tmux-256color'
+      ENV['TERM_PROGRAM'] = 'iTerm.app'
+      out = StringIO.new
+      $stdout = out
+      command.send(:print_emoji_or_code, 'wave', mock_workspace('test'))
+    ensure
+      $stdout = STDOUT
+      ENV['TERM'] = old_term
+      ENV['TERM_PROGRAM'] = old_term_program
+    end
+  end
+
+  def test_workspace_emoji_path_renders_with_inline_images
+    @saved_api.expect_list({
+                             'ok' => true,
+                             'saved_items' => [
+                               { 'item_id' => 'C123', 'item_type' => 'message',
+                                 'ts' => '1234567890.123456', 'state' => 'saved' }
+                             ]
+                           })
+    @conversations_api.stub_history('C123', {
+                                      'ok' => true,
+                                      'messages' => [{ 'ts' => '1234567890.123456', 'text' => 'Hi :wave:',
+                                                       'user' => 'U1' }]
+                                    })
+    runner = build_runner_with_cache
+    command = Slk::Commands::Later.new(['--workspace-emoji'], runner: runner)
+    command.stub(:inline_images_supported?, true) do
+      command.execute
+    end
+  end
+
   private
+
+  def capture_stdout
+    old = $stdout
+    $stdout = StringIO.new
+    yield
+    $stdout.string
+  ensure
+    $stdout = old
+  end
 
   def build_runner
     saved_api = @saved_api

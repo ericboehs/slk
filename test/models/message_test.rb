@@ -422,4 +422,71 @@ class MessageTest < Minitest::Test
     assert_equal 'C123ABC', updated.channel_id
     assert_equal [reaction2], updated.reactions
   end
+
+  def test_extract_block_text_handles_non_array
+    out = Slk::Models::Message.extract_block_text(nil)
+    assert_equal '', out
+  end
+
+  def test_extract_rich_text_handles_non_array
+    out = Slk::Models::Message.extract_rich_text_content(nil)
+    assert_equal '', out
+  end
+
+  def test_extract_rich_text_handles_element_without_array_elements
+    out = Slk::Models::Message.extract_rich_text_content([{ 'type' => 'rich_text_section' }])
+    assert_equal '', out
+  end
+
+  def test_user_id_falls_back_to_bot_id_then_username
+    bot_msg = Slk::Models::Message.from_api({
+                                              'ts' => '1.0', 'bot_id' => 'B123', 'text' => 'hi'
+                                            })
+    assert_equal 'B123', bot_msg.user_id
+
+    name_msg = Slk::Models::Message.from_api({ 'ts' => '1.0', 'username' => 'Bob', 'text' => 'hi' })
+    assert_equal 'Bob', name_msg.user_id
+  end
+
+  def test_system_message_detection
+    msg = Slk::Models::Message.from_api({
+                                          'ts' => '1.0', 'user' => 'U1', 'text' => 'a',
+                                          'subtype' => 'channel_join'
+                                        })
+    assert msg.system_message?
+  end
+
+  def test_system_message_false_for_normal
+    msg = Slk::Models::Message.from_api({ 'ts' => '1.0', 'user' => 'U1', 'text' => 'a' })
+    refute msg.system_message?
+  end
+
+  def test_embedded_username_returns_nil_when_all_empty
+    msg = Slk::Models::Message.new(ts: '1.0', user_id: 'U1', user_profile: {},
+                                   bot_profile: {}, username: '')
+    assert_nil msg.embedded_username
+  end
+
+  def test_embedded_username_falls_through_to_username_field
+    msg = Slk::Models::Message.new(ts: '1.0', user_id: 'U1', user_profile: nil,
+                                   bot_profile: nil, username: 'webhook-name')
+    assert_equal 'webhook-name', msg.embedded_username
+  end
+
+  def test_bot_detection_via_subtype
+    msg = Slk::Models::Message.from_api({
+                                          'ts' => '1.0', 'user' => 'U1', 'text' => 'hi',
+                                          'subtype' => 'bot_message'
+                                        })
+    assert msg.bot?
+  end
+
+  def test_extract_block_text_with_unknown_block_type
+    data = {
+      'ts' => '1.0', 'user' => 'U1', 'text' => '',
+      'blocks' => [{ 'type' => 'divider' }, { 'type' => 'unknown' }]
+    }
+    msg = Slk::Models::Message.from_api(data)
+    assert_equal '', msg.text
+  end
 end
