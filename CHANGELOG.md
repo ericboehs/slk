@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-27
+
+### Added
+
+- **`slk who [target]`** — compact teems-style profile card for self or any user
+  - Targets: positional arg accepts `Uxxx`, display name, real name, or email; defaults to self
+  - `--full` expands into Contact / People / About me sections matching the Slack web profile
+  - `--json` emits the full Profile struct for piping
+  - `--refresh` bypasses both the per-run memo and the on-disk meta cache
+  - `--all` prints every match in turn; `--pick N` picks the Nth match non-interactively
+  - Multi-match disambiguation: prints a numbered list on stderr and prompts on a TTY; non-TTY contexts raise instead of silently picking
+  - Renders Slack Connect external users with a stripped layout (`external — <home workspace>`)
+  - Marks deactivated accounts with a bold `deactivated account` tag (and `deactivated: true` in JSON)
+  - Type-aware custom field rendering: `link` fields use OSC 8 hyperlinks with their `alt` label, `date` fields show "Jun 17, 2024 (1y 10mo ago)", `user` fields resolve one level (name + pronouns + title)
+- **`slk org [target]`** — walks the supervisor chain upward from the target
+  - `--depth N` caps traversal (default 5); cycle-safe via seen-set
+  - Indented tree with `└─ ├─ │` glyphs; `← you` marker on whichever node is the authenticated user
+- New `Api::Team` wrapper for `team.info` and `team.profile.get`, plus `Api::Users#profile_for(user_id, include_labels:)`
+- `Services::ProfileResolver`, `ProfileBuilder`, `UserMatcher`, `UserPicker`, `WhoTargetResolver`, `MetaCache` services backing the new commands
+- Hidden `slk debug profile <uid>` subcommand for inspecting raw profile/info/schema responses
+
+### Changed
+
+- `ApiError` now carries a typed `code` symbol (`:user_not_found`, `:ratelimited`, `:network_error`, `:unauthorized`, `:http_error`, `:invalid_json`, `:missing_scope`); `ApiClient` populates it on every raise
+- `ProfileResolver` only swallows `:user_not_found` from `users.profile.get` (Slack Connect fallback to `users.info`); other API errors propagate so callers can surface them
+- CI matrix now uses `bundler-cache` and runs `bundle exec rake test`; new `coverage` job enforces a 95/95 line/branch SimpleCov threshold
+- Pinned `parallel < 2.0` in dev/test bundle to keep Ruby 3.2 compatible with current rubocop
+
+### Fixed
+
+- `slk org` no longer mislabels the wrong node with `← you` when invoked against a teammate — the marker now compares each node against the authenticated user id
+
 ## [0.5.0] - 2026-04-13
 
 ### Added
