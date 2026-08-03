@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `slk status unschedule` no longer reports a successful cancel as a failure when the confirming re-read fails (a network error, a rate limit, or Slack dropping the `scheduled_statuses` section — which is exactly what happens when you cancel your only scheduled status). The cancel is reported with an explicit "could not confirm" caveat and exit 0; only a status still demonstrably present is an error
 - `slk status schedule` again reports an unusable Slack response as "check the status picker to see whether it was created" rather than the less actionable "returned a scheduled status with no id"
 - `Slk::UsageError` no longer files a backtrace in `~/.cache/slk/error.log`; a mistyped flag is not a fault to investigate later
+- SSH key validation no longer hangs on Windows when the private key is passphrase-protected. `ssh-keygen` prompts on the console rather than on stdin, so the prompt could not be answered or dismissed; it is now given an empty passphrase up front and reports the unsupported key instead of waiting
 
 ## [0.6.0] - 2026-04-27
 
