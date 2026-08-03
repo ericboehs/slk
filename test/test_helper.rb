@@ -9,6 +9,12 @@ if ENV['COVERAGE']
   end
 end
 
+# Ruby block-buffers stdout when it is a pipe, as it is under CI. If the suite
+# blocks rather than fails, the job is killed on timeout and everything still
+# sitting in that buffer is lost — including the progress that would say where
+# it stopped. Unbuffered, the log ends at the last test that finished.
+$stdout.sync = true
+
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 
 require 'minitest/autorun'
