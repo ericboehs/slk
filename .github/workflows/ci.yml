@@ -39,12 +39,6 @@ jobs:
 
       - name: Run tests
         run: bundle exec rake test
-        env:
-          # Windows is where the suite currently hangs. Naming each test as it
-          # finishes makes the log identify the culprit: it is the one after
-          # the last line printed. Left off elsewhere, where 2000 test names
-          # would just be noise.
-          TESTOPTS: ${{ matrix.os == 'windows-latest' && '--verbose' || '' }}
 
   coverage:
     runs-on: ubuntu-latest
