@@ -338,4 +338,154 @@ class StatusCommandTest < Minitest::Test
     assert_match(/Working/, captured.first)
     assert_match(/\(/, captured.first)
   end
+
+  # --- scheduling -----------------------------------------------------------
+
+  def scheduled_payload(overrides = {})
+    {
+      'id' => 'CS0BMQDDGWTU',
+      'text' => 'Vet Appt',
+      'emoji' => ':paw_prints:',
+      'is_dnd' => false,
+      'is_active' => false,
+      'date_scheduled' => Time.new(2026, 8, 3, 13, 30, 0).to_i,
+      'date_expire' => Time.new(2026, 8, 3, 15, 30, 0).to_i
+    }.merge(overrides)
+  end
+
+  def stub_schedule
+    @mock_client.stub('users.customStatus.schedule',
+                      { 'ok' => true, 'scheduled_status' => scheduled_payload })
+  end
+
+  def run_status(args, runner: nil)
+    command = Slk::Commands::Status.new(args, runner: runner || create_runner)
+    [command.execute, @mock_client.calls.last]
+  end
+
+  def test_schedule_sends_parsed_window_to_the_api
+    stub_schedule
+    future = Time.now + (24 * 3600)
+    date = future.strftime('%Y-%m-%d')
+
+    result, call = run_status(['schedule', 'Vet Appt', ':paw_prints:', "#{date} 13:30-15:30"])
+
+    assert_equal 0, result
+    assert_equal 'users.customStatus.schedule', call[:method]
+    assert_equal 'Vet Appt', call[:params][:text]
+    assert_equal ':paw_prints:', call[:params][:emoji]
+    assert_equal Time.new(future.year, future.month, future.day, 13, 30, 0).to_i.to_s,
+                 call[:params][:date_scheduled]
+    assert_equal Time.new(future.year, future.month, future.day, 15, 30, 0).to_i.to_s,
+                 call[:params][:date_expire]
+  end
+
+  def test_schedule_accepts_a_bare_time_range
+    stub_schedule
+
+    result, call = run_status(['schedule', 'Vet Appt', ':paw_prints:', '1:30p-3:30p'])
+
+    assert_equal 0, result
+    assert_equal 'users.customStatus.schedule', call[:method]
+  end
+
+  def test_schedule_defaults_the_emoji
+    stub_schedule
+
+    _result, call = run_status(['schedule', 'Vet Appt', '1:30p-3:30p'])
+
+    assert_equal ':speech_balloon:', call[:params][:emoji]
+  end
+
+  def test_schedule_passes_dnd_flag
+    stub_schedule
+
+    _result, call = run_status(['schedule', 'Heads down', ':no_bell:', '1:30p-3:30p', '--with-dnd'])
+
+    assert_equal 'true', call[:params][:is_dnd]
+  end
+
+  def test_schedule_reports_the_created_status
+    stub_schedule
+
+    run_status(['schedule', 'Vet Appt', ':paw_prints:', '1:30p-3:30p'])
+
+    assert_includes @io.string + @err.string, 'Vet Appt'
+  end
+
+  def test_schedule_without_text_errors
+    result, = run_status(['schedule'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Usage: slk status schedule'
+  end
+
+  def test_schedule_without_a_time_range_errors
+    result, = run_status(['schedule', 'Vet Appt', ':paw_prints:'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Missing time range'
+  end
+
+  # Not shaped like a range at all, so it never reaches the parser.
+  def test_schedule_with_an_unparseable_range_errors
+    result, = run_status(['schedule', 'Vet Appt', ':paw_prints:', '99:99-100:00'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Missing time range'
+  end
+
+  # Range-shaped but out of range, so the parser raises and the command reports it.
+  def test_schedule_with_an_invalid_hour_reports_the_parser_error
+    result, = run_status(['schedule', 'Vet Appt', ':paw_prints:', '25:00-26:00'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Invalid hour'
+  end
+
+  def test_scheduled_lists_pending_statuses
+    @mock_client.stub('users.customStatus.list',
+                      { 'ok' => true, 'scheduled_statuses' => [scheduled_payload] })
+
+    result, = run_status(['scheduled'])
+
+    assert_equal 0, result
+    assert_includes @io.string, 'CS0BMQDDGWTU'
+    assert_includes @io.string, 'Vet Appt'
+  end
+
+  def test_scheduled_reports_when_none_pending
+    @mock_client.stub('users.customStatus.list', { 'ok' => true, 'scheduled_statuses' => [] })
+
+    result, = run_status(['scheduled'])
+
+    assert_equal 0, result
+    assert_includes @io.string, '(none scheduled)'
+  end
+
+  def test_unschedule_deletes_by_id
+    @mock_client.stub('users.customStatus.deleteScheduled', { 'ok' => true })
+
+    result, call = run_status(%w[unschedule CS0BMQDDGWTU])
+
+    assert_equal 0, result
+    assert_equal 'users.customStatus.deleteScheduled', call[:method]
+    assert_equal 'CS0BMQDDGWTU', call[:params][:custom_status_id]
+  end
+
+  def test_unschedule_without_id_errors
+    result, = run_status(['unschedule'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Usage: slk status unschedule'
+  end
+
+  # The scheduling keywords must not shadow ordinary status text.
+  def test_plain_text_status_still_sets_status
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+
+    _result, call = run_status(['Working', ':computer:'])
+
+    assert_equal 'users.profile.set', call[:method]
+  end
 end

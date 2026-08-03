@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`slk status schedule|scheduled|unschedule`** — queue statuses to turn on later
+  - `slk status schedule "<text>" [:emoji:] <start-end>` schedules a status; emoji defaults to `:speech_balloon:`
+  - Time windows accept bare 12- or 24-hour times (`1:30p-3:30p`, `13:30-15:30`) or an explicit date (`2026-08-04 9:00-17:00`)
+  - Bare times resolve forward: a window that already passed today rolls to tomorrow, and an end at or before the start crosses midnight (`11p-1a`)
+  - `--with-dnd` also pauses notifications while the status is active
+  - `slk status scheduled` lists pending statuses with their IDs; `slk status unschedule <id>` cancels one
+  - Backed by Slack's internal `users.customStatus.*` endpoints, which require form-encoded bodies and only return the scheduled section when `statuses_count_per_section` is sent
+
 ## [0.6.0] - 2026-04-27
 
 ### Added

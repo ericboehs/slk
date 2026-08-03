@@ -22,6 +22,9 @@ module Slk
 
       def dispatch_action
         case positional_args
+        in ['schedule', *rest] then schedule_status(rest)
+        in ['scheduled', *] then list_scheduled
+        in ['unschedule', *rest] then unschedule_status(rest)
         in ['clear', *] then clear_status
         in [text, *rest] then set_status(text, rest)
         in [] then get_status
@@ -31,7 +34,7 @@ module Slk
       protected
 
       def default_options
-        super.merge(presence: nil, dnd: nil)
+        super.merge(presence: nil, dnd: nil, with_dnd: false)
       end
 
       def handle_option(arg, args, remaining)
@@ -40,6 +43,8 @@ module Slk
           @options[:presence] = args.shift
         when '-d', '--dnd'
           @options[:dnd] = args.shift
+        when '--with-dnd'
+          @options[:with_dnd] = true
         else
           super
         end
@@ -49,7 +54,9 @@ module Slk
         help = Support::HelpFormatter.new('slk status [text] [emoji] [duration] [options]')
         help.description('Get or set your Slack status.')
         help.note('GET shows all workspaces by default. SET applies to primary only.')
+        help.note('Slack allows at most 5 scheduled statuses at a time.')
         add_examples_section(help)
+        add_scheduling_section(help)
         add_options_section(help)
         help.render
       end
@@ -64,10 +71,20 @@ module Slk
         end
       end
 
+      def add_scheduling_section(help)
+        help.section('SCHEDULING') do |s|
+          s.example('slk status schedule "Vet Appt" :paw_prints: 1:30p-3:30p', 'Schedule for later')
+          s.example('slk status schedule "OOO" :palm_tree: 2026-08-04 9:00-17:00')
+          s.example('slk status scheduled', 'List pending scheduled statuses')
+          s.example('slk status unschedule CS0BMQDDGWTU', 'Cancel a scheduled status')
+        end
+      end
+
       def add_options_section(help)
         help.section('OPTIONS') do |s|
           s.option('-p, --presence VALUE', 'Also set presence (away/auto/active)')
           s.option('-d, --dnd DURATION', "Also set DND (or 'off')")
+          s.option('--with-dnd', 'When scheduling, also pause notifications while active')
           s.option('-w, --workspace', 'Limit to specific workspace')
           s.option('--all', 'Set across all workspaces')
           s.option('-v, --verbose', 'Show debug information')
@@ -206,6 +223,76 @@ module Slk
         end
 
         show_all_workspaces_hint
+
+        0
+      end
+
+      def schedule_status(args)
+        text, *rest = args
+        return error('Usage: slk status schedule "<text>" [:emoji:] <start-end>') if text.nil?
+
+        range = extract_time_range(rest)
+        return missing_range_error unless range
+
+        starts_at, ends_at = Support::TimeRangeParser.parse(range)
+        create_scheduled_status(text, extract_emoji(rest), starts_at, ends_at)
+        show_all_workspaces_hint
+        0
+      rescue ArgumentError => e
+        error(e.message)
+      end
+
+      def missing_range_error
+        error('Missing time range. Example: slk status schedule "Vet Appt" :paw_prints: 1:30p-3:30p')
+      end
+
+      # The range may arrive as one token ("1:30p-3:30p") or several
+      # ("2026-08-04 13:30-15:30"), so try the joined form before each token.
+      def extract_time_range(rest)
+        candidates = rest.reject { |arg| arg.start_with?(':') && arg.end_with?(':') }
+        joined = candidates.join(' ')
+        return joined if Support::TimeRangeParser.match?(joined)
+
+        candidates.find { |arg| Support::TimeRangeParser.match?(arg) }
+      end
+
+      def create_scheduled_status(text, emoji, starts_at, ends_at)
+        target_workspaces.each do |workspace|
+          scheduled = runner.custom_status_api(workspace.name).schedule(
+            text: text, emoji: emoji,
+            date_scheduled: starts_at, date_expire: ends_at,
+            dnd: @options[:with_dnd]
+          )
+          success("Scheduled on #{workspace.name}: #{scheduled}")
+          debug("  ID: #{scheduled.id}")
+        end
+      end
+
+      def list_scheduled
+        workspaces = target_workspaces_for_get
+
+        workspaces.each do |workspace|
+          puts output.bold(workspace.name) if workspaces.size > 1
+          print_scheduled(runner.custom_status_api(workspace.name).scheduled)
+        end
+
+        0
+      end
+
+      def print_scheduled(scheduled)
+        return puts '  (none scheduled)' if scheduled.empty?
+
+        scheduled.each { |status| puts "  #{status.id}  #{status}" }
+      end
+
+      def unschedule_status(args)
+        id = args.first
+        return error('Usage: slk status unschedule <id>') if id.nil?
+
+        target_workspaces.each do |workspace|
+          runner.custom_status_api(workspace.name).delete_scheduled(id)
+          success("Cancelled scheduled status on #{workspace.name}")
+        end
 
         0
       end

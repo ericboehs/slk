@@ -55,6 +55,7 @@ module Slk
     autoload :Duration, 'slk/models/duration'
     autoload :Workspace, 'slk/models/workspace'
     autoload :Status, 'slk/models/status'
+    autoload :ScheduledStatus, 'slk/models/scheduled_status'
     autoload :Message, 'slk/models/message'
     autoload :Reaction, 'slk/models/reaction'
     autoload :User, 'slk/models/user'
@@ -153,6 +154,7 @@ module Slk
     autoload :Activity, 'slk/api/activity'
     autoload :Search, 'slk/api/search'
     autoload :Saved, 'slk/api/saved'
+    autoload :CustomStatus, 'slk/api/custom_status'
     autoload :Team, 'slk/api/team'
   end
 
@@ -167,5 +169,6 @@ module Slk
     autoload :TextWrapper, 'slk/support/text_wrapper'
     autoload :InteractivePrompt, 'slk/support/interactive_prompt'
     autoload :DateParser, 'slk/support/date_parser'
+    autoload :TimeRangeParser, 'slk/support/time_range_parser'
   end
 end

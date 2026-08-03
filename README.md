@@ -52,6 +52,16 @@ slk status "In a meeting" :calendar: 1h # Set status for 1 hour
 slk status clear                        # Clear status
 ```
 
+Statuses can also be scheduled to turn on later (Slack allows up to 5 at a time):
+
+```bash
+slk status schedule "Vet Appt" :paw_prints: 1:30p-3:30p       # Bare times; rolls to tomorrow if past
+slk status schedule "OOO" :palm_tree: 2026-08-04 9:00-17:00   # Explicit date
+slk status schedule "Heads down" :no_bell: 11p-1a --with-dnd  # Overnight, pausing notifications
+slk status scheduled                                          # List pending
+slk status unschedule CS0BMQDDGWTU                            # Cancel one
+```
+
 ### Presence
 
 ```bash
