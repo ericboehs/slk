@@ -146,11 +146,25 @@ class CustomStatusApiTest < Minitest::Test
 
   def test_delete_scheduled_sends_the_id
     @mock_client.stub('users.customStatus.deleteScheduled', { 'ok' => true })
+    @mock_client.stub('users.customStatus.list', { 'ok' => true, 'scheduled_statuses' => [] })
 
     @api.delete_scheduled('CS0BMQDDGWTU')
 
-    call = @mock_client.calls.last
-    assert_equal 'users.customStatus.deleteScheduled', call[:method]
+    call = @mock_client.calls.find { |c| c[:method] == 'users.customStatus.deleteScheduled' }
+
     assert_equal 'CS0BMQDDGWTU', call[:params][:custom_status_id]
+  end
+
+  # An ok response says the request was accepted, not that anything was
+  # removed, so the delete is confirmed against the list before it counts.
+  def test_delete_scheduled_raises_when_the_status_survives
+    @mock_client.stub('users.customStatus.deleteScheduled', { 'ok' => true })
+    @mock_client.stub('users.customStatus.list',
+                      { 'ok' => true, 'scheduled_statuses' => [{ 'id' => 'CS0BMQDDGWTU' }] })
+
+    error = assert_raises(Slk::ApiError) { @api.delete_scheduled('CS0BMQDDGWTU') }
+
+    assert_equal :delete_not_applied, error.code
+    assert_includes error.message, 'is still scheduled'
   end
 end

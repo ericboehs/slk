@@ -62,9 +62,15 @@ slk status scheduled                                          # List pending (al
 slk status unschedule CS0BMQDDGWTU                            # Cancel one (finds the owning workspace)
 ```
 
-A `start-end` range puts both times on one date, so multi-day windows use
-`--start` / `--end` instead. Each takes `[YYYY-MM-DD ]TIME`, and omitting
-`--end` schedules a status with no expiry:
+A single am/pm carries across the range, so `1-3p` is 1pm to 3pm — unless that
+would invert it, leaving `9-5p` as 9am to 5pm. A range with no am/pm on either
+side is read literally, so `9-5` would mean 09:00 until 05:00 the next morning;
+that is rejected rather than guessed at. Overnight windows are fine once you
+say which is which — `11p-1a`, `8p-9a` and `20:00-09:00` all work.
+
+A `start-end` range writes the date once and the end can only reach the next
+day, so multi-day windows use `--start` / `--end` instead. Each takes
+`[YYYY-MM-DD ]TIME`, and omitting `--end` schedules a status with no expiry:
 
 ```bash
 slk status schedule "OOO" :palm_tree: --start "2026-08-12 8a" --end "2026-08-14 5p"

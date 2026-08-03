@@ -97,6 +97,26 @@ module Slk
       end
     end
 
+    # Run a block with TZ set, for assertions that only mean anything in a
+    # specific zone (DST transitions).
+    #
+    # Ruby on Windows reads POSIX-form TZ, not IANA names, so the assignment
+    # can be silently ignored — leaving the test asserting against whatever
+    # zone the machine happens to be in. Verify the switch took effect and skip
+    # if it did not, rather than fail somewhere confusing.
+    def with_timezone(zone, expected_offset:)
+      original = ENV.fetch('TZ', nil)
+      ENV['TZ'] = zone
+      skip "TZ=#{zone} is not honoured on this platform" unless Time.new(2026, 1, 1).utc_offset == expected_offset
+
+      yield
+    ensure
+      ENV['TZ'] = original
+    end
+
+    # America/Chicago in January: CST, six hours behind UTC.
+    CHICAGO_WINTER_OFFSET = -6 * 3600
+
     # Mock workspace
     def mock_workspace(name = 'test', token = 'xoxb-test-token')
       Models::Workspace.new(name: name, token: token)

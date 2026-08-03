@@ -10,16 +10,6 @@ class TimeRangeParserTest < Minitest::Test
     Slk::Support::TimeRangeParser.parse(input, now: now)
   end
 
-  # DST cases only mean anything against a fixed zone; the suite otherwise
-  # inherits whatever TZ the machine has.
-  def with_timezone(zone)
-    original = ENV.fetch('TZ', nil)
-    ENV['TZ'] = zone
-    yield
-  ensure
-    ENV['TZ'] = original
-  end
-
   def test_parses_twelve_hour_range_on_the_same_day
     starts_at, ends_at = parse('1:30p-3:30p')
 
@@ -117,10 +107,43 @@ class TimeRangeParserTest < Minitest::Test
   # Neither side names a meridiem, so "5" is 05:00 and the window rolls a full
   # night. Silently scheduling 20 hours is worse than asking for am/pm.
   def test_rejects_overlong_window_created_by_rollover
-    error = assert_raises(ArgumentError) { parse('9-5') }
+    error = assert_raises(Slk::TimeFormatError) { parse('9-5') }
 
     assert_includes error.message, 'spans 20 hours'
     assert_includes error.message, '9a-5p'
+  end
+
+  # The bound exists to catch a *missing* am/pm. These say exactly what they
+  # mean, so a 13-hour night is the user's call, not a typo to second-guess.
+  def test_allows_long_overnight_window_when_the_meridiem_is_explicit
+    starts_at, ends_at = parse('8p-9a')
+
+    assert_equal Time.new(2026, 8, 3, 20, 0, 0).to_i, starts_at
+    assert_equal Time.new(2026, 8, 4, 9, 0, 0).to_i, ends_at
+  end
+
+  # A single hour above 12 fixes the whole range as 24-hour notation, so "09:00"
+  # here cannot have been a dropped "9pm".
+  def test_allows_long_overnight_window_written_in_twenty_four_hour_time
+    starts_at, ends_at = parse('2026-08-04 20:00-09:00')
+
+    assert_equal Time.new(2026, 8, 4, 20, 0, 0).to_i, starts_at
+    assert_equal Time.new(2026, 8, 5, 9, 0, 0).to_i, ends_at
+  end
+
+  # Same 20-hour mistake as "9-5", just written with minutes.
+  def test_rejects_overlong_window_when_neither_side_disambiguates
+    error = assert_raises(Slk::TimeFormatError) { parse('9:00-5:00') }
+
+    assert_includes error.message, 'spans 20 hours'
+  end
+
+  # The narrowest ambiguous crossing there is. Reported to the minute rather
+  # than rounded down to a tidy "12 hours".
+  def test_reports_an_uneven_span_without_rounding
+    error = assert_raises(Slk::TimeFormatError) { parse('12:59-1:00') }
+
+    assert_includes error.message, '12h01m'
   end
 
   def test_allows_long_window_within_a_single_day
@@ -131,7 +154,7 @@ class TimeRangeParserTest < Minitest::Test
   end
 
   def test_rejects_identical_start_and_end
-    error = assert_raises(ArgumentError) { parse('1p-1p') }
+    error = assert_raises(Slk::TimeFormatError) { parse('1p-1p') }
 
     assert_includes error.message, 'starts and ends at the same time'
   end
@@ -139,15 +162,15 @@ class TimeRangeParserTest < Minitest::Test
   # Ruby shifts a local time DST skips rather than raising, which previously
   # collapsed the window onto the start and rolled it a full day.
   def test_rejects_local_time_skipped_by_dst
-    with_timezone('America/Chicago') do
-      error = assert_raises(ArgumentError) { parse('2026-03-08 2:30-3:30') }
+    with_timezone('America/Chicago', expected_offset: CHICAGO_WINTER_OFFSET) do
+      error = assert_raises(Slk::TimeFormatError) { parse('2026-03-08 2:30-3:30') }
 
       assert_includes error.message, 'does not exist'
     end
   end
 
   def test_overnight_window_across_spring_forward_stays_short
-    with_timezone('America/Chicago') do
+    with_timezone('America/Chicago', expected_offset: CHICAGO_WINTER_OFFSET) do
       starts_at, ends_at = parse('2026-03-07 11p-1a')
 
       assert_equal Time.new(2026, 3, 7, 23, 0, 0).to_i, starts_at
@@ -157,7 +180,7 @@ class TimeRangeParserTest < Minitest::Test
 
   # Date arithmetic, not +86_400, so the roll survives a DST boundary.
   def test_roll_to_tomorrow_across_spring_forward_keeps_wall_clock_time
-    with_timezone('America/Chicago') do
+    with_timezone('America/Chicago', expected_offset: CHICAGO_WINTER_OFFSET) do
       starts_at, = parse('9a-5p', now: Time.new(2026, 3, 7, 10, 0, 0))
 
       assert_equal Time.new(2026, 3, 8, 9, 0, 0).to_i, starts_at
@@ -165,27 +188,27 @@ class TimeRangeParserTest < Minitest::Test
   end
 
   def test_rejects_nonexistent_calendar_date
-    error = assert_raises(ArgumentError) { parse('2026-02-30 9:00-10:00') }
+    error = assert_raises(Slk::TimeFormatError) { parse('2026-02-30 9:00-10:00') }
 
     assert_includes error.message, 'Invalid date: 2026-02-30'
     assert_includes error.message, Slk::Support::TimeRangeParser::EXAMPLE
   end
 
   def test_rejects_unparseable_input
-    error = assert_raises(ArgumentError) { parse('sometime tomorrow') }
+    error = assert_raises(Slk::TimeFormatError) { parse('sometime tomorrow') }
     assert_includes error.message, 'Invalid time range'
   end
 
   def test_rejects_out_of_range_hour
-    assert_raises(ArgumentError) { parse('25:00-26:00') }
+    assert_raises(Slk::TimeFormatError) { parse('25:00-26:00') }
   end
 
   def test_rejects_out_of_range_minute
-    assert_raises(ArgumentError) { parse('1:75p-3:30p') }
+    assert_raises(Slk::TimeFormatError) { parse('1:75p-3:30p') }
   end
 
   def test_rejects_zero_hour_with_meridiem
-    assert_raises(ArgumentError) { parse('0p-3p') }
+    assert_raises(Slk::TimeFormatError) { parse('0p-3p') }
   end
 
   def test_match_identifies_ranges

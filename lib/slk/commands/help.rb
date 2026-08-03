@@ -74,6 +74,7 @@ module Slk
             slk status                       Show current status
             slk status "Working" :laptop:    Set status
             slk status clear                 Clear status
+            slk status schedule "Vet" 1p-3p  Schedule a status (am/pm or 24h)
             slk dnd 1h                       Enable DND for 1 hour
             slk messages #general            Read channel messages
             slk preset meeting               Apply preset

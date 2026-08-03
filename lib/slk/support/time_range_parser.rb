@@ -13,20 +13,13 @@ module Slk
     # and an end before the start rolls to the next day so overnight windows
     # ("11p-1a") work.
     #
-    # Both times share one date, so this cannot express a multi-day window —
-    # `slk status schedule --start/--end` is the general form for that.
+    # The start date is written once and the end can only reach the following
+    # day, so this cannot express a multi-day window — `slk status schedule
+    # --start/--end` is the general form for that.
     class TimeRangeParser
       RANGE_PATTERN = /\A(?:(\d{4}-\d{2}-\d{2})\s+)?#{TimeParser::TIME}\s*-\s*#{TimeParser::TIME}\z/i
 
       EXAMPLE = '1:30p-3:30p or 2026-08-04 13:30-15:30'
-
-      # Overnight windows are short in practice ("11p-1a", "9p-9a"). Anything
-      # longer that only reaches the next day by rollover is almost always a
-      # missing am/pm rather than a genuine window.
-      MAX_OVERNIGHT_SECONDS = 12 * 3600
-
-      # Hours a bare side can take a borrowed meridiem; "13" is already 24-hour.
-      CLOCK_HOURS = (1..12)
 
       # @param input [String] the range to parse
       # @param now [Time] reference point for rolling bare times forward
@@ -43,15 +36,15 @@ module Slk
 
       def parse(input)
         match = RANGE_PATTERN.match(input.to_s.strip)
-        raise ArgumentError, "Invalid time range: #{input}. Use #{EXAMPLE}" unless match
+        raise TimeFormatError, "Invalid time range: #{input}. Use #{EXAMPLE}" unless match
 
         start_parts, end_parts = infer_meridiems(match)
+        validate_range(input, start_parts, end_parts)
+
         date = start_date(match, start_parts)
         start_at = @clock.at(date, *start_parts)
-        end_at = end_time(date, start_at, end_parts, input)
-        validate_window(input, start_at, end_at)
 
-        [start_at.to_i, end_at.to_i]
+        [start_at.to_i, end_time(date, start_at, end_parts).to_i]
       end
 
       private
@@ -77,9 +70,7 @@ module Slk
         [start_parts, end_parts]
       end
 
-      def borrowable?(parts, source)
-        source[2] && parts[2].nil? && CLOCK_HOURS.cover?(parts[0].to_i)
-      end
+      def borrowable?(parts, source) = !source[2].nil? && @clock.ambiguous?(parts)
 
       def with_meridiem(parts, meridiem) = [parts[0], parts[1], meridiem]
 
@@ -89,24 +80,73 @@ module Slk
         return @clock.parse_date(match[1], example: EXAMPLE) if match[1]
 
         today = @now.to_date
-        @clock.at(today, *start_parts) <= @now ? today + 1 : today
+        # `place`, not `at`: this only asks "is that time already past today?",
+        # and on a spring-forward date `at` would reject a skipped time outright
+        # instead of letting it roll to tomorrow, where it exists.
+        @clock.place(today, *start_parts) <= @now ? today + 1 : today
       end
 
-      def end_time(date, start_at, end_parts, input)
+      def end_time(date, start_at, end_parts)
         end_at = @clock.at(date, *end_parts)
-        raise ArgumentError, "Time range #{input} starts and ends at the same time." if end_at == start_at
-
         # An end before the start means the window crosses midnight.
         end_at < start_at ? @clock.at(date + 1, *end_parts) : end_at
       end
 
-      def validate_window(input, start_at, end_at)
-        return if start_at.to_date == end_at.to_date
-        return if end_at - start_at <= MAX_OVERNIGHT_SECONDS
+      def validate_range(input, start_parts, end_parts)
+        if @clock.minutes(start_parts) == @clock.minutes(end_parts)
+          raise TimeFormatError, "Time range #{input} starts and ends at the same time."
+        end
 
-        raise ArgumentError,
-              "Time range #{input} spans #{((end_at - start_at) / 3600).round} hours. " \
+        validate_overnight(input, start_parts, end_parts)
+      end
+
+      # "9-5" almost always means 9am-5pm, but reads literally as 09:00 to
+      # 05:00 the next morning — a 20-hour window nobody asked for.
+      #
+      # Rejecting *every* ambiguous midnight crossing rather than capping the
+      # length is not a shortcut: with both sides bare and in 1..12, the widest
+      # such window that fits in 12 hours would need the two to be 12 hours
+      # apart, which no pair of 12-hour clock readings can be. They are all too
+      # long, so there is no threshold worth writing down.
+      #
+      # This applies only where a reading had to be guessed. "8p-9a" and
+      # "20:00-09:00" are 13-hour nights that say exactly what they mean.
+      def validate_overnight(input, start_parts, end_parts)
+        return unless ambiguous?(start_parts, end_parts)
+
+        span = overnight_minutes(start_parts, end_parts)
+        return unless span
+
+        raise TimeFormatError,
+              "Time range #{input} reads as crossing midnight and spans #{format_span(span)}. " \
               'Add am/pm (9a-5p), use 24-hour times (9:00-17:00), or --start/--end for a multi-day window.'
+      end
+
+      # Ambiguous only if neither side settles the notation. A single am/pm, or
+      # a single hour too large to be 12-hour ("20:00"), fixes how to read both.
+      def ambiguous?(start_parts, end_parts)
+        @clock.ambiguous?(start_parts) && @clock.ambiguous?(end_parts)
+      end
+
+      # Wall-clock minutes from start to end across midnight, or nil when the
+      # window stays on one date.
+      #
+      # Deliberately not `end_at - start_at`: elapsed seconds stretch or shrink
+      # by an hour across a DST boundary, so the same text would report a
+      # different span depending on the date it happened to land on.
+      def overnight_minutes(start_parts, end_parts)
+        start_minutes = @clock.minutes(start_parts)
+        end_minutes = @clock.minutes(end_parts)
+        return nil if end_minutes > start_minutes
+
+        TimeParser::MINUTES_PER_DAY - start_minutes + end_minutes
+      end
+
+      # Whole hours read better, but rounding them would report a 12h01m window
+      # as "12 hours" against a 12-hour limit.
+      def format_span(minutes)
+        hours, mins = minutes.divmod(60)
+        mins.zero? ? "#{hours} hours" : format('%<h>dh%<m>02dm', h: hours, m: mins)
       end
     end
   end

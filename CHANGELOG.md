@@ -14,11 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Time windows accept bare 12- or 24-hour times (`1:30p-3:30p`, `13:30-15:30`) or an explicit `YYYY-MM-DD` date (`2026-08-04 9:00-17:00`)
   - Bare times resolve forward: a window at or before now rolls to tomorrow, and an end before the start crosses midnight (`11p-1a`)
   - A single am/pm carries across the range, so `1-3p` is 1pm to 3pm — unless that would invert it, leaving `9-5p` as 9am to 5pm
-  - Ambiguous or impossible windows are rejected rather than guessed: `9-5` (would silently span 20 hours), `1p-1p`, a time DST skips, and unrecognized date forms such as `8/4` or `tomorrow`
+  - Ambiguous or impossible windows are rejected rather than guessed: `9-5` (reads as crossing midnight and spanning 20 hours), `1p-1p`, a time DST skips, and unrecognized date forms such as `8/4` or `tomorrow`
+  - Only ranges where neither side settles the notation are treated as ambiguous, so explicit overnight windows work: `11p-1a`, `8p-9a`, `20:00-09:00`
   - `--start WHEN` / `--end WHEN` take `[YYYY-MM-DD ]TIME` each, for windows the single-date range cannot express: `--start "2026-08-12 8a" --end "2026-08-14 5p"`. Omitting `--end` schedules a status with no expiry
   - `--with-dnd` also pauses notifications while the status is active
   - `slk status scheduled` lists pending statuses with their IDs across every workspace; `slk status unschedule <id>` looks up which workspace owns the ID rather than assuming the primary one (`-w`/`--all` still override)
-  - Backed by Slack's internal `users.customStatus.*` endpoints, which require form-encoded bodies and only return the scheduled section when `statuses_count_per_section` is sent
+  - `slk status scheduled` marks the one Slack reports as currently applied with `[active]`
+  - Backed by Slack's internal `users.customStatus.*` endpoints, which require form-encoded bodies and only return the scheduled section when `statuses_count_per_section` is sent. Responses are checked rather than trusted: an absent `scheduled_statuses` section, a create that echoes nothing back, a status payload with no id, and a delete the following list still shows all raise instead of reporting success
+
+### Changed
+
+- New `Slk::UsageError` (bad invocation) and `Slk::TimeFormatError` (unparseable time) error types. `slk` prints them without an error-type label, and callers can rescue malformed input without also swallowing arity or range errors from their own code
+- `slk status` now rejects `--start`, `--end`, `-p` and `-d` when the value is missing or is itself a flag, instead of silently taking `nil` or the next flag as the value
 
 ## [0.6.0] - 2026-04-27
 

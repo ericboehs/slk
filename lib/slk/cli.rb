@@ -72,7 +72,7 @@ module Slk
       else
         show_unknown_command(command_name)
       end
-    rescue ConfigError, EncryptionError, ApiError => e
+    rescue ConfigError, EncryptionError, ApiError, UsageError => e
       handle_known_error(e)
     end
 

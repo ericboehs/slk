@@ -8,7 +8,8 @@ module Slk
     # modelled here — the window itself is the source of truth.
     ScheduledStatus = Data.define(:id, :text, :emoji, :date_scheduled, :date_expire, :dnd, :active) do
       def self.from_api(data)
-        data ||= {}
+        validate!(data)
+
         new(
           id: data['id'].to_s,
           text: data['text'].to_s,
@@ -20,6 +21,19 @@ module Slk
         )
       end
 
+      # Every field is coerced, so without this guard any payload at all —
+      # a bare string, nil, a hash of unexpected keys — becomes a valid-looking
+      # record with an empty id that prints as a blank line and never matches
+      # the id the user asked about. An unusable record is a protocol change,
+      # not a status.
+      def self.validate!(data)
+        return if data.is_a?(Hash) && !data['id'].to_s.empty?
+
+        raise ApiError.new("Slack returned a scheduled status with no id: #{data.inspect[0, 120]}",
+                           code: :malformed_scheduled_status)
+      end
+      private_class_method :validate!
+
       # These endpoints are string-typed on the way in — Api::CustomStatus sends
       # is_dnd as 'true' — so a strict `== true` would quietly read a scheduled
       # DND back as off. Accept the shapes Slack actually uses.
@@ -30,12 +44,16 @@ module Slk
       def ends_at = date_expire.positive? ? Time.at(date_expire) : nil
 
       def to_s
-        parts = []
-        parts << emoji unless emoji.empty?
-        parts << text unless text.empty?
-        parts << "(#{window})" unless window.empty?
-        parts << '[dnd]' if dnd
-        parts.join(' ')
+        span = window
+        [
+          emoji,
+          text,
+          span.empty? ? '' : "(#{span})",
+          ('[dnd]' if dnd),
+          # Slack marks the one that has already turned on. Worth showing: it
+          # is the difference between "will happen" and "is happening".
+          ('[active]' if active)
+        ].reject { |part| part.to_s.empty? }.join(' ')
       end
 
       # Human-readable window; the end date is only repeated when it differs

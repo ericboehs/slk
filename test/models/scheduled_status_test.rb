@@ -56,12 +56,15 @@ class ScheduledStatusTest < Minitest::Test
     assert_equal false, status.active
   end
 
-  def test_from_api_tolerates_nil_payload
-    status = Slk::Models::ScheduledStatus.from_api(nil)
+  # Every field is coerced, so an unguarded payload of any shape would produce
+  # a plausible-looking record with an empty id — one that prints as a blank
+  # line and never matches the id a caller is searching for.
+  def test_from_api_rejects_payloads_it_cannot_identify
+    [nil, 'CS0BMQDDGWTU', [], {}, { 'id' => '' }, { 'text' => 'Vet Appt' }].each do |payload|
+      error = assert_raises(Slk::ApiError) { Slk::Models::ScheduledStatus.from_api(payload) }
 
-    assert_equal '', status.id
-    assert_equal 0, status.date_scheduled
-    refute status.dnd
+      assert_equal :malformed_scheduled_status, error.code
+    end
   end
 
   def test_from_api_tolerates_missing_keys
@@ -127,5 +130,12 @@ class ScheduledStatusTest < Minitest::Test
   def test_to_s_flags_dnd
     assert_includes build('is_dnd' => true).to_s, '[dnd]'
     refute_includes build.to_s, '[dnd]'
+  end
+
+  # The difference between "will happen" and "is happening" — the one entry in
+  # a `slk status scheduled` list that is already showing on your profile.
+  def test_to_s_flags_the_status_slack_has_already_applied
+    assert_includes build('is_active' => true).to_s, '[active]'
+    refute_includes build.to_s, '[active]'
   end
 end

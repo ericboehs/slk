@@ -10,7 +10,9 @@ module Slk
     class Status < Base
       include Support::InlineImages
 
-      MISSING_RANGE = 'Missing time range. Example: slk status schedule "Vet Appt" :paw_prints: 1:30p-3:30p'
+      SCHEDULE_USAGE = 'Usage: slk status schedule "<text>" [:emoji:] <start-end> | --start WHEN [--end WHEN]'
+      MISSING_RANGE = 'Missing time range. Example: slk status schedule "Vet Appt" :paw_prints: 1:30p-3:30p ' \
+                      '(or --start/--end for a multi-day window).'
 
       def execute
         result = validate_options
@@ -41,13 +43,24 @@ module Slk
 
       def handle_option(arg, args, remaining)
         case arg
-        when '-p', '--presence' then @options[:presence] = args.shift
-        when '-d', '--dnd' then @options[:dnd] = args.shift
+        when '-p', '--presence' then @options[:presence] = option_value(arg, args)
+        when '-d', '--dnd' then @options[:dnd] = option_value(arg, args)
         when '--with-dnd' then @options[:with_dnd] = true
-        when '--start' then @options[:start_at] = args.shift
-        when '--end' then @options[:end_at] = args.shift
+        when '--start' then @options[:start_at] = option_value(arg, args)
+        when '--end' then @options[:end_at] = option_value(arg, args)
         else super
         end
+      end
+
+      # A bare `args.shift` returns nil for a trailing flag, and `--end` with no
+      # value would then read as "no end wanted" — scheduling a status that
+      # never expires, silently. A following flag is the same mistake one token
+      # later: `--end --with-dnd` would take "--with-dnd" as the time.
+      def option_value(flag, args)
+        value = args.first
+        raise UsageError, "#{flag} requires a value." if value.nil? || value.start_with?('-')
+
+        args.shift
       end
 
       def help_text
@@ -245,7 +258,7 @@ module Slk
 
       def schedule_status(args)
         text, *rest = args
-        return error('Usage: slk status schedule "<text>" [:emoji:] <start-end>') if text.nil?
+        return error(SCHEDULE_USAGE) if text.to_s.strip.empty?
 
         window = parse_schedule_window(rest)
         return 1 unless window
@@ -255,8 +268,9 @@ module Slk
         result
       end
 
-      # The rescue covers only the parsing. Wrapping the API call too would
-      # report a Slack or coercion failure as if the user mistyped the range.
+      # Narrow on both axes: only the parsing is covered, so a Slack failure is
+      # not reported as a mistyped range, and only TimeFormatError is caught, so
+      # an arity or range error from this code does not surface as user error.
       def parse_schedule_window(rest)
         return flag_window(rest) if @options[:start_at] || @options[:end_at]
 
@@ -264,7 +278,7 @@ module Slk
         return reject_window(MISSING_RANGE) unless range
 
         Support::TimeRangeParser.parse(range)
-      rescue ArgumentError => e
+      rescue TimeFormatError => e
         error(e.message)
         nil
       end
@@ -287,7 +301,7 @@ module Slk
         # An explicit end is unambiguous, so there is nothing to roll forward.
         return ends_at if ends_at > starts_at
 
-        raise ArgumentError, "--end #{@options[:end_at]} is not after --start #{@options[:start_at]}."
+        raise TimeFormatError, "--end #{@options[:end_at]} is not after --start #{@options[:start_at]}."
       end
 
       # Returns nil so the caller reads it as "no window, already reported".
@@ -311,7 +325,7 @@ module Slk
         joined = candidates.join(' ')
         return joined if Support::TimeRangeParser.match?(joined)
 
-        raise ArgumentError, "Unrecognized argument: #{joined}. Use #{Support::TimeRangeParser::EXAMPLE}"
+        raise TimeFormatError, "Unrecognized argument: #{joined}. Use #{Support::TimeRangeParser::EXAMPLE}"
       end
 
       # Each workspace is an independent call, so one failure must not strand
@@ -361,8 +375,9 @@ module Slk
         id = args.first
         return error('Usage: slk status unschedule <id>') if id.to_s.strip.empty?
 
+        @unchecked = []
         targets = unschedule_targets(id)
-        return error("No scheduled status #{id} found. Run 'slk status scheduled' to list IDs.") if targets.empty?
+        return report_id_not_found(id) if targets.empty?
 
         each_workspace_reporting(targets) do |workspace|
           runner.custom_status_api(workspace.name).delete_scheduled(id)
@@ -384,11 +399,27 @@ module Slk
         [workspaces.find { |workspace| owns_scheduled?(workspace, id) }].compact
       end
 
+      # "Not found" is only true of the workspaces we actually reached. Saying
+      # it flatly after warning that one could not be checked contradicts the
+      # warning, and pointing at `slk status scheduled` would just fail the
+      # same way — it calls the same endpoint.
+      def report_id_not_found(id)
+        return error("No scheduled status #{id} found. Run 'slk status scheduled' to list IDs.") if @unchecked.empty?
+
+        error("#{id} was not found, but #{@unchecked.join(', ')} could not be checked. " \
+              'Retry, or name the workspace with -w to cancel it directly.')
+      end
+
       def owns_scheduled?(workspace, id)
         runner.custom_status_api(workspace.name).scheduled.any? { |status| status.id == id }
+      rescue RateLimitError
+        # Every remaining check spends another call against the same limit, so
+        # continuing turns one rate limit into several and still cannot answer.
+        raise
       rescue ApiError => e
-        # Skipping it silently could report "not found" for an ID that exists.
+        # Skipping it silently would report "not found" for an ID that exists.
         warn("Could not check #{workspace.name}: #{e.message}")
+        @unchecked << workspace.name
         false
       end
 

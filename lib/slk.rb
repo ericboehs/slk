@@ -12,6 +12,17 @@ require 'io/console'
 module Slk
   class Error < StandardError; end
 
+  # The invocation itself was wrong (a flag with no value, an unparseable
+  # time). The message is written for the user and is printed verbatim, with
+  # no "Error type:" label, because there is no internal fault to report.
+  class UsageError < Error; end
+
+  # A time or range the user typed that cannot be understood. Separate from
+  # UsageError so callers can rescue *only* malformed input: a blanket
+  # `rescue ArgumentError` around a parse call also swallows arity and range
+  # errors from the code itself and presents them as if the user mistyped.
+  class TimeFormatError < UsageError; end
+
   # Errors from any Slack-API-shaped failure: HTTP errors, network errors,
   # logical Slack errors (user_not_found, missing_scope, etc.), JSON parse
   # failures. The optional `code` symbol lets callers match specific cases

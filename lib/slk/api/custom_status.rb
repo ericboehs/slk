@@ -54,19 +54,26 @@ module Slk
         Models::ScheduledStatus.from_api(confirmed_schedule(response))
       end
 
+      # Slack answers a delete of an unknown id with ok: true, so a bare call
+      # cannot tell "cancelled" from "there was nothing there". Confirm against
+      # the list rather than let the caller print a success either way.
       def delete_scheduled(custom_status_id)
         @api.post_form(@workspace, 'users.customStatus.deleteScheduled',
                        { custom_status_id: custom_status_id })
+
+        return unless scheduled.any? { |status| status.id == custom_status_id }
+
+        raise ApiError.new("Slack reported success but #{custom_status_id} is still scheduled.",
+                           code: :delete_not_applied)
       end
 
       private
 
       # A create that reports ok without echoing back the status it made has
-      # not demonstrably created anything, and a blank model would print as a
-      # successful schedule with no ID.
+      # not demonstrably created anything.
       def confirmed_schedule(response)
         payload = response['scheduled_status']
-        return payload if payload.is_a?(Hash) && !payload['id'].to_s.empty?
+        return payload if payload.is_a?(Hash)
 
         raise ApiError.new('Slack accepted the request but returned no scheduled status, so nothing was confirmed. ' \
                            'Check the Slack status picker to see whether it was created.',
