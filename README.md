@@ -63,10 +63,16 @@ slk status unschedule CS0BMQDDGWTU                            # Cancel one (find
 ```
 
 A single am/pm carries across the range, so `1-3p` is 1pm to 3pm — unless that
-would invert it, leaving `9-5p` as 9am to 5pm. A range with no am/pm on either
-side is read literally, so `9-5` would mean 09:00 until 05:00 the next morning;
-that is rejected rather than guessed at. Overnight windows are fine once you
-say which is which — `11p-1a`, `8p-9a` and `20:00-09:00` all work.
+would invert it, leaving `9-5p` as 9am to 5pm. Anything the am/pm cannot settle
+is read as a 24-hour time, which is usually right but occasionally means the
+opposite of what you typed: `9-5` and `9a-5` both come out as 9am until 5am the
+next morning. Windows that land that way — guessed, crossing midnight, and over
+12 hours — are rejected rather than scheduled, so add the second am/pm (`9a-5p`)
+or use 24-hour times (`9:00-17:00`).
+
+Overnight windows are fine when they say so. A meridiem on both sides (`11p-1a`,
+`8p-9a`) or a 24-hour time on either side (`20:00-09:00`, `20:00-6`) settles the
+range, and a pm start is enough on its own: `9p-5` is 9pm to 5am.
 
 A `start-end` range writes the date once and the end can only reach the next
 day, so multi-day windows use `--start` / `--end` instead. Each takes

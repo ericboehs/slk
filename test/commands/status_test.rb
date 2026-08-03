@@ -687,6 +687,26 @@ class StatusCommandTest < Minitest::Test
     refute_includes @io.string, 'Cancelled'
   end
 
+  # The delete went through and only the confirming read failed, so this is a
+  # success with a caveat — not the exit 1 that would tell the user to go
+  # cancel it again.
+  def test_unschedule_qualifies_a_cancel_it_could_not_confirm
+    runner = three_workspaces
+    # Accept the delete, then fail the read that would have proved it.
+    @mock_client.define_singleton_method(:post_form) do |workspace, method, params = {}|
+      @calls << { workspace: workspace.name, method: method, params: params }
+      raise Slk::ApiError.new('network error', code: :network_error) if method == 'users.customStatus.list'
+
+      { 'ok' => true }
+    end
+
+    result, = run_status(['unschedule', 'CS0BMQDDGWTU', '-w', 'beta'], runner: runner)
+
+    assert_equal 0, result
+    assert_includes @err.string, 'could not confirm'
+    assert_includes @err.string, 'network error'
+  end
+
   def test_unschedule_rejects_a_blank_id
     result, = run_status(['unschedule', '  '])
 

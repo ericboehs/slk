@@ -52,17 +52,6 @@ module Slk
         end
       end
 
-      # A bare `args.shift` returns nil for a trailing flag, and `--end` with no
-      # value would then read as "no end wanted" — scheduling a status that
-      # never expires, silently. A following flag is the same mistake one token
-      # later: `--end --with-dnd` would take "--with-dnd" as the time.
-      def option_value(flag, args)
-        value = args.first
-        raise UsageError, "#{flag} requires a value." if value.nil? || value.start_with?('-')
-
-        args.shift
-      end
-
       def help_text
         help = Support::HelpFormatter.new('slk status [text] [emoji] [duration] [options]')
         help.description('Get or set your Slack status.')
@@ -380,9 +369,18 @@ module Slk
         return report_id_not_found(id) if targets.empty?
 
         each_workspace_reporting(targets) do |workspace|
-          runner.custom_status_api(workspace.name).delete_scheduled(id)
-          success("Cancelled scheduled status on #{workspace.name}")
+          outcome, reason = runner.custom_status_api(workspace.name).delete_scheduled(id)
+          report_cancelled(workspace, outcome, reason)
         end
+      end
+
+      # The delete succeeded either way, so both are successes — but only one
+      # of them has been checked, and saying so is the difference between the
+      # user moving on and the user re-cancelling something already gone.
+      def report_cancelled(workspace, outcome, reason)
+        return success("Cancelled scheduled status on #{workspace.name}") if outcome == :cancelled
+
+        warn("Cancelled scheduled status on #{workspace.name}, but could not confirm it: #{reason}")
       end
 
       # `slk status scheduled` lists every workspace, so the obvious next step

@@ -80,7 +80,12 @@ module Slk
 
       def post(workspace, method, params = {})
         @calls << { workspace: workspace.name, method: method, params: params }
-        @responses[method] || { 'ok' => true }
+        response = @responses[method] || { 'ok' => true }
+        # Stubbing an exception simulates the call failing rather than
+        # returning an error payload — a network drop, a rate limit.
+        raise response if response.is_a?(Exception)
+
+        response
       end
 
       def get(workspace, method, params = {})

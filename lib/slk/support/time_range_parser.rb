@@ -21,6 +21,12 @@ module Slk
 
       EXAMPLE = '1:30p-3:30p or 2026-08-04 13:30-15:30'
 
+      # Longest overnight window accepted when a reading had to be guessed.
+      # Twelve hours is not a policy about window length — an explicit
+      # "8p-9a" is longer and fine — it is the point past which a guessed
+      # crossing can no longer be what the user meant.
+      MAX_GUESSED_OVERNIGHT_MINUTES = 12 * 60
+
       # @param input [String] the range to parse
       # @param now [Time] reference point for rolling bare times forward
       # @return [Array(Integer, Integer)] start and end Unix timestamps
@@ -101,31 +107,38 @@ module Slk
       end
 
       # "9-5" almost always means 9am-5pm, but reads literally as 09:00 to
-      # 05:00 the next morning — a 20-hour window nobody asked for.
+      # 05:00 the next morning — a 20-hour window nobody asked for. So is
+      # "9a-5", where the am/pm is there but on the wrong side to help.
       #
-      # Rejecting *every* ambiguous midnight crossing rather than capping the
-      # length is not a shortcut: with both sides bare and in 1..12, the widest
-      # such window that fits in 12 hours would need the two to be 12 hours
-      # apart, which no pair of 12-hour clock readings can be. They are all too
-      # long, so there is no threshold worth writing down.
-      #
-      # This applies only where a reading had to be guessed. "8p-9a" and
-      # "20:00-09:00" are 13-hour nights that say exactly what they mean.
+      # Only guessed readings are checked, and only past 12 hours, which is
+      # what separates the mistake from the intent. An overnight shift written
+      # with a pm start ("9p-5", "10p-2") can only come out 12 hours or less;
+      # a dropped meridiem ("9-5", "9a-5", "10-5a") can only come out longer.
       def validate_overnight(input, start_parts, end_parts)
-        return unless ambiguous?(start_parts, end_parts)
+        return unless guessed?(start_parts, end_parts)
 
         span = overnight_minutes(start_parts, end_parts)
-        return unless span
+        return if span.nil? || span <= MAX_GUESSED_OVERNIGHT_MINUTES
 
         raise TimeFormatError,
               "Time range #{input} reads as crossing midnight and spans #{format_span(span)}. " \
-              'Add am/pm (9a-5p), use 24-hour times (9:00-17:00), or --start/--end for a multi-day window.'
+              'Add am/pm to both sides (9a-5p), use 24-hour times (9:00-17:00), ' \
+              'or --start/--end for a multi-day window.'
       end
 
-      # Ambiguous only if neither side settles the notation. A single am/pm, or
-      # a single hour too large to be 12-hour ("20:00"), fixes how to read both.
-      def ambiguous?(start_parts, end_parts)
-        @clock.ambiguous?(start_parts) && @clock.ambiguous?(end_parts)
+      # True when a side's reading had to be guessed.
+      #
+      # A leftover ambiguous side is not enough on its own: in "20:00-6" the
+      # 24-hour start settles the whole range, so "6" is 6am and was not
+      # guessed. Without such an anchor, any side still bare after
+      # `infer_meridiems` was read as 24-hour for want of anything better —
+      # either because no meridiem was given at all ("9-5"), or because
+      # borrowing the one that was given would have inverted the range
+      # ("9a-5", where 5am precedes 9am).
+      def guessed?(start_parts, end_parts)
+        return false if @clock.twenty_four_hour?(start_parts) || @clock.twenty_four_hour?(end_parts)
+
+        @clock.ambiguous?(start_parts) || @clock.ambiguous?(end_parts)
       end
 
       # Wall-clock minutes from start to end across midnight, or nil when the

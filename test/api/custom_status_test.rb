@@ -167,4 +167,60 @@ class CustomStatusApiTest < Minitest::Test
     assert_equal :delete_not_applied, error.code
     assert_includes error.message, 'is still scheduled'
   end
+
+  def test_delete_scheduled_reports_a_confirmed_cancel
+    @mock_client.stub('users.customStatus.deleteScheduled', { 'ok' => true })
+    @mock_client.stub('users.customStatus.list', { 'ok' => true, 'scheduled_statuses' => [] })
+
+    assert_equal [:cancelled, nil], @api.delete_scheduled('CS0BMQDDGWTU')
+  end
+
+  # The delete was already accepted; only the read that would have proved it
+  # failed. Raising here would tell the user their cancel failed when it did
+  # not, sending them back to re-cancel something already gone.
+  def test_delete_scheduled_separates_an_unreadable_confirmation_from_a_failure
+    @mock_client.stub('users.customStatus.deleteScheduled', { 'ok' => true })
+    @mock_client.stub('users.customStatus.list', Slk::ApiError.new('network error', code: :network_error))
+
+    outcome, reason = @api.delete_scheduled('CS0BMQDDGWTU')
+
+    assert_equal :unconfirmed, outcome
+    assert_includes reason, 'network error'
+  end
+
+  # Cancelling your only scheduled status is exactly when Slack drops the
+  # section, so this path is likelier than it looks.
+  def test_delete_scheduled_is_unconfirmed_when_the_section_goes_missing
+    @mock_client.stub('users.customStatus.deleteScheduled', { 'ok' => true })
+    @mock_client.stub('users.customStatus.list', { 'ok' => true })
+
+    outcome, = @api.delete_scheduled('CS0BMQDDGWTU')
+
+    assert_equal :unconfirmed, outcome
+  end
+
+  # The confirming read hits the same `list` method a multi-workspace sweep
+  # just used, so it is the likeliest call to be limited — and the least
+  # worth abandoning the sweep over, since the delete already went through.
+  def test_delete_scheduled_is_unconfirmed_when_the_confirmation_is_rate_limited
+    @mock_client.stub('users.customStatus.deleteScheduled', { 'ok' => true })
+    @mock_client.stub('users.customStatus.list', Slk::RateLimitError.new('ratelimited', retry_after: 30))
+
+    outcome, = @api.delete_scheduled('CS0BMQDDGWTU')
+
+    assert_equal :unconfirmed, outcome
+  end
+
+  # Falling through to ScheduledStatus.validate! would swap this for "no id:
+  # {}", which tells the user nothing they can do about it.
+  def test_schedule_reports_an_unusable_response_in_terms_of_what_to_check
+    @mock_client.stub('users.customStatus.schedule', { 'ok' => true, 'scheduled_status' => {} })
+
+    error = assert_raises(Slk::ApiError) do
+      @api.schedule(text: 'Vet Appt', emoji: ':paw_prints:', date_scheduled: 1_785_781_800)
+    end
+
+    assert_equal :malformed_schedule_response, error.code
+    assert_includes error.message, 'status picker'
+  end
 end

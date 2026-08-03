@@ -86,7 +86,10 @@ module Slk
     def handle_known_error(error)
       label = error_label(error)
       @output.error(label ? "#{label}: #{error.message}" : error.message)
-      log_error(error)
+      # error.log exists to investigate faults after the fact. A mistyped flag
+      # or an unparseable time is not one, and filing a backtrace for it both
+      # buries the real entries and contradicts what UsageError promises.
+      log_error(error) unless error.is_a?(UsageError)
       1
     end
 

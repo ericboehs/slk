@@ -54,26 +54,54 @@ module Slk
         Models::ScheduledStatus.from_api(confirmed_schedule(response))
       end
 
-      # Slack answers a delete of an unknown id with ok: true, so a bare call
-      # cannot tell "cancelled" from "there was nothing there". Confirm against
-      # the list rather than let the caller print a success either way.
+      # Slack answers a delete with ok: true whether or not anything changed —
+      # including for an id that never existed — so the response alone is not
+      # evidence. Re-reading the list at least catches an accepted delete that
+      # did not apply. It cannot distinguish "cancelled" from "was never
+      # there": both leave the id absent. `unschedule` covers that case ahead
+      # of time by finding the workspace that owns the id.
+      #
+      # @return [Array(Symbol, String, nil)] `[:cancelled, nil]`, or
+      #   `[:unconfirmed, reason]` when the delete was accepted but the
+      #   following read failed. Those are different things: only the second
+      #   read failed, and reporting it as a failed *cancel* would send the
+      #   user back to re-cancel something already gone.
+      # @raise [ApiError] only when the status is demonstrably still there
       def delete_scheduled(custom_status_id)
         @api.post_form(@workspace, 'users.customStatus.deleteScheduled',
                        { custom_status_id: custom_status_id })
-
-        return unless scheduled.any? { |status| status.id == custom_status_id }
-
-        raise ApiError.new("Slack reported success but #{custom_status_id} is still scheduled.",
-                           code: :delete_not_applied)
+        confirm_deleted(custom_status_id)
       end
 
       private
 
+      # The delete has already been accepted by the time this runs, so this
+      # only decides how much can honestly be said about it. A read that
+      # fails — including a rate-limited one, since the confirming read hits
+      # the same `list` method a multi-workspace sweep just used — is a
+      # failure to look, not a failure to delete.
+      def confirm_deleted(custom_status_id)
+        return [:cancelled, nil] unless scheduled.any? { |status| status.id == custom_status_id }
+
+        raise ApiError.new("Slack reported success but #{custom_status_id} is still scheduled.",
+                           code: :delete_not_applied)
+      rescue ApiError => e
+        raise if e.code == :delete_not_applied
+
+        [:unconfirmed, e.message]
+      end
+
       # A create that reports ok without echoing back the status it made has
       # not demonstrably created anything.
+      #
+      # The id check duplicates ScheduledStatus.validate!, deliberately:
+      # letting an id-less payload through to that guard trades this message
+      # for "Slack returned a scheduled status with no id: {}", which tells
+      # the user nothing they can act on. Here the answer is the same either
+      # way — go look at the picker.
       def confirmed_schedule(response)
         payload = response['scheduled_status']
-        return payload if payload.is_a?(Hash)
+        return payload if payload.is_a?(Hash) && !payload['id'].to_s.empty?
 
         raise ApiError.new('Slack accepted the request but returned no scheduled status, so nothing was confirmed. ' \
                            'Check the Slack status picker to see whether it was created.',

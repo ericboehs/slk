@@ -145,6 +145,50 @@ class CLITest < Minitest::Test
     assert_includes @output.stderr, 'rate_limited'
   end
 
+  # A mistyped flag is the user's to fix, so the message stands alone — no
+  # "Error type:" prefix pointing at an internal fault that does not exist.
+  def test_usage_error_is_reported_without_a_label
+    cli = Slk::CLI.new(['help'], output: @output)
+
+    cli.define_singleton_method(:run_command) do |_name, _args|
+      raise Slk::UsageError, '--end requires a value.'
+    end
+
+    result = cli.run
+
+    assert_equal 1, result
+    assert_includes @output.stderr, '--end requires a value.'
+    refute_includes @output.stderr, 'error:'
+  end
+
+  # error.log is for investigating faults later. Filing a typo there buries
+  # the entries that are worth reading.
+  def test_usage_error_is_not_written_to_the_error_log
+    cli = Slk::CLI.new(['help'], output: @output)
+    logged = []
+    cli.define_singleton_method(:log_error) { |error| logged << error }
+    cli.define_singleton_method(:run_command) do |_name, _args|
+      raise Slk::UsageError, '--end requires a value.'
+    end
+
+    cli.run
+
+    assert_empty logged
+  end
+
+  def test_api_error_is_written_to_the_error_log
+    cli = Slk::CLI.new(['help'], output: @output)
+    logged = []
+    cli.define_singleton_method(:log_error) { |error| logged << error }
+    cli.define_singleton_method(:run_command) do |_name, _args|
+      raise Slk::ApiError, 'rate_limited'
+    end
+
+    cli.run
+
+    assert_equal 1, logged.size
+  end
+
   def test_interrupt_handling
     cli = Slk::CLI.new(['help'], output: @output)
 

@@ -113,6 +113,43 @@ class TimeRangeParserTest < Minitest::Test
     assert_includes error.message, '9a-5p'
   end
 
+  # The likeliest form of the mistake: the am/pm is there, but on the side
+  # that did not need it. The borrow is declined because 5am precedes 9am, so
+  # "5" falls back to 05:00 and the window silently runs 20 hours.
+  def test_rejects_overlong_window_when_the_meridiem_is_on_the_wrong_side
+    { '9a-5' => '20 hours', '10a-6' => '20 hours', '11a-1' => '14 hours' }.each do |range, span|
+      error = assert_raises(Slk::TimeFormatError) { parse(range) }
+
+      assert_includes error.message, span
+    end
+  end
+
+  # Mirror image: the bare side is the start, and "10" falls back to 10:00.
+  def test_rejects_overlong_window_when_the_bare_side_is_the_start
+    error = assert_raises(Slk::TimeFormatError) { parse('10-5a') }
+
+    assert_includes error.message, 'spans 19 hours'
+  end
+
+  # A pm start says "overnight" clearly enough that the bare end can only be
+  # the next morning. These are the shifts the rule must not catch.
+  def test_allows_overnight_window_implied_by_a_pm_start
+    { '9p-5' => 5, '10p-9' => 9, '10p-2' => 2 }.each do |range, end_hour|
+      _, ends_at = parse(range)
+
+      assert_equal Time.new(2026, 8, 4, end_hour, 0, 0).to_i, ends_at
+    end
+  end
+
+  # A 24-hour time on either side settles how to read the other, so nothing is
+  # guessed and the length is the user's business.
+  def test_allows_bare_end_anchored_by_a_twenty_four_hour_start
+    starts_at, ends_at = parse('20:00-6')
+
+    assert_equal Time.new(2026, 8, 3, 20, 0, 0).to_i, starts_at
+    assert_equal Time.new(2026, 8, 4, 6, 0, 0).to_i, ends_at
+  end
+
   # The bound exists to catch a *missing* am/pm. These say exactly what they
   # mean, so a 13-hour night is the user's call, not a typo to second-guess.
   def test_allows_long_overnight_window_when_the_meridiem_is_explicit

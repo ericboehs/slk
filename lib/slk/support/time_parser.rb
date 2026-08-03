@@ -79,6 +79,11 @@ module Slk
       # given, and an hour small enough that both readings are plausible.
       def ambiguous?(parts) = parts[2].nil? && CLOCK_HOURS.cover?(parts[0].to_i)
 
+      # The opposite: a bare hour too large to be a 12-hour clock reading, so
+      # the writer was plainly using 24-hour notation. TimeRangeParser treats
+      # one of these as settling how to read the *other* side of a range.
+      def twenty_four_hour?(parts) = parts[2].nil? && !CLOCK_HOURS.cover?(parts[0].to_i)
+
       private
 
       def build(date, hours, minutes) = Time.new(date.year, date.month, date.day, hours, minutes, 0)
