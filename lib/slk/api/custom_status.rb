@@ -18,8 +18,8 @@ module Slk
         @workspace = workspace
       end
 
-      # @return [Hash] raw response with 'statuses' (recent) and
-      #   'scheduled_statuses' (pending) keys
+      # @return [Hash] raw response; 'statuses' (recent) and 'scheduled_statuses'
+      #   (pending) are each absent when Slack omits the section
       def list(count_per_section: DEFAULT_SECTION_COUNT)
         @api.post_form(@workspace, 'users.customStatus.list',
                        { statuses_count_per_section: count_per_section.to_s })
@@ -28,7 +28,17 @@ module Slk
       # @return [Array<Models::ScheduledStatus>] pending statuses only
       def scheduled(count_per_section: DEFAULT_SECTION_COUNT)
         response = list(count_per_section: count_per_section)
-        (response['scheduled_statuses'] || []).map { |item| Models::ScheduledStatus.from_api(item) }
+        section = response['scheduled_statuses']
+        # An absent section is a protocol change, not an empty list. Reporting
+        # it as "none scheduled" would invite the user to re-create statuses
+        # that still exist.
+        unless section.is_a?(Array)
+          raise ApiError.new('Slack returned no scheduled_statuses section; this internal endpoint may have changed. ' \
+                             'Check the Slack status picker before re-scheduling.',
+                             code: :missing_scheduled_section)
+        end
+
+        section.map { |item| Models::ScheduledStatus.from_api(item) }
       end
 
       # @param date_scheduled [Integer] Unix timestamp the status turns on
@@ -41,12 +51,26 @@ module Slk
         params[:is_dnd] = 'true' if dnd
 
         response = @api.post_form(@workspace, 'users.customStatus.schedule', params)
-        Models::ScheduledStatus.from_api(response['scheduled_status'])
+        Models::ScheduledStatus.from_api(confirmed_schedule(response))
       end
 
       def delete_scheduled(custom_status_id)
         @api.post_form(@workspace, 'users.customStatus.deleteScheduled',
                        { custom_status_id: custom_status_id })
+      end
+
+      private
+
+      # A create that reports ok without echoing back the status it made has
+      # not demonstrably created anything, and a blank model would print as a
+      # successful schedule with no ID.
+      def confirmed_schedule(response)
+        payload = response['scheduled_status']
+        return payload if payload.is_a?(Hash) && !payload['id'].to_s.empty?
+
+        raise ApiError.new('Slack accepted the request but returned no scheduled status, so nothing was confirmed. ' \
+                           'Check the Slack status picker to see whether it was created.',
+                           code: :malformed_schedule_response)
       end
     end
   end

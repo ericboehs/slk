@@ -15,10 +15,16 @@ module Slk
           emoji: data['emoji'].to_s,
           date_scheduled: data['date_scheduled'].to_i,
           date_expire: data['date_expire'].to_i,
-          dnd: data['is_dnd'] == true,
-          active: data['is_active'] == true
+          dnd: truthy?(data['is_dnd']),
+          active: truthy?(data['is_active'])
         )
       end
+
+      # These endpoints are string-typed on the way in — Api::CustomStatus sends
+      # is_dnd as 'true' — so a strict `== true` would quietly read a scheduled
+      # DND back as off. Accept the shapes Slack actually uses.
+      def self.truthy?(value) = [true, 'true', 1, '1'].include?(value)
+      private_class_method :truthy?
 
       def starts_at = date_scheduled.positive? ? Time.at(date_scheduled) : nil
       def ends_at = date_expire.positive? ? Time.at(date_expire) : nil

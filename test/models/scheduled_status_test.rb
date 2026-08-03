@@ -39,6 +39,23 @@ class ScheduledStatusTest < Minitest::Test
     assert_equal true, status.active
   end
 
+  # Api::CustomStatus sends is_dnd as the string 'true', so this endpoint
+  # family is not reliably JSON-boolean. A strict `== true` read a scheduled
+  # DND back as off, with no error to explain the missing [dnd] marker.
+  def test_from_api_accepts_string_and_numeric_booleans
+    status = build('is_dnd' => 'true', 'is_active' => 1)
+
+    assert_equal true, status.dnd
+    assert_equal true, status.active
+  end
+
+  def test_from_api_treats_unrecognized_values_as_false
+    status = build('is_dnd' => 'false', 'is_active' => nil)
+
+    assert_equal false, status.dnd
+    assert_equal false, status.active
+  end
+
   def test_from_api_tolerates_nil_payload
     status = Slk::Models::ScheduledStatus.from_api(nil)
 

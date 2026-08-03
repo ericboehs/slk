@@ -169,6 +169,7 @@ module Slk
     autoload :TextWrapper, 'slk/support/text_wrapper'
     autoload :InteractivePrompt, 'slk/support/interactive_prompt'
     autoload :DateParser, 'slk/support/date_parser'
+    autoload :TimeParser, 'slk/support/time_parser'
     autoload :TimeRangeParser, 'slk/support/time_range_parser'
   end
 end

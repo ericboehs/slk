@@ -10,6 +10,16 @@ class TimeRangeParserTest < Minitest::Test
     Slk::Support::TimeRangeParser.parse(input, now: now)
   end
 
+  # DST cases only mean anything against a fixed zone; the suite otherwise
+  # inherits whatever TZ the machine has.
+  def with_timezone(zone)
+    original = ENV.fetch('TZ', nil)
+    ENV['TZ'] = zone
+    yield
+  ensure
+    ENV['TZ'] = original
+  end
+
   def test_parses_twelve_hour_range_on_the_same_day
     starts_at, ends_at = parse('1:30p-3:30p')
 
@@ -63,6 +73,102 @@ class TimeRangeParserTest < Minitest::Test
 
     assert_equal Time.new(2026, 8, 3, 12, 0, 0).to_i + 86_400, starts_at
     assert_equal Time.new(2026, 8, 5, 0, 0, 0).to_i, ends_at
+  end
+
+  def test_bare_start_borrows_the_end_meridiem
+    starts_at, ends_at = parse('1-3p')
+
+    assert_equal Time.new(2026, 8, 3, 13, 0, 0).to_i, starts_at
+    assert_equal Time.new(2026, 8, 3, 15, 0, 0).to_i, ends_at
+  end
+
+  # 10a has passed at the noon reference, so the whole window rolls forward.
+  def test_bare_end_borrows_the_start_meridiem
+    starts_at, ends_at = parse('10a-11')
+
+    assert_equal Time.new(2026, 8, 4, 10, 0, 0).to_i, starts_at
+    assert_equal Time.new(2026, 8, 4, 11, 0, 0).to_i, ends_at
+  end
+
+  # Borrowing "p" would make 9pm-5pm, so 9 stays the 24-hour hour it looks like.
+  def test_meridiem_is_not_borrowed_when_it_would_invert_the_range
+    starts_at, ends_at = parse('9-5p')
+
+    assert_equal Time.new(2026, 8, 4, 9, 0, 0).to_i, starts_at
+    assert_equal Time.new(2026, 8, 4, 17, 0, 0).to_i, ends_at
+  end
+
+  # "10p-2" is 10pm to 2am; borrowing "p" would invert it.
+  def test_bare_end_keeps_overnight_window_when_borrowing_would_invert
+    starts_at, ends_at = parse('10p-2')
+
+    assert_equal Time.new(2026, 8, 3, 22, 0, 0).to_i, starts_at
+    assert_equal Time.new(2026, 8, 4, 2, 0, 0).to_i, ends_at
+  end
+
+  # 13 is not a 12-hour clock hour, so there is nothing to borrow into.
+  def test_twenty_four_hour_start_ignores_the_end_meridiem
+    starts_at, ends_at = parse('13-3p')
+
+    assert_equal Time.new(2026, 8, 3, 13, 0, 0).to_i, starts_at
+    assert_equal Time.new(2026, 8, 3, 15, 0, 0).to_i, ends_at
+  end
+
+  # Neither side names a meridiem, so "5" is 05:00 and the window rolls a full
+  # night. Silently scheduling 20 hours is worse than asking for am/pm.
+  def test_rejects_overlong_window_created_by_rollover
+    error = assert_raises(ArgumentError) { parse('9-5') }
+
+    assert_includes error.message, 'spans 20 hours'
+    assert_includes error.message, '9a-5p'
+  end
+
+  def test_allows_long_window_within_a_single_day
+    starts_at, ends_at = parse('2026-08-04 0:00-23:00')
+
+    assert_equal Time.new(2026, 8, 4, 0, 0, 0).to_i, starts_at
+    assert_equal Time.new(2026, 8, 4, 23, 0, 0).to_i, ends_at
+  end
+
+  def test_rejects_identical_start_and_end
+    error = assert_raises(ArgumentError) { parse('1p-1p') }
+
+    assert_includes error.message, 'starts and ends at the same time'
+  end
+
+  # Ruby shifts a local time DST skips rather than raising, which previously
+  # collapsed the window onto the start and rolled it a full day.
+  def test_rejects_local_time_skipped_by_dst
+    with_timezone('America/Chicago') do
+      error = assert_raises(ArgumentError) { parse('2026-03-08 2:30-3:30') }
+
+      assert_includes error.message, 'does not exist'
+    end
+  end
+
+  def test_overnight_window_across_spring_forward_stays_short
+    with_timezone('America/Chicago') do
+      starts_at, ends_at = parse('2026-03-07 11p-1a')
+
+      assert_equal Time.new(2026, 3, 7, 23, 0, 0).to_i, starts_at
+      assert_equal Time.new(2026, 3, 8, 1, 0, 0).to_i, ends_at
+    end
+  end
+
+  # Date arithmetic, not +86_400, so the roll survives a DST boundary.
+  def test_roll_to_tomorrow_across_spring_forward_keeps_wall_clock_time
+    with_timezone('America/Chicago') do
+      starts_at, = parse('9a-5p', now: Time.new(2026, 3, 7, 10, 0, 0))
+
+      assert_equal Time.new(2026, 3, 8, 9, 0, 0).to_i, starts_at
+    end
+  end
+
+  def test_rejects_nonexistent_calendar_date
+    error = assert_raises(ArgumentError) { parse('2026-02-30 9:00-10:00') }
+
+    assert_includes error.message, 'Invalid date: 2026-02-30'
+    assert_includes error.message, Slk::Support::TimeRangeParser::EXAMPLE
   end
 
   def test_rejects_unparseable_input

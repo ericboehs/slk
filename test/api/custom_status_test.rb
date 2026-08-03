@@ -60,10 +60,20 @@ class CustomStatusApiTest < Minitest::Test
     assert_equal 'CS0BMQDDGWTU', scheduled.first.id
   end
 
-  def test_scheduled_returns_empty_when_section_absent
-    @mock_client.stub('users.customStatus.list', { 'ok' => true, 'statuses' => [] })
+  def test_scheduled_returns_empty_for_an_empty_section
+    @mock_client.stub('users.customStatus.list', { 'ok' => true, 'scheduled_statuses' => [] })
 
     assert_empty @api.scheduled
+  end
+
+  # An absent section means the endpoint changed. Reporting "none scheduled"
+  # would tell the user their statuses were lost when they still exist.
+  def test_scheduled_raises_when_section_absent
+    @mock_client.stub('users.customStatus.list', { 'ok' => true, 'statuses' => [] })
+
+    error = assert_raises(Slk::ApiError) { @api.scheduled }
+    assert_equal :missing_scheduled_section, error.code
+    assert_includes error.message, 'may have changed'
   end
 
   def test_schedule_sends_required_fields
@@ -76,6 +86,26 @@ class CustomStatusApiTest < Minitest::Test
     assert_equal 'Vet Appt', params[:text]
     assert_equal ':paw_prints:', params[:emoji]
     assert_equal '1785781800', params[:date_scheduled]
+  end
+
+  # A create that reports ok but echoes nothing back has confirmed nothing,
+  # and a blank model would print as a green-checked schedule with no ID.
+  def test_schedule_raises_when_response_omits_the_status
+    @mock_client.stub('users.customStatus.schedule', { 'ok' => true })
+
+    error = assert_raises(Slk::ApiError) do
+      @api.schedule(text: 'Vet Appt', emoji: ':paw_prints:', date_scheduled: 1_785_781_800)
+    end
+    assert_equal :malformed_schedule_response, error.code
+  end
+
+  def test_schedule_raises_when_confirmed_status_has_no_id
+    @mock_client.stub('users.customStatus.schedule',
+                      { 'ok' => true, 'scheduled_status' => scheduled_payload.merge('id' => '') })
+
+    assert_raises(Slk::ApiError) do
+      @api.schedule(text: 'Vet Appt', emoji: ':paw_prints:', date_scheduled: 1_785_781_800)
+    end
   end
 
   def test_schedule_includes_expiry_when_given

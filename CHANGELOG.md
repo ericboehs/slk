@@ -11,10 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`slk status schedule|scheduled|unschedule`** — queue statuses to turn on later
   - `slk status schedule "<text>" [:emoji:] <start-end>` schedules a status; emoji defaults to `:speech_balloon:`
-  - Time windows accept bare 12- or 24-hour times (`1:30p-3:30p`, `13:30-15:30`) or an explicit date (`2026-08-04 9:00-17:00`)
-  - Bare times resolve forward: a window that already passed today rolls to tomorrow, and an end at or before the start crosses midnight (`11p-1a`)
+  - Time windows accept bare 12- or 24-hour times (`1:30p-3:30p`, `13:30-15:30`) or an explicit `YYYY-MM-DD` date (`2026-08-04 9:00-17:00`)
+  - Bare times resolve forward: a window at or before now rolls to tomorrow, and an end before the start crosses midnight (`11p-1a`)
+  - A single am/pm carries across the range, so `1-3p` is 1pm to 3pm — unless that would invert it, leaving `9-5p` as 9am to 5pm
+  - Ambiguous or impossible windows are rejected rather than guessed: `9-5` (would silently span 20 hours), `1p-1p`, a time DST skips, and unrecognized date forms such as `8/4` or `tomorrow`
+  - `--start WHEN` / `--end WHEN` take `[YYYY-MM-DD ]TIME` each, for windows the single-date range cannot express: `--start "2026-08-12 8a" --end "2026-08-14 5p"`. Omitting `--end` schedules a status with no expiry
   - `--with-dnd` also pauses notifications while the status is active
-  - `slk status scheduled` lists pending statuses with their IDs; `slk status unschedule <id>` cancels one
+  - `slk status scheduled` lists pending statuses with their IDs across every workspace; `slk status unschedule <id>` looks up which workspace owns the ID rather than assuming the primary one (`-w`/`--all` still override)
   - Backed by Slack's internal `users.customStatus.*` endpoints, which require form-encoded bodies and only return the scheduled section when `statuses_count_per_section` is sent
 
 ## [0.6.0] - 2026-04-27
