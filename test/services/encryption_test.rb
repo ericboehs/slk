@@ -19,7 +19,7 @@ class EncryptionTest < Minitest::Test
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
 
       assert @encryption.validate_key_type!(key_path)
     end
@@ -30,7 +30,7 @@ class EncryptionTest < Minitest::Test
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t rsa -b 2048 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path, type: 'rsa', bits: 2048)
 
       assert @encryption.validate_key_type!(key_path)
     end
@@ -41,7 +41,7 @@ class EncryptionTest < Minitest::Test
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ecdsa -b 256 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path, type: 'ecdsa', bits: 256)
 
       error = assert_raises(Slk::EncryptionError) do
         @encryption.validate_key_type!(key_path)
@@ -69,7 +69,7 @@ class EncryptionTest < Minitest::Test
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
       # Remove the .pub file
       File.delete("#{key_path}.pub")
 
@@ -87,7 +87,7 @@ class EncryptionTest < Minitest::Test
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
       alt_pub_path = "#{dir}/alt_key.pub"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
 
       # Move the pub key to an alternate location
       FileUtils.mv("#{key_path}.pub", alt_pub_path)
@@ -103,7 +103,7 @@ class EncryptionTest < Minitest::Test
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
       # Overwrite the pub file with empty content
       File.write("#{key_path}.pub", '')
 
@@ -122,8 +122,8 @@ class EncryptionTest < Minitest::Test
       # Create two different key pairs
       key1_path = "#{dir}/key1"
       key2_path = "#{dir}/key2"
-      system("ssh-keygen -t ed25519 -f #{key1_path} -N '' -q")
-      system("ssh-keygen -t ed25519 -f #{key2_path} -N '' -q")
+      create_test_ssh_key(key1_path)
+      create_test_ssh_key(key2_path)
 
       # Use key1's private key with key2's public key
       File.write("#{key1_path}.pub", File.read("#{key2_path}.pub"))
@@ -141,7 +141,7 @@ class EncryptionTest < Minitest::Test
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
 
       assert @encryption.validate_key_type!(key_path)
     end
@@ -153,7 +153,7 @@ class EncryptionTest < Minitest::Test
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
       # Create a passphrase-protected key
-      system("ssh-keygen -t ed25519 -f #{key_path} -N 'testpassphrase' -q")
+      create_test_ssh_key(key_path, passphrase: 'testpassphrase')
 
       error = assert_raises(Slk::EncryptionError) do
         @encryption.validate_key_type!(key_path)
@@ -170,13 +170,13 @@ class EncryptionTest < Minitest::Test
     Dir.mktmpdir do |dir|
       # Create an ed25519 private key
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
       # Remove the default pub file
       File.delete("#{key_path}.pub")
 
       # Create an ECDSA key for the prompted public key
       ecdsa_path = "#{dir}/ecdsa_key"
-      system("ssh-keygen -t ecdsa -b 256 -f #{ecdsa_path} -N '' -q")
+      create_test_ssh_key(ecdsa_path, type: 'ecdsa', bits: 256)
 
       @encryption.on_prompt_pub_key = ->(_path) { "#{ecdsa_path}.pub" }
 
@@ -194,13 +194,13 @@ class EncryptionTest < Minitest::Test
     Dir.mktmpdir do |dir|
       # Create first ed25519 key
       key1_path = "#{dir}/key1"
-      system("ssh-keygen -t ed25519 -f #{key1_path} -N '' -q")
+      create_test_ssh_key(key1_path)
       # Remove the default pub file
       File.delete("#{key1_path}.pub")
 
       # Create second ed25519 key (different key pair)
       key2_path = "#{dir}/key2"
-      system("ssh-keygen -t ed25519 -f #{key2_path} -N '' -q")
+      create_test_ssh_key(key2_path)
 
       # Prompt returns key2's public key for key1's private key
       @encryption.on_prompt_pub_key = ->(_path) { "#{key2_path}.pub" }
@@ -233,7 +233,7 @@ class EncryptionTest < Minitest::Test
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
       # Remove the pub file
       File.delete("#{key_path}.pub")
       output_path = "#{dir}/output.age"
@@ -298,7 +298,7 @@ class EncryptionTest < Minitest::Test
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
       File.delete("#{key_path}.pub")
 
       @encryption.on_prompt_pub_key = ->(_path) {}
@@ -312,7 +312,7 @@ class EncryptionTest < Minitest::Test
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
       File.delete("#{key_path}.pub")
 
       @encryption.on_prompt_pub_key = ->(_path) { '/nonexistent/path.pub' }
@@ -327,7 +327,7 @@ class EncryptionTest < Minitest::Test
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
       bad_path = "#{dir}/bad.age"
       File.write(bad_path, 'not a valid age file')
 
@@ -343,7 +343,7 @@ class EncryptionTest < Minitest::Test
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
 
       # Stub Open3.capture3 to simulate ssh-keygen not found
       Open3.stub(:capture3, ->(*_a) { ['', 'command not found', stub_status(false)] }) do
@@ -403,7 +403,7 @@ class EncryptionTest < Minitest::Test
     Dir.mktmpdir do |dir|
       # Create a test SSH key pair using ssh-keygen
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
 
       encrypted_path = "#{dir}/test.age"
       original_content = 'Hello, World! This is secret content.'

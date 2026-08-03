@@ -108,6 +108,25 @@ module Slk
       end
     end
 
+    # Generate a throwaway SSH key for tests that need a real one.
+    #
+    # The array form is load-bearing, not style. As a shell string, `-N ''`
+    # reaches cmd.exe on Windows as a literal two-character passphrase rather
+    # than an empty one; ssh-keygen then prompts, and with stdin still open it
+    # waits forever. That is what hung the Windows CI jobs — one orphaned
+    # ssh-keygen holding a runner until GitHub's six-hour ceiling.
+    #
+    # Closing stdin is the belt to that braces: whatever a future ssh-keygen
+    # decides to ask about, it gets EOF and fails the command instead of
+    # blocking a job that then reports nothing at all.
+    def create_test_ssh_key(path, type: 'ed25519', bits: nil, passphrase: '')
+      args = ['ssh-keygen', '-t', type]
+      args.push('-b', bits.to_s) if bits
+      args.push('-f', path, '-N', passphrase, '-q')
+
+      system(*args, in: File::NULL, out: File::NULL, err: File::NULL)
+    end
+
     # Run a block with TZ set, for assertions that only mean anything in a
     # specific zone (DST transitions).
     #

@@ -254,7 +254,7 @@ class TokenStoreTest < Minitest::Test
 
       # Create a valid ed25519 key
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
 
       store = Slk::Services::TokenStore.new
       messages = []
@@ -273,7 +273,7 @@ class TokenStoreTest < Minitest::Test
     with_temp_config do |dir|
       # Create a valid ed25519 key
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
 
       # Write plaintext tokens first
       write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-test' } })
@@ -300,7 +300,7 @@ class TokenStoreTest < Minitest::Test
 
       # Create a valid ed25519 key
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
 
       store = Slk::Services::TokenStore.new
       store.migrate_encryption(nil, key_path)
@@ -321,7 +321,7 @@ class TokenStoreTest < Minitest::Test
     with_temp_config do |dir|
       # Create a valid ed25519 key
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
 
       # Write plaintext tokens first, then encrypt
       write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-test' } })
@@ -353,8 +353,8 @@ class TokenStoreTest < Minitest::Test
       # Create two different ed25519 keys
       key1_path = "#{dir}/test_key1"
       key2_path = "#{dir}/test_key2"
-      system("ssh-keygen -t ed25519 -f #{key1_path} -N '' -q")
-      system("ssh-keygen -t ed25519 -f #{key2_path} -N '' -q")
+      create_test_ssh_key(key1_path)
+      create_test_ssh_key(key2_path)
 
       # Write plaintext tokens first, then encrypt with key1
       write_tokens_file(dir, { 'myworkspace' => { 'token' => 'xoxb-secret-token' } })
