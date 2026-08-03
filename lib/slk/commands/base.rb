@@ -65,7 +65,7 @@ module Slk
       # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
       def parse_single_option(arg, args, remaining)
         case arg
-        when '-w', '--workspace' then @options[:workspace] = args.shift
+        when '-w', '--workspace' then @options[:workspace] = option_value(arg, args)
         when '--width' then parse_width_option(args)
         when '--no-wrap' then @options[:width] = nil
         when '--all' then @options[:all] = true
@@ -92,6 +92,18 @@ module Slk
       end
 
       protected
+
+      # A bare `args.shift` returns nil for a trailing flag, which then reads
+      # as an option nobody set: `slk status -w` selected *every* workspace
+      # and exited 0, the opposite of what it says. A following flag is the
+      # same mistake one token later — `--end --with-dnd` would take
+      # "--with-dnd" as the time.
+      def option_value(flag, args)
+        value = args.first
+        raise UsageError, "#{flag} requires a value." if value.nil? || value.start_with?('-')
+
+        args.shift
+      end
 
       # Override in subclass to handle command-specific options
       # Return true if option was handled, false to raise unknown option error

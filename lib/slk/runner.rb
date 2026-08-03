@@ -88,6 +88,10 @@ module Slk
       Api::Saved.new(@api_client, workspace(workspace_name))
     end
 
+    def custom_status_api(workspace_name = nil)
+      Api::CustomStatus.new(@api_client, workspace(workspace_name))
+    end
+
     def team_api(workspace_name = nil)
       Api::Team.new(@api_client, workspace(workspace_name))
     end

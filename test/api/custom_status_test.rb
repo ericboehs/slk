@@ -1,0 +1,226 @@
+# frozen_string_literal: true
+
+require 'test_helper'
+
+class CustomStatusApiTest < Minitest::Test
+  def setup
+    @mock_client = MockApiClient.new
+    @workspace = mock_workspace('test')
+    @api = Slk::Api::CustomStatus.new(@mock_client, @workspace)
+  end
+
+  def scheduled_payload(overrides = {})
+    {
+      'id' => 'CS0BMQDDGWTU',
+      'text' => 'Vet Appt',
+      'emoji' => ':paw_prints:',
+      'is_dnd' => false,
+      'is_active' => false,
+      'date_scheduled' => 1_785_781_800,
+      'date_expire' => 1_785_789_000
+    }.merge(overrides)
+  end
+
+  def test_list_calls_the_custom_status_endpoint
+    @mock_client.stub('users.customStatus.list', { 'ok' => true, 'statuses' => [] })
+
+    @api.list
+
+    assert_equal 'users.customStatus.list', @mock_client.calls.last[:method]
+  end
+
+  # Slack omits scheduled_statuses entirely unless this param is sent.
+  def test_list_always_sends_statuses_count_per_section
+    @mock_client.stub('users.customStatus.list', { 'ok' => true })
+
+    @api.list
+
+    assert_equal '20', @mock_client.calls.last[:params][:statuses_count_per_section]
+  end
+
+  def test_list_accepts_a_custom_section_count
+    @mock_client.stub('users.customStatus.list', { 'ok' => true })
+
+    @api.list(count_per_section: 5)
+
+    assert_equal '5', @mock_client.calls.last[:params][:statuses_count_per_section]
+  end
+
+  def test_scheduled_maps_results_to_models
+    @mock_client.stub('users.customStatus.list', {
+                        'ok' => true,
+                        'statuses' => [scheduled_payload('id' => 'RECENT')],
+                        'scheduled_statuses' => [scheduled_payload]
+                      })
+
+    scheduled = @api.scheduled
+
+    assert_equal 1, scheduled.size
+    assert_instance_of Slk::Models::ScheduledStatus, scheduled.first
+    assert_equal 'CS0BMQDDGWTU', scheduled.first.id
+  end
+
+  def test_scheduled_returns_empty_for_an_empty_section
+    @mock_client.stub('users.customStatus.list', { 'ok' => true, 'scheduled_statuses' => [] })
+
+    assert_empty @api.scheduled
+  end
+
+  # An absent section means the endpoint changed. Reporting "none scheduled"
+  # would tell the user their statuses were lost when they still exist.
+  def test_scheduled_raises_when_section_absent
+    @mock_client.stub('users.customStatus.list', { 'ok' => true, 'statuses' => [] })
+
+    error = assert_raises(Slk::ApiError) { @api.scheduled }
+    assert_equal :missing_scheduled_section, error.code
+    assert_includes error.message, 'may have changed'
+  end
+
+  def test_schedule_sends_required_fields
+    @mock_client.stub('users.customStatus.schedule', { 'ok' => true, 'scheduled_status' => scheduled_payload })
+
+    @api.schedule(text: 'Vet Appt', emoji: ':paw_prints:', date_scheduled: 1_785_781_800)
+
+    params = @mock_client.calls.last[:params]
+    assert_equal 'users.customStatus.schedule', @mock_client.calls.last[:method]
+    assert_equal 'Vet Appt', params[:text]
+    assert_equal ':paw_prints:', params[:emoji]
+    assert_equal '1785781800', params[:date_scheduled]
+  end
+
+  # A create that reports ok but echoes nothing back has confirmed nothing,
+  # and a blank model would print as a green-checked schedule with no ID.
+  def test_schedule_raises_when_response_omits_the_status
+    @mock_client.stub('users.customStatus.schedule', { 'ok' => true })
+
+    error = assert_raises(Slk::ApiError) do
+      @api.schedule(text: 'Vet Appt', emoji: ':paw_prints:', date_scheduled: 1_785_781_800)
+    end
+    assert_equal :malformed_schedule_response, error.code
+  end
+
+  def test_schedule_raises_when_confirmed_status_has_no_id
+    @mock_client.stub('users.customStatus.schedule',
+                      { 'ok' => true, 'scheduled_status' => scheduled_payload.merge('id' => '') })
+
+    assert_raises(Slk::ApiError) do
+      @api.schedule(text: 'Vet Appt', emoji: ':paw_prints:', date_scheduled: 1_785_781_800)
+    end
+  end
+
+  def test_schedule_includes_expiry_when_given
+    @mock_client.stub('users.customStatus.schedule', { 'ok' => true, 'scheduled_status' => scheduled_payload })
+
+    @api.schedule(text: 'Vet Appt', emoji: ':paw_prints:',
+                  date_scheduled: 1_785_781_800, date_expire: 1_785_789_000)
+
+    assert_equal '1785789000', @mock_client.calls.last[:params][:date_expire]
+  end
+
+  def test_schedule_omits_expiry_when_absent
+    @mock_client.stub('users.customStatus.schedule', { 'ok' => true, 'scheduled_status' => scheduled_payload })
+
+    @api.schedule(text: 'Vet Appt', emoji: ':paw_prints:', date_scheduled: 1_785_781_800)
+
+    refute @mock_client.calls.last[:params].key?(:date_expire)
+  end
+
+  def test_schedule_sends_dnd_only_when_enabled
+    @mock_client.stub('users.customStatus.schedule', { 'ok' => true, 'scheduled_status' => scheduled_payload })
+
+    @api.schedule(text: 'Heads down', emoji: ':no_bell:', date_scheduled: 1, dnd: true)
+    assert_equal 'true', @mock_client.calls.last[:params][:is_dnd]
+
+    @api.schedule(text: 'Heads down', emoji: ':no_bell:', date_scheduled: 1)
+    refute @mock_client.calls.last[:params].key?(:is_dnd)
+  end
+
+  def test_schedule_returns_the_created_model
+    @mock_client.stub('users.customStatus.schedule', { 'ok' => true, 'scheduled_status' => scheduled_payload })
+
+    result = @api.schedule(text: 'Vet Appt', emoji: ':paw_prints:', date_scheduled: 1_785_781_800)
+
+    assert_instance_of Slk::Models::ScheduledStatus, result
+    assert_equal 'CS0BMQDDGWTU', result.id
+  end
+
+  def test_delete_scheduled_sends_the_id
+    @mock_client.stub('users.customStatus.deleteScheduled', { 'ok' => true })
+    @mock_client.stub('users.customStatus.list', { 'ok' => true, 'scheduled_statuses' => [] })
+
+    @api.delete_scheduled('CS0BMQDDGWTU')
+
+    call = @mock_client.calls.find { |c| c[:method] == 'users.customStatus.deleteScheduled' }
+
+    assert_equal 'CS0BMQDDGWTU', call[:params][:custom_status_id]
+  end
+
+  # An ok response says the request was accepted, not that anything was
+  # removed, so the delete is confirmed against the list before it counts.
+  def test_delete_scheduled_raises_when_the_status_survives
+    @mock_client.stub('users.customStatus.deleteScheduled', { 'ok' => true })
+    @mock_client.stub('users.customStatus.list',
+                      { 'ok' => true, 'scheduled_statuses' => [{ 'id' => 'CS0BMQDDGWTU' }] })
+
+    error = assert_raises(Slk::ApiError) { @api.delete_scheduled('CS0BMQDDGWTU') }
+
+    assert_equal :delete_not_applied, error.code
+    assert_includes error.message, 'is still scheduled'
+  end
+
+  def test_delete_scheduled_reports_a_confirmed_cancel
+    @mock_client.stub('users.customStatus.deleteScheduled', { 'ok' => true })
+    @mock_client.stub('users.customStatus.list', { 'ok' => true, 'scheduled_statuses' => [] })
+
+    assert_equal [:cancelled, nil], @api.delete_scheduled('CS0BMQDDGWTU')
+  end
+
+  # The delete was already accepted; only the read that would have proved it
+  # failed. Raising here would tell the user their cancel failed when it did
+  # not, sending them back to re-cancel something already gone.
+  def test_delete_scheduled_separates_an_unreadable_confirmation_from_a_failure
+    @mock_client.stub('users.customStatus.deleteScheduled', { 'ok' => true })
+    @mock_client.stub('users.customStatus.list', Slk::ApiError.new('network error', code: :network_error))
+
+    outcome, reason = @api.delete_scheduled('CS0BMQDDGWTU')
+
+    assert_equal :unconfirmed, outcome
+    assert_includes reason, 'network error'
+  end
+
+  # Cancelling your only scheduled status is exactly when Slack drops the
+  # section, so this path is likelier than it looks.
+  def test_delete_scheduled_is_unconfirmed_when_the_section_goes_missing
+    @mock_client.stub('users.customStatus.deleteScheduled', { 'ok' => true })
+    @mock_client.stub('users.customStatus.list', { 'ok' => true })
+
+    outcome, = @api.delete_scheduled('CS0BMQDDGWTU')
+
+    assert_equal :unconfirmed, outcome
+  end
+
+  # The confirming read hits the same `list` method a multi-workspace sweep
+  # just used, so it is the likeliest call to be limited — and the least
+  # worth abandoning the sweep over, since the delete already went through.
+  def test_delete_scheduled_is_unconfirmed_when_the_confirmation_is_rate_limited
+    @mock_client.stub('users.customStatus.deleteScheduled', { 'ok' => true })
+    @mock_client.stub('users.customStatus.list', Slk::RateLimitError.new('ratelimited', retry_after: 30))
+
+    outcome, = @api.delete_scheduled('CS0BMQDDGWTU')
+
+    assert_equal :unconfirmed, outcome
+  end
+
+  # Falling through to ScheduledStatus.validate! would swap this for "no id:
+  # {}", which tells the user nothing they can do about it.
+  def test_schedule_reports_an_unusable_response_in_terms_of_what_to_check
+    @mock_client.stub('users.customStatus.schedule', { 'ok' => true, 'scheduled_status' => {} })
+
+    error = assert_raises(Slk::ApiError) do
+      @api.schedule(text: 'Vet Appt', emoji: ':paw_prints:', date_scheduled: 1_785_781_800)
+    end
+
+    assert_equal :malformed_schedule_response, error.code
+    assert_includes error.message, 'status picker'
+  end
+end

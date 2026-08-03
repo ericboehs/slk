@@ -14,7 +14,7 @@ class SshKeyManagerTest < Minitest::Test
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
 
       set_path = nil
       config = mock_config(ssh_key: nil, on_set: ->(k, v) { set_path = v if k == 'ssh_key' })
@@ -26,7 +26,9 @@ class SshKeyManagerTest < Minitest::Test
 
       assert result[:success]
       # Verify the path was stored (File.expand_path is called internally)
-      assert set_path&.start_with?('/'), 'Path should be absolute'
+      # Not `start_with?('/')`: File.expand_path returns a drive-letter path on
+      # Windows ("C:/Users/..."), which is absolute but fails that check.
+      assert File.absolute_path?(set_path.to_s), "Path should be absolute, got #{set_path.inspect}"
     end
   end
 

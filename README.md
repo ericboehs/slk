@@ -52,6 +52,37 @@ slk status "In a meeting" :calendar: 1h # Set status for 1 hour
 slk status clear                        # Clear status
 ```
 
+Statuses can also be scheduled to turn on later (Slack allows up to 5 at a time):
+
+```bash
+slk status schedule "Vet Appt" :paw_prints: 1:30p-3:30p       # Bare times; rolls to tomorrow if past
+slk status schedule "OOO" :palm_tree: 2026-08-04 9:00-17:00   # Explicit date
+slk status schedule "Heads down" :no_bell: 11p-1a --with-dnd  # Overnight, pausing notifications
+slk status scheduled                                          # List pending (all workspaces)
+slk status unschedule CS0BMQDDGWTU                            # Cancel one (finds the owning workspace)
+```
+
+A single am/pm carries across the range, so `1-3p` is 1pm to 3pm — unless that
+would invert it, leaving `9-5p` as 9am to 5pm. Anything the am/pm cannot settle
+is read as a 24-hour time, which is usually right but occasionally means the
+opposite of what you typed: `9-5` and `9a-5` both come out as 9am until 5am the
+next morning. Windows that land that way — guessed, crossing midnight, and over
+12 hours — are rejected rather than scheduled, so add the second am/pm (`9a-5p`)
+or use 24-hour times (`9:00-17:00`).
+
+Overnight windows are fine when they say so. A meridiem on both sides (`11p-1a`,
+`8p-9a`) or a 24-hour time on either side (`20:00-09:00`, `20:00-6`) settles the
+range, and a pm start is enough on its own: `9p-5` is 9pm to 5am.
+
+A `start-end` range writes the date once and the end can only reach the next
+day, so multi-day windows use `--start` / `--end` instead. Each takes
+`[YYYY-MM-DD ]TIME`, and omitting `--end` schedules a status with no expiry:
+
+```bash
+slk status schedule "OOO" :palm_tree: --start "2026-08-12 8a" --end "2026-08-14 5p"
+slk status schedule "Heads down" :no_bell: --start 2p         # Stays until cleared
+```
+
 ### Presence
 
 ```bash

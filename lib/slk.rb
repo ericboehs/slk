@@ -12,6 +12,17 @@ require 'io/console'
 module Slk
   class Error < StandardError; end
 
+  # The invocation itself was wrong (a flag with no value, an unparseable
+  # time). The message is written for the user and is printed verbatim, with
+  # no "Error type:" label, because there is no internal fault to report.
+  class UsageError < Error; end
+
+  # A time or range the user typed that cannot be understood. Separate from
+  # UsageError so callers can rescue *only* malformed input: a blanket
+  # `rescue ArgumentError` around a parse call also swallows arity and range
+  # errors from the code itself and presents them as if the user mistyped.
+  class TimeFormatError < UsageError; end
+
   # Errors from any Slack-API-shaped failure: HTTP errors, network errors,
   # logical Slack errors (user_not_found, missing_scope, etc.), JSON parse
   # failures. The optional `code` symbol lets callers match specific cases
@@ -55,6 +66,7 @@ module Slk
     autoload :Duration, 'slk/models/duration'
     autoload :Workspace, 'slk/models/workspace'
     autoload :Status, 'slk/models/status'
+    autoload :ScheduledStatus, 'slk/models/scheduled_status'
     autoload :Message, 'slk/models/message'
     autoload :Reaction, 'slk/models/reaction'
     autoload :User, 'slk/models/user'
@@ -153,6 +165,7 @@ module Slk
     autoload :Activity, 'slk/api/activity'
     autoload :Search, 'slk/api/search'
     autoload :Saved, 'slk/api/saved'
+    autoload :CustomStatus, 'slk/api/custom_status'
     autoload :Team, 'slk/api/team'
   end
 
@@ -167,5 +180,7 @@ module Slk
     autoload :TextWrapper, 'slk/support/text_wrapper'
     autoload :InteractivePrompt, 'slk/support/interactive_prompt'
     autoload :DateParser, 'slk/support/date_parser'
+    autoload :TimeParser, 'slk/support/time_parser'
+    autoload :TimeRangeParser, 'slk/support/time_range_parser'
   end
 end

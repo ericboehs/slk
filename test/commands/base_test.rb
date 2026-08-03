@@ -67,6 +67,19 @@ class BaseCommandTest < Minitest::Test
     assert_equal 'foo', cmd.options[:workspace]
   end
 
+  # A trailing -w used to shift nil, leaving :workspace unset — which reads as
+  # "no workspace named", i.e. all of them. Doing the opposite of what the flag
+  # says, and exiting 0 about it.
+  def test_workspace_option_requires_a_value
+    error = assert_raises(Slk::UsageError) { create_test_command(['-w']) }
+
+    assert_includes error.message, '-w requires a value'
+  end
+
+  def test_workspace_option_rejects_a_following_flag_as_its_value
+    assert_raises(Slk::UsageError) { create_test_command(%w[--workspace --all]) }
+  end
+
   def test_width_option_zero_disables_wrapping
     cmd = create_test_command(['--width', '0'])
     assert_nil cmd.options[:width]

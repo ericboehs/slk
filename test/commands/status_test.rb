@@ -338,4 +338,492 @@ class StatusCommandTest < Minitest::Test
     assert_match(/Working/, captured.first)
     assert_match(/\(/, captured.first)
   end
+
+  # --- scheduling -----------------------------------------------------------
+
+  def scheduled_payload(overrides = {})
+    {
+      'id' => 'CS0BMQDDGWTU',
+      'text' => 'Vet Appt',
+      'emoji' => ':paw_prints:',
+      'is_dnd' => false,
+      'is_active' => false,
+      'date_scheduled' => Time.new(2026, 8, 3, 13, 30, 0).to_i,
+      'date_expire' => Time.new(2026, 8, 3, 15, 30, 0).to_i
+    }.merge(overrides)
+  end
+
+  def stub_schedule
+    @mock_client.stub('users.customStatus.schedule',
+                      { 'ok' => true, 'scheduled_status' => scheduled_payload })
+  end
+
+  def run_status(args, runner: nil)
+    command = Slk::Commands::Status.new(args, runner: runner || create_runner)
+    [command.execute, @mock_client.calls.last]
+  end
+
+  # Simulates one workspace rejecting the call while the others succeed.
+  def fail_on_workspace(name, message = 'too_many_scheduled_statuses')
+    original = @mock_client.method(:post_form)
+    @mock_client.define_singleton_method(:post_form) do |workspace, method, params = {}|
+      raise Slk::ApiError, message if workspace.name == name
+
+      original.call(workspace, method, params)
+    end
+  end
+
+  def three_workspaces
+    create_runner(workspaces: [mock_workspace('alpha'), mock_workspace('beta'), mock_workspace('gamma')])
+  end
+
+  # A stateful stand-in for the list/delete endpoint pair: deleting an id
+  # removes it, so the confirming re-read in Api::CustomStatus sees it gone.
+  # A flat stub would report every id as still scheduled after its own delete.
+  def stub_scheduled_store(ids_by_workspace)
+    store = Hash.new { |hash, key| hash[key] = [] }
+    ids_by_workspace.each { |name, ids| store[name] = ids.map { |id| scheduled_payload('id' => id) } }
+
+    @mock_client.define_singleton_method(:post_form) do |workspace, method, params = {}|
+      @calls << { workspace: workspace.name, method: method, params: params }
+      case method
+      when 'users.customStatus.list' then { 'ok' => true, 'scheduled_statuses' => store[workspace.name] }
+      when 'users.customStatus.deleteScheduled'
+        store.each_value { |list| list.reject! { |status| status['id'] == params[:custom_status_id] } }
+        { 'ok' => true }
+      else { 'ok' => true }
+      end
+    end
+  end
+
+  def calls_to(method) = @mock_client.calls.select { |call| call[:method] == method }
+
+  def deleted_ids = calls_to('users.customStatus.deleteScheduled').map { |call| call[:params][:custom_status_id] }
+
+  def listed_workspaces = calls_to('users.customStatus.list').map { |call| call[:workspace] }
+
+  def test_schedule_sends_parsed_window_to_the_api
+    stub_schedule
+    future = Time.now + (24 * 3600)
+    date = future.strftime('%Y-%m-%d')
+
+    result, call = run_status(['schedule', 'Vet Appt', ':paw_prints:', "#{date} 13:30-15:30"])
+
+    assert_equal 0, result
+    assert_equal 'users.customStatus.schedule', call[:method]
+    assert_equal 'Vet Appt', call[:params][:text]
+    assert_equal ':paw_prints:', call[:params][:emoji]
+    assert_equal Time.new(future.year, future.month, future.day, 13, 30, 0).to_i.to_s,
+                 call[:params][:date_scheduled]
+    assert_equal Time.new(future.year, future.month, future.day, 15, 30, 0).to_i.to_s,
+                 call[:params][:date_expire]
+  end
+
+  def test_schedule_accepts_a_bare_time_range
+    stub_schedule
+
+    result, call = run_status(['schedule', 'Vet Appt', ':paw_prints:', '1:30p-3:30p'])
+
+    assert_equal 0, result
+    assert_equal 'users.customStatus.schedule', call[:method]
+  end
+
+  def test_schedule_defaults_the_emoji
+    stub_schedule
+
+    _result, call = run_status(['schedule', 'Vet Appt', '1:30p-3:30p'])
+
+    assert_equal ':speech_balloon:', call[:params][:emoji]
+  end
+
+  def test_schedule_passes_dnd_flag
+    stub_schedule
+
+    _result, call = run_status(['schedule', 'Heads down', ':no_bell:', '1:30p-3:30p', '--with-dnd'])
+
+    assert_equal 'true', call[:params][:is_dnd]
+  end
+
+  def test_schedule_reports_the_created_status
+    stub_schedule
+
+    run_status(['schedule', 'Vet Appt', ':paw_prints:', '1:30p-3:30p'])
+
+    assert_includes @io.string + @err.string, 'Vet Appt'
+  end
+
+  def test_schedule_without_text_errors
+    result, = run_status(['schedule'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Usage: slk status schedule'
+  end
+
+  def test_schedule_without_a_time_range_errors
+    result, = run_status(['schedule', 'Vet Appt', ':paw_prints:'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Missing time range'
+  end
+
+  # Not shaped like a range at all, so it never reaches the parser. The message
+  # must still name what was rejected rather than claim the range was omitted.
+  def test_schedule_with_an_unparseable_range_errors
+    result, = run_status(['schedule', 'Vet Appt', ':paw_prints:', '99:99-100:00'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Unrecognized argument: 99:99-100:00'
+  end
+
+  # Only YYYY-MM-DD parses. Accepting the range and dropping the date silently
+  # scheduled the status for today instead.
+  def test_schedule_rejects_an_unsupported_date_prefix
+    result, = run_status(['schedule', 'OOO', ':palm_tree:', '8/4', '9:00-17:00'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Unrecognized argument: 8/4 9:00-17:00'
+    assert_empty @mock_client.calls
+  end
+
+  def test_schedule_rejects_trailing_junk_after_a_valid_range
+    result, = run_status(['schedule', 'Vet Appt', ':paw_prints:', '1:30p-3:30p', 'GARBAGE'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Unrecognized argument'
+    assert_empty @mock_client.calls
+  end
+
+  # Range-shaped but out of range, so the parser raises and the command reports it.
+  def test_schedule_with_an_invalid_hour_reports_the_parser_error
+    result, = run_status(['schedule', 'Vet Appt', ':paw_prints:', '25:00-26:00'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Invalid hour'
+  end
+
+  # The positional range shares one date between both times, so a multi-day
+  # window is only reachable through the flags.
+  def test_schedule_with_start_and_end_flags_spans_multiple_days
+    stub_schedule
+
+    result, call = run_status(['schedule', 'OOO', ':palm_tree:',
+                               '--start', '2026-08-12 8a', '--end', '2026-08-14 17:00'])
+
+    assert_equal 0, result
+    assert_equal Time.new(2026, 8, 12, 8, 0, 0).to_i.to_s, call[:params][:date_scheduled]
+    assert_equal Time.new(2026, 8, 14, 17, 0, 0).to_i.to_s, call[:params][:date_expire]
+  end
+
+  # ScheduledStatus and the API already model an absent expiry; the positional
+  # range just had no way to ask for it.
+  def test_schedule_without_end_flag_omits_the_expiry
+    stub_schedule
+
+    result, call = run_status(['schedule', 'Heads down', ':no_bell:', '--start', '2026-08-12 8a'])
+
+    assert_equal 0, result
+    assert_equal Time.new(2026, 8, 12, 8, 0, 0).to_i.to_s, call[:params][:date_scheduled]
+    refute call[:params].key?(:date_expire)
+  end
+
+  def test_schedule_rejects_end_flag_without_start
+    result, = run_status(['schedule', 'OOO', ':palm_tree:', '--end', '2026-08-14 17:00'])
+
+    assert_equal 1, result
+    assert_includes @err.string, '--end requires --start'
+    assert_empty @mock_client.calls
+  end
+
+  def test_schedule_rejects_mixing_a_range_with_the_flags
+    result, = run_status(['schedule', 'OOO', ':palm_tree:', '1:30p-3:30p', '--start', '2026-08-12 8a'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'not both'
+    assert_empty @mock_client.calls
+  end
+
+  # An explicit end is unambiguous, so a backwards window is an error rather
+  # than something to roll forward a day.
+  def test_schedule_rejects_end_before_start
+    result, = run_status(['schedule', 'OOO', ':palm_tree:',
+                          '--start', '2026-08-14 17:00', '--end', '2026-08-12 8a'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'is not after --start'
+    assert_empty @mock_client.calls
+  end
+
+  def test_schedule_reports_an_unparseable_start_flag
+    result, = run_status(['schedule', 'OOO', ':palm_tree:', '--start', 'next tuesday'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Invalid time: next tuesday'
+    assert_empty @mock_client.calls
+  end
+
+  # Aborting the loop would leave the user re-running to fix the tail, which
+  # double-schedules every workspace that already succeeded.
+  def test_schedule_continues_past_a_failing_workspace
+    stub_schedule
+    runner = three_workspaces
+    fail_on_workspace('beta')
+
+    result, = run_status(['schedule', 'Vet Appt', ':paw_prints:', '1:30p-3:30p', '--all'], runner: runner)
+
+    assert_equal 1, result
+    assert_includes @io.string, 'Scheduled on alpha'
+    assert_includes @io.string, 'Scheduled on gamma'
+    assert_includes @err.string, 'beta: too_many_scheduled_statuses'
+  end
+
+  # `scheduled` lists every workspace, so an ID pasted back in may belong to a
+  # non-primary one. Defaulting to primary failed with a bare Slack error.
+  # The id lives on beta specifically: on alpha, taking the first workspace
+  # would pass without looking anything up.
+  def test_unschedule_finds_the_workspace_owning_the_id
+    runner = three_workspaces
+    stub_scheduled_store('beta' => %w[CS0BMQDDGWTU])
+
+    result, = run_status(%w[unschedule CS0BMQDDGWTU], runner: runner)
+
+    assert_equal 0, result
+    assert_equal(%w[beta], calls_to('users.customStatus.deleteScheduled').map { |call| call[:workspace] })
+    assert_includes @io.string, 'Cancelled scheduled status on beta'
+  end
+
+  def test_unschedule_reports_an_id_no_workspace_owns
+    runner = three_workspaces
+    stub_scheduled_store({})
+
+    result, = run_status(%w[unschedule CSNOSUCHID], runner: runner)
+
+    assert_equal 1, result
+    assert_includes @err.string, 'No scheduled status CSNOSUCHID found'
+    assert_empty deleted_ids
+  end
+
+  # An explicit -w must not pay for the lookup or be overridden by it.
+  def test_unschedule_with_workspace_flag_skips_the_owner_lookup
+    runner = three_workspaces
+    stub_scheduled_store('gamma' => %w[CS0BMQDDGWTU])
+
+    result, = run_status(['unschedule', 'CS0BMQDDGWTU', '-w', 'gamma'], runner: runner)
+
+    assert_equal 0, result
+    assert_equal %w[CS0BMQDDGWTU], deleted_ids
+    # gamma is still listed once, by the post-delete confirmation.
+    assert_equal %w[gamma], listed_workspaces.uniq
+  end
+
+  # A failed lookup must not masquerade as "not found".
+  def test_unschedule_warns_when_a_workspace_cannot_be_checked
+    runner = three_workspaces
+    stub_scheduled_store('beta' => %w[CS0BMQDDGWTU])
+    fail_on_workspace('alpha', 'service_unavailable')
+
+    result, = run_status(%w[unschedule CS0BMQDDGWTU], runner: runner)
+
+    assert_equal 0, result
+    assert_includes @err.string, 'Could not check alpha: service_unavailable'
+    assert_includes @io.string, 'Cancelled scheduled status on beta'
+  end
+
+  # Saying "not found" flatly would contradict the warning printed a line above.
+  def test_unschedule_qualifies_not_found_when_a_workspace_was_unreachable
+    runner = three_workspaces
+    stub_scheduled_store({})
+    fail_on_workspace('alpha', 'service_unavailable')
+
+    result, = run_status(%w[unschedule CS0BMQDDGWTU], runner: runner)
+
+    assert_equal 1, result
+    assert_includes @err.string, 'CS0BMQDDGWTU was not found, but alpha could not be checked'
+    assert_includes @err.string, '-w'
+    assert_empty deleted_ids
+  end
+
+  # Checking the rest would spend more calls against the same limit and still
+  # not answer the question.
+  def test_unschedule_stops_on_a_rate_limit_rather_than_checking_the_rest
+    runner = three_workspaces
+    stub_scheduled_store('beta' => %w[CS0BMQDDGWTU])
+    original = @mock_client.method(:post_form)
+    @mock_client.define_singleton_method(:post_form) do |workspace, method, params = {}|
+      if workspace.name == 'alpha'
+        # Recorded before raising, so the test can see the check was attempted.
+        @calls << { workspace: workspace.name, method: method, params: params }
+        raise Slk::RateLimitError.new('ratelimited', retry_after: 30)
+      end
+
+      original.call(workspace, method, params)
+    end
+
+    result, = run_status(%w[unschedule CS0BMQDDGWTU], runner: runner)
+
+    assert_equal 1, result
+    assert_includes @err.string, 'ratelimited'
+    # alpha was checked; beta and gamma never were.
+    assert_equal %w[alpha], listed_workspaces
+    assert_empty deleted_ids
+  end
+
+  # Slack's delete reports ok whether or not anything was removed, so the
+  # success line has to be backed by a re-read.
+  def test_unschedule_reports_a_delete_that_did_not_take
+    runner = three_workspaces
+    stub_scheduled_store('beta' => %w[CS0BMQDDGWTU])
+    # Accept the delete but leave the status in place.
+    @mock_client.define_singleton_method(:post_form) do |workspace, method, params = {}|
+      @calls << { workspace: workspace.name, method: method, params: params }
+      return { 'ok' => true } unless method == 'users.customStatus.list'
+
+      { 'ok' => true, 'scheduled_statuses' => [{ 'id' => 'CS0BMQDDGWTU', 'text' => 'Vet Appt' }] }
+    end
+
+    result, = run_status(['unschedule', 'CS0BMQDDGWTU', '-w', 'beta'], runner: runner)
+
+    assert_equal 1, result
+    assert_includes @err.string, 'is still scheduled'
+    refute_includes @io.string, 'Cancelled'
+  end
+
+  # The delete went through and only the confirming read failed, so this is a
+  # success with a caveat — not the exit 1 that would tell the user to go
+  # cancel it again.
+  def test_unschedule_qualifies_a_cancel_it_could_not_confirm
+    runner = three_workspaces
+    # Accept the delete, then fail the read that would have proved it.
+    @mock_client.define_singleton_method(:post_form) do |workspace, method, params = {}|
+      @calls << { workspace: workspace.name, method: method, params: params }
+      raise Slk::ApiError.new('network error', code: :network_error) if method == 'users.customStatus.list'
+
+      { 'ok' => true }
+    end
+
+    result, = run_status(['unschedule', 'CS0BMQDDGWTU', '-w', 'beta'], runner: runner)
+
+    assert_equal 0, result
+    assert_includes @err.string, 'could not confirm'
+    assert_includes @err.string, 'network error'
+  end
+
+  def test_unschedule_rejects_a_blank_id
+    result, = run_status(['unschedule', '  '])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Usage: slk status unschedule'
+    assert_empty @mock_client.calls
+  end
+
+  def test_unschedule_continues_past_a_failing_workspace
+    runner = three_workspaces
+    stub_scheduled_store('alpha' => %w[CS0BMQDDGWTU], 'gamma' => %w[CS0BMQDDGWTU])
+    fail_on_workspace('beta', 'status_not_found')
+
+    result, = run_status(['unschedule', 'CS0BMQDDGWTU', '--all'], runner: runner)
+
+    assert_equal 1, result
+    assert_includes @io.string, 'Cancelled scheduled status on gamma'
+    assert_includes @err.string, 'beta: status_not_found'
+  end
+
+  # `--end` swallowing nothing used to read as "no end wanted", quietly
+  # scheduling a status with no expiry at all.
+  def test_schedule_rejects_a_flag_with_no_value
+    ['--end', '--start'].each do |flag|
+      error = assert_raises(Slk::UsageError) do
+        Slk::Commands::Status.new(['schedule', 'OOO', '--start', '2p', flag], runner: create_runner)
+      end
+
+      assert_includes error.message, "#{flag} requires a value"
+    end
+  end
+
+  # ...and swallowing the *next flag* is the same mistake one token later.
+  def test_schedule_rejects_a_flag_value_that_is_another_flag
+    error = assert_raises(Slk::UsageError) do
+      Slk::Commands::Status.new(%w[schedule OOO --start 2p --end --with-dnd], runner: create_runner)
+    end
+
+    assert_includes error.message, '--end requires a value'
+  end
+
+  def test_schedule_rejects_blank_text
+    ['', '   '].each do |text|
+      result, = run_status(['schedule', text, '1:30p-3:30p'])
+
+      assert_equal 1, result
+      assert_includes @err.string, 'Usage: slk status schedule'
+    end
+
+    assert_empty @mock_client.calls
+  end
+
+  # A Slack-side failure must not be reported as if the user mistyped the range.
+  def test_schedule_reports_an_unconfirmed_response_as_an_api_failure
+    @mock_client.stub('users.customStatus.schedule', { 'ok' => true })
+
+    result, = run_status(['schedule', 'Vet Appt', ':paw_prints:', '1:30p-3:30p'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'returned no scheduled status'
+  end
+
+  def test_scheduled_lists_pending_statuses
+    @mock_client.stub('users.customStatus.list',
+                      { 'ok' => true, 'scheduled_statuses' => [scheduled_payload] })
+
+    result, = run_status(['scheduled'])
+
+    assert_equal 0, result
+    assert_includes @io.string, 'CS0BMQDDGWTU'
+    assert_includes @io.string, 'Vet Appt'
+  end
+
+  # IDs are per-workspace, so an unlabelled list of them from several
+  # workspaces gives no way to tell which `unschedule` would reach.
+  def test_scheduled_labels_each_workspace_when_listing_more_than_one
+    stub_scheduled_store('alpha' => %w[CS_ALPHA], 'beta' => %w[CS_BETA])
+
+    result, = run_status(['scheduled'], runner: three_workspaces)
+
+    assert_equal 0, result
+    assert_includes @io.string, 'alpha'
+    assert_includes @io.string, 'beta'
+    assert_includes @io.string, 'CS_BETA'
+  end
+
+  def test_scheduled_reports_when_none_pending
+    @mock_client.stub('users.customStatus.list', { 'ok' => true, 'scheduled_statuses' => [] })
+
+    result, = run_status(['scheduled'])
+
+    assert_equal 0, result
+    assert_includes @io.string, '(none scheduled)'
+  end
+
+  def test_unschedule_deletes_by_id
+    stub_scheduled_store('test' => %w[CS0BMQDDGWTU])
+
+    result, = run_status(%w[unschedule CS0BMQDDGWTU])
+
+    assert_equal 0, result
+    assert_equal %w[CS0BMQDDGWTU], deleted_ids
+  end
+
+  def test_unschedule_without_id_errors
+    result, = run_status(['unschedule'])
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Usage: slk status unschedule'
+  end
+
+  # The scheduling keywords must not shadow ordinary status text.
+  def test_plain_text_status_still_sets_status
+    @mock_client.stub('users.profile.set', { 'ok' => true })
+
+    _result, call = run_status(['Working', ':computer:'])
+
+    assert_equal 'users.profile.set', call[:method]
+  end
 end

@@ -104,8 +104,15 @@ module Slk
               'Please provide the correct public key for this private key.'
       end
 
+      # `-P ''` supplies the passphrase up front so ssh-keygen cannot ask for
+      # one. Without it, an encrypted key makes ssh-keygen prompt — and it
+      # prompts on the console directly, not on the stdin capture3 hands it, so
+      # closing stdin does not help. On Windows that read blocks forever; this
+      # hung the CI job until its timeout with no output. An empty passphrase
+      # fails an encrypted key with the same message it already reported, which
+      # is the right answer regardless: slk cannot use such a key anyway.
       def derive_public_key(private_key_path)
-        output, error, status = Open3.capture3('ssh-keygen', '-y', '-f', private_key_path)
+        output, error, status = Open3.capture3('ssh-keygen', '-y', '-P', '', '-f', private_key_path)
         return output.strip if status.success?
 
         # Check if ssh-keygen is missing vs other failures

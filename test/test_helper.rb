@@ -9,6 +9,12 @@ if ENV['COVERAGE']
   end
 end
 
+# Ruby block-buffers stdout when it is a pipe, as it is under CI. If the suite
+# blocks rather than fails, the job is killed on timeout and everything still
+# sitting in that buffer is lost — including the progress that would say where
+# it stopped. Unbuffered, the log ends at the last test that finished.
+$stdout.sync = true
+
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 
 require 'minitest/autorun'
@@ -80,7 +86,12 @@ module Slk
 
       def post(workspace, method, params = {})
         @calls << { workspace: workspace.name, method: method, params: params }
-        @responses[method] || { 'ok' => true }
+        response = @responses[method] || { 'ok' => true }
+        # Stubbing an exception simulates the call failing rather than
+        # returning an error payload — a network drop, a rate limit.
+        raise response if response.is_a?(Exception)
+
+        response
       end
 
       def get(workspace, method, params = {})
@@ -96,6 +107,45 @@ module Slk
         @calls.size
       end
     end
+
+    # Generate a throwaway SSH key for tests that need a real one.
+    #
+    # The array form is load-bearing, not style. As a shell string, `-N ''`
+    # reaches cmd.exe on Windows as a literal two-character passphrase rather
+    # than an empty one; ssh-keygen then prompts, and with stdin still open it
+    # waits forever. That is what hung the Windows CI jobs — one orphaned
+    # ssh-keygen holding a runner until GitHub's six-hour ceiling.
+    #
+    # Closing stdin is the belt to that braces: whatever a future ssh-keygen
+    # decides to ask about, it gets EOF and fails the command instead of
+    # blocking a job that then reports nothing at all.
+    def create_test_ssh_key(path, type: 'ed25519', bits: nil, passphrase: '')
+      args = ['ssh-keygen', '-t', type]
+      args.push('-b', bits.to_s) if bits
+      args.push('-f', path, '-N', passphrase, '-q')
+
+      system(*args, in: File::NULL, out: File::NULL, err: File::NULL)
+    end
+
+    # Run a block with TZ set, for assertions that only mean anything in a
+    # specific zone (DST transitions).
+    #
+    # Ruby on Windows reads POSIX-form TZ, not IANA names, so the assignment
+    # can be silently ignored — leaving the test asserting against whatever
+    # zone the machine happens to be in. Verify the switch took effect and skip
+    # if it did not, rather than fail somewhere confusing.
+    def with_timezone(zone, expected_offset:)
+      original = ENV.fetch('TZ', nil)
+      ENV['TZ'] = zone
+      skip "TZ=#{zone} is not honoured on this platform" unless Time.new(2026, 1, 1).utc_offset == expected_offset
+
+      yield
+    ensure
+      ENV['TZ'] = original
+    end
+
+    # America/Chicago in January: CST, six hours behind UTC.
+    CHICAGO_WINTER_OFFSET = -6 * 3600
 
     # Mock workspace
     def mock_workspace(name = 'test', token = 'xoxb-test-token')

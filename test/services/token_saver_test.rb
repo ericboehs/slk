@@ -99,7 +99,7 @@ class TokenSaverTest < Minitest::Test
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
 
       paths = mock_paths(dir)
       saver = Slk::Services::TokenSaver.new(encryption: @encryption, paths: paths)
@@ -178,7 +178,7 @@ class TokenSaverTest < Minitest::Test
 
     Dir.mktmpdir do |dir|
       key_path = "#{dir}/test_key"
-      system("ssh-keygen -t ed25519 -f #{key_path} -N '' -q")
+      create_test_ssh_key(key_path)
 
       paths = mock_paths(dir)
 
