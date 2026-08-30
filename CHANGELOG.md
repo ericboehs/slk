@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`slk status` now answers the questions the status raises** — who can reach you, and whether the status is about to change on its own
+  - Presence and DND appear as suffixes on the status line: `:computer: Working [away] [dnd until 3:00pm]`. Only exceptional states are labelled, so the workspace that differs stands out rather than being buried under "active" on every line
+  - `[dnd until …]` covers a manual snooze and the configured DND hours alike — from the outside both mean messages do not notify — and reports the later end when both apply. `slk dnd` still breaks out which is which
+  - Anything scheduled to turn on later is listed under the status, soonest first and without IDs; `slk status scheduled` remains the view to paste an ID from
+  - Times carry a day when the end is not today, so an overnight window does not read as a time that has already passed
+- **`slk status --json`** (and `slk status scheduled --json`) for scripts and statuslines
+  - Always an array, one entry per workspace, even for a single workspace: a document whose shape changes with `-w` cannot be parsed by a script that did not pass it
+  - `null` means "not checked" — skipped by a flag, or a lookup that failed — as distinct from checked-and-empty. A statusline that read a failed DND lookup as "DND off" would report the opposite of the truth
+  - Every timestamp appears twice: Slack's own epoch under Slack's own field name, and an ISO 8601 string beside it
+- **`--brief` and `--no-scheduled`** for the get view. It now costs up to four calls per workspace; `--no-scheduled` drops the internal `users.customStatus.list` lookup and `--brief` drops all three extras. `--quiet` skips them too, since their output would be discarded (`--json` still gathers them: it prints regardless)
+
+### Changed
+
+- A failed presence, DND or schedule lookup during `slk status` warns and omits that part instead of failing the command — the status itself is what was asked for. A rate limit stops the remaining extra lookups altogether rather than spending calls the status reads need
+
 ## [0.7.0] - 2026-08-03
 
 ### Added

@@ -46,10 +46,50 @@ You'll need a Slack token. Get one from:
 ### Status
 
 ```bash
-slk status                              # Show current status
+slk status                              # Status, presence, DND and what's queued next
+slk status --brief                      # Status text only (one call per workspace)
+slk status --json                       # Machine-readable, for scripts and statuslines
 slk status "Working from home" :house:  # Set status with emoji
 slk status "In a meeting" :calendar: 1h # Set status for 1 hour
 slk status clear                        # Clear status
+```
+
+Getting the status also answers the two questions it usually raises — can anyone
+reach me, and is this about to change on its own:
+
+```
+$ slk status
+work
+  :computer: Working [away] [dnd until 3:00pm]
+  Scheduled:
+    :paw_prints: Vet Appt (Mon Aug 3 1:30pm -> 3:30pm)
+side-project
+  (no status set)
+```
+
+Only the exceptional states are labelled: an active, notifiable workspace says
+nothing, so the one that differs stands out. `[dnd until ...]` covers both a
+manual snooze and the configured DND hours — from the outside they are the same
+thing — and `slk dnd` breaks out which.
+
+Each of those is a separate call, so `slk status` costs up to four per
+workspace. `--no-scheduled` drops the schedule lookup (the one internal
+endpoint), `--brief` drops all three, and a lookup that fails warns and leaves
+that part out rather than failing the command.
+
+#### JSON output
+
+`slk status --json` (and `slk status scheduled --json`) prints one entry per
+workspace — always an array, even for a single workspace, so a script that did
+not pass `-w` can still parse it. `null` means *not checked* (skipped by a flag,
+or the lookup failed), which is not the same as checked-and-empty: a statusline
+that read a failed DND lookup as "DND off" would say the opposite of the truth.
+Every timestamp appears twice, as Slack's epoch and as ISO 8601:
+
+```bash
+# "away, quiet until 3:00pm"
+slk status -w work --json --no-scheduled |
+  jq -r '.[0] | "\(.presence.presence)\(if .dnd.active then ", quiet until " + (.dnd.until | strflocaltime("%-I:%M%p")) else "" end)"'
 ```
 
 Statuses can also be scheduled to turn on later (Slack allows up to 5 at a time):

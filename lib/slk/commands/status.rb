@@ -38,24 +38,39 @@ module Slk
       protected
 
       def default_options
-        super.merge(presence: nil, dnd: nil, with_dnd: false, start_at: nil, end_at: nil)
+        super.merge(presence: nil, dnd: nil, with_dnd: false, start_at: nil, end_at: nil,
+                    scheduled: true, brief: false)
       end
 
+      # Flags that only flip a boolean live here rather than in the case below,
+      # which is already at the branch count the linter allows.
+      TOGGLES = { '--with-dnd' => [:with_dnd, true], '--brief' => [:brief, true],
+                  '--no-scheduled' => [:scheduled, false] }.freeze
+
       def handle_option(arg, args, remaining)
+        return toggle(arg) if TOGGLES.key?(arg)
+
         case arg
         when '-p', '--presence' then @options[:presence] = option_value(arg, args)
         when '-d', '--dnd' then @options[:dnd] = option_value(arg, args)
-        when '--with-dnd' then @options[:with_dnd] = true
         when '--start' then @options[:start_at] = option_value(arg, args)
         when '--end' then @options[:end_at] = option_value(arg, args)
         else super
         end
       end
 
+      # True means "consumed", the contract Base#handle_option expects back.
+      def toggle(arg) # rubocop:disable Naming/PredicateMethod
+        key, value = TOGGLES[arg]
+        @options[key] = value
+        true
+      end
+
       def help_text
         help = Support::HelpFormatter.new('slk status [text] [emoji] [duration] [options]')
         help.description('Get or set your Slack status.')
-        help.note('GET shows all workspaces by default. SET applies to primary only.')
+        help.note('GET shows status, presence, DND and anything queued to turn on later.')
+        help.note('GET covers all workspaces by default; SET applies to primary only.')
         help.note('scheduled shows all workspaces; schedule applies to primary; unschedule finds the ID owner.')
         help.note('Slack allows at most 5 scheduled statuses at a time.')
         add_examples_section(help)
@@ -66,7 +81,9 @@ module Slk
 
       def add_examples_section(help)
         help.section('EXAMPLES') do |s|
-          s.example('slk status', 'Show status (all workspaces)')
+          s.example('slk status', 'Show status, presence, DND and schedule (all workspaces)')
+          s.example('slk status --brief', 'Status text only, no extra lookups')
+          s.example('slk status --json', 'Machine-readable; null means "not checked"')
           s.example('slk status clear', 'Clear status')
           s.example('slk status "Working" :laptop:', 'Set status with emoji')
           s.example('slk status "Meeting" :calendar: 1h', 'Set status for 1 hour')
@@ -89,6 +106,7 @@ module Slk
       def add_options_section(help)
         help.section('OPTIONS') do |s|
           add_general_options(s)
+          add_getting_options(s)
           add_scheduling_options(s)
         end
       end
@@ -100,6 +118,14 @@ module Slk
         section.option('--all', 'Set across all workspaces')
         section.option('-v, --verbose', 'Show debug information')
         section.option('-q, --quiet', 'Suppress output')
+      end
+
+      # These are ignored outside a plain `slk status` (and `scheduled`, for
+      # --json), so say so rather than leaving them looking universal.
+      def add_getting_options(section)
+        section.option('--brief', 'Getting only: skip the presence, DND and schedule lookups')
+        section.option('--no-scheduled', 'Getting only: skip the scheduled lookup, keep presence and DND')
+        section.option('--json', 'Getting only: JSON for scripts (also `slk status scheduled`)')
       end
 
       # These are ignored outside `schedule`, so say so rather than leaving
@@ -115,36 +141,116 @@ module Slk
       def get_status # rubocop:disable Naming/AccessorMethodName
         # GET defaults to all workspaces unless -w specified
         workspaces = target_workspaces_for_get
+        snapshots = workspaces.map { |workspace| snapshot_for(workspace) }
+        return render_snapshots_json(snapshots) if @options[:json]
 
-        workspaces.each do |workspace|
-          status = runner.users_api(workspace.name).get_status
-          print_workspace_status(workspaces, workspace, status)
-        end
-
+        snapshots.each { |snapshot| print_snapshot(snapshot, labelled: workspaces.size > 1) }
         0
+      end
+
+      # The status text is what was asked for. Presence, DND and the pending
+      # schedule are what it is usually being read *for* — whether anyone can
+      # reach you, and whether the status is about to change on its own — so
+      # they are gathered alongside it, one call each, none of them fatal.
+      def snapshot_for(workspace)
+        status = runner.users_api(workspace.name).get_status
+        return Models::StatusSnapshot.new(workspace: workspace, status: status) unless details?
+
+        Models::StatusSnapshot.new(workspace: workspace, status: status, **workspace_details(workspace))
+      end
+
+      def workspace_details(workspace)
+        {
+          presence: detail(workspace, 'presence') { runner.users_api(workspace.name).get_presence },
+          dnd: detail(workspace, 'DND') { Models::DndState.from_api(runner.dnd_api(workspace.name).info) },
+          scheduled: pending_scheduled(workspace)
+        }
+      end
+
+      # --brief drops the extra calls; under --quiet their output is discarded,
+      # so they would buy nothing. --json prints even when quiet, and its
+      # consumers are the ones that want the detail most.
+      def details?
+        return false if @options[:brief]
+
+        @options[:json] || !@options[:quiet]
+      end
+
+      def pending_scheduled(workspace)
+        return nil unless @options[:scheduled]
+
+        detail(workspace, 'scheduled statuses') do
+          in_order(runner.custom_status_api(workspace.name).scheduled)
+        end
+      end
+
+      # nil, not a blank value: the caller records "not checked", which --json
+      # reports as null. Reporting a failed DND lookup as "DND off" would say
+      # the opposite of the truth to anything reading it.
+      def detail(workspace, label)
+        return nil if @details_unavailable
+
+        yield
+      rescue RateLimitError => e
+        # Being throttled while decorating the answer is a reason to stop
+        # decorating. These calls are optional; the status reads they would
+        # crowd out are not.
+        @details_unavailable = true
+        warn("Rate limited; skipping presence, DND and scheduled lookups: #{e.message}")
+        nil
+      rescue ApiError => e
+        warn("Could not read #{label} on #{workspace.name}: #{e.message}")
+        nil
+      end
+
+      def render_snapshots_json(snapshots)
+        output_json(json_formatter.format(snapshots))
+        0
+      end
+
+      def json_formatter = Formatters::JsonStatusFormatter.new
+
+      def print_snapshot(snapshot, labelled:)
+        puts output.bold(snapshot.workspace_name) if labelled
+        print_status_line(snapshot)
+        print_upcoming(snapshot.scheduled)
+      end
+
+      # A status that turns on this afternoon is the reason to leave the
+      # current one alone, so it is listed under it rather than a command away.
+      def print_upcoming(scheduled)
+        return if scheduled.nil? || scheduled.empty?
+
+        puts '  Scheduled:'
+        # No IDs here; `slk status scheduled` is the view you paste from.
+        scheduled.each { |status| puts "    #{status}" }
       end
 
       def target_workspaces_for_get
         @options[:workspace] ? [runner.workspace(@options[:workspace])] : runner.all_workspaces
       end
 
-      def print_workspace_status(workspaces, workspace, status)
-        puts output.bold(workspace.name) if workspaces.size > 1
+      def print_status_line(snapshot)
+        suffix = snapshot.labels.join(' ')
 
-        if status.empty?
-          puts '  (no status set)'
+        if snapshot.status.empty?
+          # Away or on DND with no status is still worth saying: it is the
+          # difference between "nothing to report" and "unreachable".
+          puts join_suffix('  (no status set)', suffix)
         else
-          display_status(workspace, status)
+          display_status(snapshot.workspace, snapshot.status, suffix)
         end
       end
 
-      def display_status(workspace, status)
+      def join_suffix(line, suffix) = suffix.empty? ? line : "#{line} #{suffix}"
+
+      def display_status(workspace, status, suffix = '')
         emoji_path = workspace_emoji_path(workspace.name, status.emoji)
 
         if emoji_path && inline_images_supported?
-          print_status_with_image(emoji_path, status)
+          print_status_with_image(emoji_path, status, suffix)
         else
-          puts "  #{status}"
+          puts join_suffix("  #{status}", suffix)
         end
       end
 
@@ -153,10 +259,11 @@ module Slk
         find_workspace_emoji(workspace_name, emoji_name)
       end
 
-      def print_status_with_image(emoji_path, status)
+      def print_status_with_image(emoji_path, status, suffix = '')
         parts = []
         parts << status.text unless status.text.empty?
         parts << "(#{status.time_remaining})" if status.time_remaining
+        parts << suffix unless suffix.empty?
         print_inline_image_with_text(emoji_path, "  #{parts.join(' ')}")
       end
 
@@ -347,6 +454,7 @@ module Slk
 
       def list_scheduled
         workspaces = target_workspaces_for_get
+        return list_scheduled_json(workspaces) if @options[:json]
 
         each_workspace_reporting(workspaces) do |workspace|
           puts output.bold(workspace.name) if workspaces.size > 1
@@ -354,11 +462,28 @@ module Slk
         end
       end
 
+      # Every workspace appears whether or not its lookup worked, so the array
+      # still lines up with the workspaces asked about; a failed one is null
+      # rather than an empty list, and its reason went to stderr.
+      def list_scheduled_json(workspaces)
+        pending = workspaces.to_h { |workspace| [workspace.name, nil] }
+
+        code = each_workspace_reporting(workspaces) do |workspace|
+          pending[workspace.name] = in_order(runner.custom_status_api(workspace.name).scheduled)
+        end
+
+        output_json(json_formatter.format_scheduled(pending))
+        code
+      end
+
       def print_scheduled(scheduled)
         return puts '  (none scheduled)' if scheduled.empty?
 
-        scheduled.each { |status| puts "  #{status.id}  #{status}" }
+        in_order(scheduled).each { |status| puts "  #{status.id}  #{status}" }
       end
+
+      # Soonest first: the next one to turn on is the one being read for.
+      def in_order(scheduled) = scheduled.sort_by(&:date_scheduled)
 
       def unschedule_status(args)
         id = args.first

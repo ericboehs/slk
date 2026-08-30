@@ -769,6 +769,297 @@ class StatusCommandTest < Minitest::Test
     assert_includes @err.string, 'returned no scheduled status'
   end
 
+  # --- getting: status, presence, DND and the pending schedule ---------------
+
+  def stub_profile(text: 'Working', emoji: ':computer:', expiration: 0)
+    @mock_client.stub('users.profile.get',
+                      { 'ok' => true,
+                        'profile' => { 'status_text' => text, 'status_emoji' => emoji,
+                                       'status_expiration' => expiration } })
+  end
+
+  def stub_pending(*payloads)
+    @mock_client.stub('users.customStatus.list', { 'ok' => true, 'scheduled_statuses' => payloads })
+  end
+
+  def stub_presence(presence, manual_away: false)
+    @mock_client.stub('users.getPresence',
+                      { 'ok' => true, 'presence' => presence, 'manual_away' => manual_away,
+                        'online' => presence == 'active' })
+  end
+
+  def stub_snooze(until_time)
+    @mock_client.stub('dnd.info',
+                      { 'ok' => true, 'snooze_enabled' => true, 'snooze_endtime' => until_time.to_i,
+                        'dnd_enabled' => false, 'next_dnd_start_ts' => 1, 'next_dnd_end_ts' => 1 })
+  end
+
+  def json_output = JSON.parse(@io.string)
+
+  # The current status alone cannot say "and then what?", which is the thing
+  # that decides whether to touch it.
+  def test_get_status_lists_what_is_queued_next
+    stub_profile
+    stub_pending(scheduled_payload)
+
+    result, = run_status([])
+
+    assert_equal 0, result
+    assert_includes @io.string, 'Working'
+    assert_includes @io.string, 'Scheduled:'
+    assert_includes @io.string, 'Vet Appt'
+  end
+
+  # IDs are only useful to `unschedule`, and that reads from `status scheduled`.
+  def test_get_status_omits_scheduled_ids
+    stub_profile
+    stub_pending(scheduled_payload)
+
+    run_status([])
+
+    refute_includes @io.string, 'CS0BMQDDGWTU'
+  end
+
+  def test_get_status_omits_the_section_when_nothing_is_queued
+    stub_profile
+    stub_pending
+
+    run_status([])
+
+    refute_includes @io.string, 'Scheduled:'
+  end
+
+  def test_get_status_lists_the_soonest_scheduled_status_first
+    stub_profile
+    stub_pending(scheduled_payload('text' => 'Later', 'date_scheduled' => Time.new(2026, 8, 4, 9, 0, 0).to_i),
+                 scheduled_payload('text' => 'Sooner'))
+
+    run_status([])
+
+    assert_operator @io.string.index('Sooner'), :<, @io.string.index('Later')
+  end
+
+  def test_no_scheduled_skips_the_scheduled_lookup_but_keeps_presence_and_dnd
+    stub_profile
+    stub_pending(scheduled_payload)
+
+    result, = run_status(['--no-scheduled'])
+
+    assert_equal 0, result
+    assert_includes @io.string, 'Working'
+    assert_empty calls_to('users.customStatus.list')
+    refute_empty calls_to('dnd.info')
+  end
+
+  def test_brief_skips_every_extra_lookup
+    stub_profile
+    stub_pending(scheduled_payload)
+    stub_presence('away')
+
+    result, = run_status(['--brief'])
+
+    assert_equal 0, result
+    assert_includes @io.string, 'Working'
+    refute_includes @io.string, '[away]'
+    assert_equal ['users.profile.get'], @mock_client.calls.map { |call| call[:method] }.uniq
+  end
+
+  # Under --quiet the lines are thrown away, so the calls would buy nothing.
+  def test_quiet_skips_the_extra_lookups
+    stub_profile
+    stub_pending(scheduled_payload)
+
+    run_status(['--quiet'])
+
+    assert_empty calls_to('users.customStatus.list')
+    assert_empty calls_to('dnd.info')
+  end
+
+  # --json writes to stdout even under --quiet, so its consumers still need
+  # the parts only the extra calls can fill in.
+  def test_quiet_json_still_gathers_the_details
+    stub_profile
+    stub_pending(scheduled_payload)
+
+    run_status(['--quiet', '--json'])
+
+    refute_empty calls_to('users.customStatus.list')
+    refute_empty json_output.first['scheduled']
+  end
+
+  # --- presence and DND on the status line -----------------------------------
+
+  # Away changes what happens to a message sent to you, which is what the
+  # status is being read to find out.
+  def test_get_status_marks_an_away_workspace
+    stub_profile
+    stub_presence('away', manual_away: true)
+
+    run_status([])
+
+    assert_includes @io.string, '[away]'
+  end
+
+  # Active is the default; printing it on every line would bury the one that
+  # is not.
+  def test_get_status_says_nothing_about_an_active_workspace
+    stub_profile
+    stub_presence('active')
+
+    run_status([])
+
+    refute_includes @io.string, '[away]'
+    refute_includes @io.string, 'active'
+  end
+
+  def test_get_status_shows_when_dnd_lifts
+    stub_profile
+    stub_snooze(Time.now + (90 * 60))
+
+    run_status([])
+
+    assert_match(/\[dnd until \d+:\d\d[ap]m\]/, @io.string)
+  end
+
+  # Unreachable with nothing set is still worth saying — it is the difference
+  # between "nothing to report" and "nobody home".
+  def test_get_status_labels_an_empty_status_too
+    stub_profile(text: '', emoji: '')
+    stub_presence('away')
+
+    run_status([])
+
+    assert_includes @io.string, '(no status set) [away]'
+  end
+
+  def test_get_status_survives_a_failed_dnd_lookup
+    stub_profile
+    @mock_client.stub('dnd.info', Slk::ApiError.new('account_inactive'))
+
+    result, = run_status([])
+
+    assert_equal 0, result
+    assert_includes @io.string, 'Working'
+    assert_includes @err.string, 'Could not read DND on test'
+  end
+
+  # The current status is what was asked for. Losing the addendum — an internal
+  # endpoint, and the first thing to break — must not fail the command.
+  def test_get_status_still_reports_the_status_when_the_schedule_lookup_fails
+    stub_profile
+    @mock_client.stub('users.customStatus.list', { 'ok' => true })
+
+    result, = run_status([])
+
+    assert_equal 0, result
+    assert_includes @io.string, 'Working'
+    assert_includes @err.string, 'Could not read scheduled statuses on test'
+  end
+
+  # The extra calls are optional; the status reads they would crowd out are
+  # not, so a throttled run stops decorating rather than spending more.
+  def test_get_status_stops_gathering_details_after_a_rate_limit
+    stub_profile
+    @mock_client.stub('users.getPresence', Slk::RateLimitError.new('ratelimited'))
+
+    result, = run_status([], runner: three_workspaces)
+
+    assert_equal 0, result
+    assert_equal 1, calls_to('users.getPresence').size
+    assert_empty calls_to('users.customStatus.list')
+    assert_equal 3, calls_to('users.profile.get').size
+  end
+
+  # --- --json ----------------------------------------------------------------
+
+  # A document whose shape changes with -w cannot be parsed by a script that
+  # did not pass it, so a lone workspace is still an array.
+  def test_json_is_always_an_array
+    stub_profile
+    stub_pending
+
+    result, = run_status(['--json'])
+
+    assert_equal 0, result
+    assert_kind_of Array, json_output
+    assert_equal 'test', json_output.first['workspace']
+  end
+
+  def test_json_carries_status_presence_dnd_and_schedule
+    stub_profile(text: 'Working', emoji: ':computer:')
+    stub_presence('away', manual_away: true)
+    stub_snooze(Time.now + (90 * 60))
+    stub_pending(scheduled_payload)
+
+    run_status(['--json'])
+    entry = json_output.first
+
+    assert_equal 'Working', entry.dig('status', 'text')
+    assert_equal 'away', entry.dig('presence', 'presence')
+    assert entry.dig('presence', 'manual_away')
+    assert entry.dig('dnd', 'active')
+    assert_equal 'snooze', entry.dig('dnd', 'source')
+    assert_equal 'CS0BMQDDGWTU', entry['scheduled'].first['id']
+  end
+
+  # Epoch alone makes a shell script do date arithmetic to print "until 3pm".
+  def test_json_pairs_each_timestamp_with_an_iso_string
+    stub_profile
+    stub_pending(scheduled_payload)
+
+    run_status(['--json'])
+    scheduled = json_output.first['scheduled'].first
+
+    assert_equal Time.new(2026, 8, 3, 13, 30, 0).to_i, scheduled['date_scheduled']
+    assert_equal Time.new(2026, 8, 3, 13, 30, 0).iso8601, scheduled['starts_at']
+  end
+
+  # Reporting an unchecked DND as "off" would tell a statusline the opposite
+  # of the truth, so "not checked" has its own value.
+  def test_json_reports_skipped_lookups_as_null
+    stub_profile
+
+    run_status(['--json', '--brief'])
+    entry = json_output.first
+
+    assert_nil entry['presence']
+    assert_nil entry['dnd']
+    assert_nil entry['scheduled']
+  end
+
+  def test_json_reports_a_failed_lookup_as_null_not_empty
+    stub_profile
+    @mock_client.stub('users.customStatus.list', { 'ok' => true })
+
+    run_status(['--json'])
+
+    assert_nil json_output.first['scheduled']
+  end
+
+  def test_scheduled_json_lists_every_workspace
+    stub_scheduled_store('alpha' => %w[CS_ALPHA], 'beta' => %w[CS_BETA])
+
+    result, = run_status(['scheduled', '--json'], runner: three_workspaces)
+
+    assert_equal 0, result
+    listed = json_output.map { |entry| entry['workspace'] }
+
+    assert_equal %w[alpha beta gamma], listed
+    assert_equal 'CS_ALPHA', json_output.first['scheduled'].first['id']
+    assert_empty json_output.last['scheduled']
+  end
+
+  def test_scheduled_json_keeps_a_failed_workspace_as_null
+    stub_scheduled_store('alpha' => %w[CS_ALPHA])
+    fail_on_workspace('beta')
+
+    result, = run_status(['scheduled', '--json'], runner: three_workspaces)
+
+    assert_equal 1, result
+    assert_nil json_output[1]['scheduled']
+    assert_includes @err.string, 'beta:'
+  end
+
   def test_scheduled_lists_pending_statuses
     @mock_client.stub('users.customStatus.list',
                       { 'ok' => true, 'scheduled_statuses' => [scheduled_payload] })
