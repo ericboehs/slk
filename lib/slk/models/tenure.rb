@@ -56,8 +56,8 @@ module Slk
         [years.positive? ? "#{years}y" : nil, rest.positive? ? "#{rest}mo" : nil].compact.join(' ')
       end
 
-      # Blank for a tenure that cannot be worked out — an active account, or
-      # an end date that predates the start.
+      # True when the length cannot be worked out: an active account, or an
+      # end date that predates the start.
       def unknown? = months.nil?
 
       def started = started_on.iso8601

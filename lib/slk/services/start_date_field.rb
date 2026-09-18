@@ -29,7 +29,7 @@ module Slk
 
       def missing_message
         'This workspace has no "Start Date" profile field, so tenure cannot be worked out. ' \
-          'Run `slk debug schema` to see the fields it does have.'
+          'Run `slk debug schema` (an undocumented command) to see the fields it does have.'
       end
 
       private
@@ -37,12 +37,22 @@ module Slk
       # A date-typed field wins over a text one with the same label: someone
       # typing "started summer 2019" into a text box is not a date.
       def discover
-        match = best_match(@team_api.profile_schema.dig('profile', 'fields'))
-        id = match && match['id']
-        id = nil unless id.is_a?(String) && !id.empty?
+        id = usable_id(best_match(@team_api.profile_schema.dig('profile', 'fields')))
         @on_debug&.call("start date field: #{id || 'not found in team schema'}")
-        MetaCache.write(@cache, @workspace_name, CACHE_KEY, { 'id' => id })
+        remember(id)
         id
+      end
+
+      def usable_id(match)
+        id = match && match['id']
+        id.is_a?(String) && !id.empty? ? id : nil
+      end
+
+      # Losing this costs one extra team.profile.get next run, not minutes of
+      # rate-limited lookups, so it is noted rather than warned about.
+      def remember(id)
+        failure = MetaCache.write(@cache, @workspace_name, CACHE_KEY, { 'id' => id })
+        @on_debug&.call("start date field cache not written: #{failure.message}") if failure
       end
 
       # A workspace that answers with something other than a list of field

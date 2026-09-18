@@ -65,6 +65,14 @@ module Slk
         0
       end
 
+      # Every kind, including the meta cache behind start dates, deactivation
+      # rosters and resolved profiles — "cleared" should not have exceptions.
+      def clear_every_cache(workspace_name)
+        cache_store.clear_user_cache(*[workspace_name].compact)
+        cache_store.clear_channel_cache(*[workspace_name].compact)
+        cache_store.clear_meta_cache(*[workspace_name].compact)
+      end
+
       def display_workspace_status(workspace)
         puts output.bold(workspace.name) if target_workspaces.size > 1
         display_cache_counts(workspace)
@@ -87,15 +95,8 @@ module Slk
       end
 
       def clear_cache(workspace_name)
-        if workspace_name
-          cache_store.clear_user_cache(workspace_name)
-          cache_store.clear_channel_cache(workspace_name)
-          success("Cleared cache for #{workspace_name}")
-        else
-          cache_store.clear_user_cache
-          cache_store.clear_channel_cache
-          success('Cleared all caches')
-        end
+        clear_every_cache(workspace_name)
+        success(workspace_name ? "Cleared cache for #{workspace_name}" : 'Cleared all caches')
 
         0
       end

@@ -232,7 +232,7 @@ module Slk
       end
 
       def parse_success_response(response)
-        result = JSON.parse(response.body)
+        result = parse_body(response.body)
         raise_rate_limit(response) if result['error'] == 'ratelimited'
         unless result['ok']
           message = result['error'] || 'Unknown error'
@@ -240,6 +240,17 @@ module Slk
         end
 
         result
+      end
+
+      # Every caller treats a response as a Hash and digs into it. Slack
+      # sending a bare array, string or null is not something any of them can
+      # act on, so it fails here as an API error rather than as a TypeError
+      # somewhere downstream.
+      def parse_body(body)
+        result = JSON.parse(body)
+        return result if result.is_a?(Hash)
+
+        raise ApiError.new('Unexpected response shape from Slack API', code: :invalid_response)
       rescue JSON::ParserError
         raise ApiError.new('Invalid JSON response from Slack API', code: :invalid_json)
       end

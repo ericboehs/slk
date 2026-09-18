@@ -85,7 +85,16 @@ class CacheCommandTest < Minitest::Test
 
     assert_equal 0, result
     assert_equal 'myworkspace', @cache_store.cleared_user
+    assert_equal 'myworkspace', @cache_store.cleared_meta
     assert_includes @io.string, 'myworkspace'
+  end
+
+  # "Cleared all caches" was not true while start dates, deactivation rosters
+  # and resolved profiles survived it.
+  def test_clear_includes_the_meta_cache
+    Slk::Commands::Cache.new(['clear'], runner: create_runner).execute
+
+    assert @cache_store.cleared_meta
   end
 
   def test_unknown_action
@@ -187,11 +196,12 @@ class CacheCommandTest < Minitest::Test
   end
 
   class MockCacheStore
-    attr_reader :cleared_user, :cleared_channel
+    attr_reader :cleared_user, :cleared_channel, :cleared_meta
 
     def initialize
       @cleared_user = nil
       @cleared_channel = nil
+      @cleared_meta = nil
     end
 
     def user_cache_size(_workspace = nil)
@@ -212,6 +222,10 @@ class CacheCommandTest < Minitest::Test
 
     def clear_channel_cache(workspace = nil)
       @cleared_channel = workspace || true
+    end
+
+    def clear_meta_cache(workspace = nil)
+      @cleared_meta = workspace || true
     end
 
     def populate_user_cache(_workspace, users)

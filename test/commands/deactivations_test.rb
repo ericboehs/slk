@@ -566,4 +566,53 @@ class DeactivationsCommandTest < Minitest::Test
   ensure
     FileUtils.chmod(0o700, temp_paths.dir)
   end
+
+  # --- tenure edge cases ---------------------------------------------------
+
+  def test_json_carries_nulls_when_no_start_date_is_known
+    stub_start_dates({})
+    execute_with_args(['--tenure', '--json'])
+    entry = JSON.parse(io_string)['deactivations'].first
+
+    assert_nil entry['started_on']
+    assert_nil entry['tenure_months']
+  end
+
+  # A start date after the departure is a data entry error, not a negative
+  # tenure. The bad date stays visible; the length it cannot support does not.
+  def test_a_start_date_after_the_departure_reads_as_unknown
+    stub_start_dates({ 'U1' => (Time.now + (30 * 86_400)).strftime('%Y-%m-%d') })
+    execute_with_args(['--tenure', '--json'])
+    entry = JSON.parse(io_string)['deactivations'].first
+
+    refute_nil entry['started_on']
+    assert_nil entry['tenure_months']
+  end
+
+  def test_the_csv_keeps_a_backwards_start_date_and_blanks_the_length
+    future = (Time.now + (30 * 86_400)).strftime('%Y-%m-%d')
+    stub_start_dates({ 'U1' => future })
+    execute_with_args(['--tenure', '--csv'])
+    row = io_string.lines.find { |l| l.include?('Ann Archer') }.chomp
+
+    assert_includes row, ",#{future},,"
+    assert(row.end_with?(',,'))
+  end
+
+  def test_a_failing_team_schema_call_exits_cleanly
+    @mock_client.stub('team.profile.get', Slk::ApiError.new('missing_scope', code: :missing_scope))
+
+    assert_equal 1, execute_with_args(['--tenure'])
+    assert_match(/missing_scope/, @output.instance_variable_get(:@err).string)
+  end
+
+  def test_a_deactivation_with_no_date_can_still_have_a_tenure_looked_up
+    undated = member('U7', name: 'una', real_name: 'Una Dated', deleted: true)
+    undated.delete('updated')
+    @mock_client = Slk::TestHelpers::PagedUsersClient.new([[undated]])
+    stub_start_dates({ 'U7' => '2020-01-15' })
+
+    assert_equal 0, execute_with_args(['--tenure'])
+    assert_includes io_string, 'Una Dated'
+  end
 end

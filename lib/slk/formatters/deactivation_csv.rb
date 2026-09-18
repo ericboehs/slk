@@ -32,9 +32,12 @@ module Slk
         @tenures ? row + tenure_cells(record) : row
       end
 
-      # An unknown start date leaves empty cells rather than a zero: a
-      # spreadsheet that averages tenure should skip the blanks, not count
-      # them as people who left the day they arrived.
+      # Empty cells rather than zeros, so a spreadsheet averaging tenure skips
+      # them instead of counting people who left the day they arrived. Two
+      # different unknowns land here: no start date on file at all, which
+      # blanks the whole group, and a start date later than the departure,
+      # which keeps started_on so the bad data is visible and blanks the
+      # length that cannot be derived from it.
       def tenure_cells(record)
         tenure = @tenures[record.user_id]
         return [nil, nil, nil] unless tenure

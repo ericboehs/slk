@@ -12,8 +12,8 @@ module Slk
     # Accounts with no start date on file are cached too, otherwise every run
     # would pay again to learn the same nothing.
     #
-    # The cache holds for 30 days. A departed account's start date does not
-    # change, but an admin correcting a typo in one is exactly the case the
+    # The cache holds for 30 days. A departed account's start date rarely
+    # changes, but an admin correcting a typo in one is exactly the case the
     # expiry exists for; `slk cache clear` forces the issue sooner.
     class StartDateLookup
       CACHE_KEY = 'start_dates_v1'

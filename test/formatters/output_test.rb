@@ -149,4 +149,28 @@ class OutputTest < Minitest::Test
 
     assert_empty err.string
   end
+
+  # Progress is decoration, and clear_progress often runs in an ensure block
+  # cleaning up after a real failure. A closed stderr must not replace that
+  # failure with one about drawing a counter.
+  class BrokenPipe < StringIO
+    def tty? = true
+    def print(*) = raise(Errno::EPIPE)
+  end
+
+  def test_a_broken_stderr_does_not_turn_progress_into_an_error
+    out = Slk::Formatters::Output.new(io: @io, err: BrokenPipe.new, color: false)
+
+    assert_nil out.progress('start dates: 1/9')
+    assert_nil out.clear_progress
+  end
+
+  def test_a_stderr_that_cannot_answer_tty_is_treated_as_not_one
+    err = StringIO.new
+    err.define_singleton_method(:tty?) { raise IOError, 'closed stream' }
+    out = Slk::Formatters::Output.new(io: @io, err: err, color: false)
+
+    assert_nil out.progress('working')
+    assert_empty err.string
+  end
 end

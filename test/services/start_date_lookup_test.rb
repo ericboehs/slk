@@ -227,4 +227,21 @@ class StartDateLookupTest < Minitest::Test
       lookup(FakeUsersApi.new, field: FakeField.new(nil)).fetch([])
     end
   end
+
+  # A cache file holding something other than a Hash (hand-edited, or written
+  # by a future version) must not be trusted into a crash.
+  def test_a_non_hash_cache_payload_is_ignored_and_refetched
+    cache_store.set_meta('test', Slk::Services::StartDateLookup::CACHE_KEY, 'not a hash')
+    api = FakeUsersApi.new({ 'U1' => '2020-01-15' })
+
+    assert_equal({ 'U1' => '2020-01-15' }, lookup(api, cache: cache_store).fetch(%w[U1]))
+    assert_equal %w[U1], api.requested
+  end
+
+  def test_progress_stays_silent_when_there_is_nothing_to_look_up
+    seen = []
+    lookup(FakeUsersApi.new, on_progress: ->(d, t) { seen << [d, t] }).fetch([])
+
+    assert_empty seen
+  end
 end

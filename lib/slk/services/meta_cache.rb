@@ -7,6 +7,8 @@ module Slk
     module MetaCache
       module_function
 
+      # A write failure here is deliberately dropped: fetch's caller wants the
+      # value, and callers that need to report a cold cache use write directly.
       def fetch(cache_store, workspace_name, key, ttl: nil, refresh: false)
         cached = read(cache_store, workspace_name, key, ttl: ttl) unless refresh
         return cached if cached
@@ -25,6 +27,10 @@ module Slk
       # A cache write that fails must never cost the caller the work it just
       # did — a full or read-only disk means "no cache", not "no answer", and
       # some of these writes sit behind minutes of rate-limited API calls.
+      #
+      # A nil or false value is treated as nothing to store, since no caller
+      # caches a negative this way — the start date lookup caches per-user
+      # nils inside a Hash, which is a value like any other.
       #
       # @return [Exception, nil] the write failure, for callers that want to
       #   mention it; nil when the write succeeded or there was nothing to do

@@ -205,6 +205,19 @@ class ApiClientResponseHandlingTest < Minitest::Test
     assert_includes error.message, 'Invalid JSON'
   end
 
+  # Every caller digs into the response as a Hash. A bare array or null is
+  # not something any of them can act on, so it fails as an API error here
+  # rather than as a TypeError three layers down.
+  def test_raises_api_error_when_the_response_is_not_an_object
+    ['[]', 'null', '42', '"hello"'].each do |body|
+      error = assert_raises(Slk::ApiError) do
+        @client.send(:handle_response, build_response(Net::HTTPOK, body), 'test.method')
+      end
+
+      assert_equal :invalid_response, error.code, "for body #{body}"
+    end
+  end
+
   # Tests for workspace headers
   def test_workspace_headers_are_used
     workspace = Slk::Models::Workspace.new(

@@ -135,6 +135,19 @@ module Slk
         end
       end
 
+      # The meta cache holds everything that is neither a user nor a channel:
+      # start dates, the deactivation roster, resolved profiles. "Clear all
+      # caches" was not telling the truth while this was left behind.
+      def clear_meta_cache(workspace_name = nil)
+        if workspace_name
+          @meta_cache.delete(workspace_name)
+          FileUtils.rm_f(meta_cache_file(workspace_name))
+        else
+          @meta_cache.clear
+          Dir.glob(@paths.cache_file('meta-*.json')).each { |f| FileUtils.rm_f(f) }
+        end
+      end
+
       # Subteam cache methods
       def get_subteam(workspace_name, subteam_id)
         load_subteam_cache(workspace_name)
@@ -198,6 +211,12 @@ module Slk
       rescue JSON::ParserError => e
         @on_warning&.call("#{cache_type} cache corrupted for #{workspace_name}: #{e.message}. Cache will be rebuilt.")
         safely_delete_file(file)
+        {}
+      rescue SystemCallError, IOError => e
+        # An unreadable cache file is the same situation as a corrupt one:
+        # carry on without it. Not deleted, because a file we cannot read is
+        # one we probably cannot remove either, and it may not be ours.
+        @on_warning&.call("#{cache_type} cache unreadable for #{workspace_name}: #{e.message}. Continuing without it.")
         {}
       end
 
