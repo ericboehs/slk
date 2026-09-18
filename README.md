@@ -217,6 +217,8 @@ slk deactivations                 # 25 most recent departures
 slk deactivations 90d             # Everyone who left in the last 90 days
 slk deactivations 2026-01-01 -n 0 # All departures this year
 slk deactivations --chart         # Departures per month
+slk deactivations --tenure        # Add how long each person stayed
+slk deactivations 1y --csv        # Spreadsheet export of a year of departures
 slk deactivations --grep engineer # Filter by name, handle, title, email, or ID
 slk deactivations --bots          # Include deactivated bots and app users
 slk deactivations --json          # Machine-readable output
@@ -239,6 +241,41 @@ forward, so treat it as "last touched" rather than a payroll record.
 
 The roster costs one API call per 1000 members, so the result is cached for six
 hours; `--refresh` re-fetches it.
+
+#### Tenure
+
+`--tenure` adds how long each person was here, taken from the workspace's
+"Start Date" profile field:
+
+```
+acme: 3 deactivated since 30d (664 active members)
+
+2026-09-14  Dana Whitfield         1mo  Platform Support
+2026-09-11  Priya Raghunathan   2y 7mo  UX Researcher
+2026-09-09  Sam Okonkwo        4y 10mo  Senior Software Engineer
+```
+
+This one is slow the first time. Start dates are not in the roster — they cost
+one `users.profile.get` per person, and Slack rate-limits that endpoint to
+roughly eight calls a minute, so a screenful takes about three minutes. The
+command says so before it starts, only looks up the rows it is about to show,
+and caches each answer the moment it arrives: interrupting it keeps the work
+already paid for, and the second run is instant.
+
+Blank means nobody filled the field in. Months are whole months, so somebody
+who started on the 20th and left on the 3rd has not completed that month.
+
+#### CSV
+
+`--csv` writes every match — not just the screenful `-n` would show, since a
+truncated export is a wrong answer that looks like a right one. Combine it with
+`--tenure` for `started_on`, `tenure_months` and a readable `tenure` column:
+
+```bash
+slk deactivations 1y --tenure --csv > departures.csv
+```
+
+Progress and warnings go to stderr, so the redirect above captures only data.
 
 ### Global Options
 

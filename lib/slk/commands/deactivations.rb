@@ -8,16 +8,31 @@ module Slk
     #   slk deactivations 90d             # everyone who left in the last 90 days
     #   slk deactivations --chart         # departures per month
     #   slk deactivations --grep engineer # filter by name, handle, title, email, ID
+    #   slk deactivations --tenure        # add how long each person stayed
+    #   slk deactivations --csv           # spreadsheet export of every match
     # rubocop:disable Metrics/ClassLength
     class Deactivations < Base
       DEFAULT_LIMIT = 25
       CHART_MONTHS = 12
+      # Measured against a live workspace: users.profile.get answers two or
+      # three calls in a row, then makes you wait out a thirty second
+      # Retry-After — about eight lookups a minute averaged over a long run,
+      # which is what the time estimate is built on.
+      LOOKUPS_PER_MINUTE = 8
+      COST_WARNING_AT = 5
+      SWITCHES = {
+        '--chart' => :chart, '--bots' => :bots, '--tenure' => :tenure, '--csv' => :csv,
+        '--refresh' => :refresh, '--no-cache' => :refresh
+      }.freeze
 
       def execute
         result = validate_options
         return result if result
 
         run
+      rescue Services::StartDateLookup::MissingFieldError => e
+        error(e.message)
+        1
       rescue ApiError => e
         error("API error: #{e.message}")
         1
@@ -26,16 +41,19 @@ module Slk
       protected
 
       def handle_option(arg, args, _remaining)
+        return switch_on(SWITCHES[arg]) if SWITCHES.key?(arg)
+
         case arg
         when '-n', '--limit' then @options[:limit] = parse_limit(arg, option_value(arg, args))
         when '--since' then @options[:since] = option_value(arg, args)
-        when '--chart' then @options[:chart] = true
-        when '--bots' then @options[:bots] = true
         when '--grep' then @options[:grep] = option_value(arg, args)
-        when '--refresh', '--no-cache' then @options[:refresh] = true
         else return super
         end
         true
+      end
+
+      def switch_on(key)
+        @options[key] = true
       end
 
       def help_text
@@ -76,11 +94,17 @@ module Slk
           s.option('-n, --limit N', "Rows to show (default #{DEFAULT_LIMIT}, 0 for all)")
           s.option('--since SPEC', 'Only departures since 7d, 4w, 6m, or YYYY-MM-DD')
           s.option('--chart', 'Histogram of departures per month')
+          s.option('--tenure', 'Add how long each person stayed (slow: one lookup per person)')
           s.option('--grep PATTERN', 'Filter by name, handle, title, email, or user ID')
           s.option('--bots', 'Include deactivated bots and app users')
-          s.option('--refresh', 'Re-fetch the roster instead of using the cache')
-          s.option('--json', 'Raw JSON output')
+          add_output_options(s)
         end
+      end
+
+      def add_output_options(section)
+        section.option('--refresh', 'Re-fetch the roster instead of using the cache')
+        section.option('--csv', 'CSV of every match, for a spreadsheet')
+        section.option('--json', 'Raw JSON output')
       end
 
       def add_examples_section(help)
@@ -88,21 +112,32 @@ module Slk
           s.example('slk deactivations', 'Most recent departures')
           s.example('slk deactivations 90d', 'Everyone who left in the last 90 days')
           s.example('slk deactivations --chart', 'Departures per month')
+          s.example('slk deactivations --tenure', 'How long each person stayed')
+          s.example('slk deactivations 1y --csv > left.csv', 'Export a year of departures')
           s.example('slk deactivations 2026-01-01 -n 0', 'All departures this year')
         end
       end
 
       def run
         workspace = runner.workspace(@options[:workspace])
+        validate_combination
         @since_label = since_spec
         @since = parse_since(@since_label)
         report = scan(workspace)
         records = collect_records(report)
 
+        emit(workspace, report, records)
+        0
+      end
+
+      # --csv and --json export every match; the terminal list is the only
+      # view that pages, so it is the only one -n applies to. (--chart spans
+      # its whole window too, for the same reason.)
+      def emit(workspace, report, records)
+        return render_csv(workspace, records) if @options[:csv]
         return render_json(workspace, report, records) if @options[:json]
 
         render(workspace, report, records)
-        0
       end
 
       # One window, or none. A second date is a different question, and
@@ -114,14 +149,96 @@ module Slk
         @options[:since] || positional_args.first
       end
 
+      # A histogram counts departures per month; it has no row to hang a
+      # tenure on. Refusing beats quietly ignoring the flag someone paid
+      # attention to type.
+      # Two ways of asking for the same rows is one too many, and picking a
+      # winner silently means the other flag looks broken.
+      def validate_combination
+        raise UsageError, '--tenure has nothing to add to --chart; drop one of them.' if
+          @options[:tenure] && @options[:chart]
+        raise UsageError, '--csv and --json are two different exports; pick one.' if
+          @options[:csv] && @options[:json]
+      end
+
       def collect_records(report)
         records = filter(report.records)
         @options[:chart] && @since.nil? ? last_year(records) : records
       end
 
       def render_json(workspace, report, records)
-        output_json(json_payload(workspace, report, records))
+        output_json(json_payload(workspace, report, records, tenures(workspace, records)))
         0
+      end
+
+      def render_csv(workspace, records)
+        Formatters::DeactivationCsv.new(
+          output: output, tenures: @options[:tenure] ? tenures(workspace, records) : nil
+        ).render(records)
+        0
+      end
+
+      # Start dates cost one rate-limited call each, so they are only ever
+      # fetched for rows that will actually be shown. The caller has already
+      # applied -n (or deliberately not, for an export); this memo assumes one
+      # record set per run, which is what a single command does.
+      def tenures(workspace, records)
+        return {} unless @options[:tenure]
+
+        @tenures ||= resolve_tenures(workspace, records)
+      end
+
+      def resolve_tenures(workspace, records)
+        lookup = start_date_lookup(workspace)
+        announce_cost(lookup, records)
+        dates = begin
+          lookup.fetch(records.map(&:user_id))
+        ensure
+          # Even when the lookup raises: otherwise the error message arrives
+          # glued to a half-drawn "start dates: 12/40".
+          output.clear_progress
+        end
+        report_cache_error(lookup)
+        records.to_h { |r| [r.user_id, Models::Tenure.build(dates[r.user_id], r.deactivated_time)] }
+      end
+
+      # The answers still arrived; they just will not be there next time.
+      def report_cache_error(lookup)
+        return unless lookup.cache_error
+
+        warn("Could not save the start date cache (#{lookup.cache_error}). " \
+             'These lookups will have to be repeated next run.')
+      end
+
+      def start_date_lookup(workspace)
+        Services::StartDateLookup.new(
+          users_api: runner.users_api(workspace.name),
+          field: start_date_field(workspace),
+          workspace_name: workspace.name,
+          cache_store: cache_store,
+          on_progress: ->(done, total) { output.progress("start dates: #{done}/#{total}") }
+        )
+      end
+
+      def start_date_field(workspace)
+        Services::StartDateField.new(
+          team_api: runner.team_api(workspace.name),
+          workspace_name: workspace.name,
+          cache_store: cache_store,
+          on_debug: ->(msg) { output.debug(msg) }
+        )
+      end
+
+      # Better to say how long this will take than to let someone wonder
+      # whether the terminal has hung.
+      def announce_cost(lookup, records)
+        pending = lookup.uncached_count(records.map(&:user_id))
+        return if pending < COST_WARNING_AT
+
+        minutes = [(pending.to_f / LOOKUPS_PER_MINUTE).round, 1].max
+        warn("Looking up #{pending} start dates, one profile call each. Slack rate-limits these " \
+             "to about #{LOOKUPS_PER_MINUTE} a minute, so this will take roughly #{minutes} " \
+             "minute#{'s' if minutes > 1}. Interrupting is safe: each answer is cached as it arrives.")
       end
 
       def scan(workspace)
@@ -192,7 +309,7 @@ module Slk
       def render(workspace, report, records)
         formatter = Formatters::DeactivationFormatter.new(output: output, width: @options[:width])
         formatter.summary(summary_line(workspace, report, records))
-        render_body(formatter, records)
+        render_body(formatter, workspace, records)
         footer = footer(report, records)
         return if footer.empty?
 
@@ -202,17 +319,19 @@ module Slk
 
       # Even an empty result keeps its footer: "nobody matched" is worth much
       # less without how old the roster behind it is.
-      def render_body(formatter, records)
+      def render_body(formatter, workspace, records)
         return info('No deactivations match.') if records.empty?
 
         puts
-        @options[:chart] ? formatter.chart(records, **chart_bounds) : render_list(formatter, records)
+        return formatter.chart(records, **chart_bounds) if @options[:chart]
+
+        render_list(formatter, workspace, records)
       end
 
-      def render_list(formatter, records)
+      def render_list(formatter, workspace, records)
         limit = @options[:limit] || DEFAULT_LIMIT
         shown = limit.positive? ? records.first(limit) : records
-        formatter.list(shown)
+        formatter.list(shown, tenures: tenures(workspace, shown))
         return unless shown.size < records.size
 
         puts
@@ -267,7 +386,7 @@ module Slk
         Models::Duration.new(seconds: seconds).to_s
       end
 
-      def json_payload(workspace, report, records)
+      def json_payload(workspace, report, records, tenures = {})
         {
           workspace: workspace.name,
           fetched_at: report.fetched_at,
@@ -276,8 +395,19 @@ module Slk
           total_deactivated: total_deactivated(report),
           includes_bots: @options[:bots] ? true : false,
           matched: records.size,
-          deactivations: records.map { |r| r.to_h.merge(deactivated_on: r.date) }
+          deactivations: records.map { |r| json_entry(r, tenures) }
         }
+      end
+
+      # started_on and tenure_months appear only when they were asked for:
+      # a null that means "not looked up" is indistinguishable from one that
+      # means "nobody filled it in".
+      def json_entry(record, tenures)
+        entry = record.to_h.merge(deactivated_on: record.date)
+        return entry unless @options[:tenure]
+
+        tenure = tenures[record.user_id]
+        entry.merge(started_on: tenure&.started, tenure_months: tenure&.months)
       end
     end
     # rubocop:enable Metrics/ClassLength

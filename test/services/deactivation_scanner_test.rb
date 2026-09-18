@@ -33,13 +33,7 @@ class DeactivationScannerTest < Minitest::Test
   end
 
   def cache_store
-    @cache_store ||= Slk::Services::CacheStore.new(paths: TempPaths.new)
-  end
-
-  class TempPaths
-    def initialize = @dir = Dir.mktmpdir('slk-deactivations-test')
-    def cache_file(name) = File.join(@dir, name)
-    def ensure_cache_dir = FileUtils.mkdir_p(@dir)
+    @cache_store ||= Slk::Services::CacheStore.new(paths: Slk::TestHelpers::TempPaths.new)
   end
 
   def test_scan_returns_only_deactivated_accounts_newest_first
@@ -141,5 +135,23 @@ class DeactivationScannerTest < Minitest::Test
     ).scan
 
     assert_equal ['users.list: 2 members fetched', 'users.list: 5 members fetched'], totals
+  end
+
+  # The roster scan is the cheap half of this command, but a read-only cache
+  # dir used to abort it outright. A cache is an optimisation.
+  def test_a_cache_that_cannot_be_written_does_not_stop_the_scan
+    skip 'chmod does not prevent writes on Windows' if Gem.win_platform?
+
+    api = Slk::TestHelpers::PagedUsersClient.new(roster)
+    paths = Slk::TestHelpers::TempPaths.new
+    store = Slk::Services::CacheStore.new(paths: paths)
+    FileUtils.chmod(0o500, paths.dir)
+
+    report = scanner(api, cache_store: store).scan
+
+    refute_empty report.records
+  ensure
+    # skip raises, so paths may never have been assigned.
+    FileUtils.chmod(0o700, paths.dir) if paths
   end
 end

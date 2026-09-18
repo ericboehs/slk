@@ -570,4 +570,72 @@ class CacheStoreTest < Minitest::Test
       assert_equal 'user', events.first[0]
     end
   end
+
+  # A cache is an optimisation. An unreadable file should cost speed, never
+  # the command.
+  def test_unreadable_cache_warns_and_carries_on
+    skip 'chmod does not prevent reads on Windows' if Gem.win_platform?
+
+    with_temp_config do |dir|
+      cache_dir = "#{dir}/cache/slk"
+      FileUtils.mkdir_p(cache_dir)
+      file = "#{cache_dir}/meta-workspace1.json"
+      File.write(file, '{"k":{"value":1}}')
+      File.chmod(0o000, file)
+
+      warnings = []
+      store = Slk::Services::CacheStore.new
+      store.on_warning = ->(msg) { warnings << msg }
+
+      assert_nil store.get_meta('workspace1', 'k')
+      assert_match(/Meta cache unreadable/, warnings.first)
+    ensure
+      File.chmod(0o600, file)
+    end
+  end
+
+  # Deleting it would need the same access we just failed to get, and the
+  # file may not even be ours.
+  def test_an_unreadable_cache_file_is_left_alone
+    skip 'chmod does not prevent reads on Windows' if Gem.win_platform?
+
+    with_temp_config do |dir|
+      cache_dir = "#{dir}/cache/slk"
+      FileUtils.mkdir_p(cache_dir)
+      file = "#{cache_dir}/meta-workspace1.json"
+      File.write(file, '{"k":{"value":1}}')
+      File.chmod(0o000, file)
+
+      Slk::Services::CacheStore.new.get_meta('workspace1', 'k')
+
+      assert_path_exists file
+    ensure
+      File.chmod(0o600, file)
+    end
+  end
+
+  def test_clear_meta_cache_removes_the_file
+    with_temp_config do |dir|
+      store = Slk::Services::CacheStore.new
+      store.set_meta('workspace1', 'k', 'v')
+      file = "#{dir}/cache/slk/meta-workspace1.json"
+
+      assert_path_exists file
+      store.clear_meta_cache('workspace1')
+
+      refute_path_exists file
+      assert_nil Slk::Services::CacheStore.new.get_meta('workspace1', 'k')
+    end
+  end
+
+  def test_clear_meta_cache_without_a_workspace_removes_every_file
+    with_temp_config do |dir|
+      store = Slk::Services::CacheStore.new
+      store.set_meta('one', 'k', 'v')
+      store.set_meta('two', 'k', 'v')
+      store.clear_meta_cache
+
+      assert_empty Dir.glob("#{dir}/cache/slk/meta-*.json")
+    end
+  end
 end

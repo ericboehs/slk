@@ -6,6 +6,7 @@ require 'json'
 require 'fileutils'
 require 'optparse'
 require 'time'
+require 'date'
 require 'io/console'
 
 # Slack CLI - A command-line interface for Slack
@@ -75,6 +76,7 @@ module Slk
     autoload :Channel, 'slk/models/channel'
     autoload :Preset, 'slk/models/preset'
     autoload :Deactivation, 'slk/models/deactivation'
+    autoload :Tenure, 'slk/models/tenure'
     autoload :SearchResult, 'slk/models/search_result'
     autoload :SavedItem, 'slk/models/saved_item'
     autoload :Profile, 'slk/models/profile'
@@ -109,6 +111,8 @@ module Slk
     autoload :ProfileResolver, 'slk/services/profile_resolver'
     autoload :MetaCache, 'slk/services/meta_cache'
     autoload :DeactivationScanner, 'slk/services/deactivation_scanner'
+    autoload :StartDateLookup, 'slk/services/start_date_lookup'
+    autoload :StartDateField, 'slk/services/start_date_field'
   end
 
   # Output formatters for messages, durations, and emoji
@@ -132,6 +136,8 @@ module Slk
     autoload :ProfileFieldRenderer, 'slk/formatters/profile_field_renderer'
     autoload :ProfileRows, 'slk/formatters/profile_rows'
     autoload :DeactivationFormatter, 'slk/formatters/deactivation_formatter'
+    autoload :DeactivationCsv, 'slk/formatters/deactivation_csv'
+    autoload :CsvWriter, 'slk/formatters/csv_writer'
   end
 
   # CLI commands implementing user-facing functionality

@@ -26,6 +26,7 @@ module Slk
         @color = color.nil? ? io.tty? : color
         @verbose = verbose
         @quiet = quiet
+        @last_progress_width = nil
       end
 
       def puts(message = '')
@@ -50,6 +51,44 @@ module Slk
 
       def info(message)
         puts(colorize(message))
+      end
+
+      # Transient progress on stderr: it never pollutes piped stdout, and it
+      # overwrites itself rather than scrolling. Silent under --quiet, and
+      # when stderr is not a terminal, since a log file full of half-drawn
+      # counters helps nobody.
+      def progress(message)
+        return unless progress?
+
+        @last_progress_width = message.length
+        write_progress("\r#{message}")
+      end
+
+      # Erases whatever progress() last drew. Keyed off the saved width rather
+      # than re-checking tty state: if a line was drawn, it gets cleaned up.
+      def clear_progress
+        return unless @last_progress_width
+
+        write_progress("\r#{' ' * @last_progress_width}\r")
+        @last_progress_width = nil
+      end
+
+      # This is decoration. It is often called from an ensure block cleaning
+      # up after a real failure, and a closed or broken stderr must not
+      # replace that failure with one about drawing a counter.
+      def write_progress(text)
+        @err.print(text)
+        @err.flush
+      rescue SystemCallError, IOError
+        nil
+      end
+
+      def progress? = tty_err? && !@quiet
+
+      def tty_err?
+        @err.tty?
+      rescue SystemCallError, IOError
+        false
       end
 
       def debug(message)

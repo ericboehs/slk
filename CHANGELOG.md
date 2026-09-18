@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-09-18
+
+### Added
+
+- **`slk deactivations --tenure`** — how long each person stayed
+  - Start dates come from the workspace's "Start Date" custom profile field, discovered from the team schema rather than hardcoded, since every workspace numbers its own fields. A date-typed field wins over a text one with the same label
+  - `users.list` does not carry custom fields, so this costs one `users.profile.get` per person, and Slack rate-limits that endpoint to roughly eight calls a minute. The command says how long it will take before it starts, and only looks up the rows it is about to show
+  - Every answer is cached the moment it arrives, not at the end, so interrupting a long lookup keeps the work already paid for. Accounts with no start date on file are cached too, otherwise every run would pay again to learn the same nothing
+  - Tenure is counted in whole months: somebody who started on the 20th and left on the 3rd has not completed that month. An end date before the start is a data entry error rather than a negative tenure, and reads as blank
+  - Blank means nobody filled the field in, and the column disappears entirely when no start date is known. `--tenure` with `--chart` is refused rather than ignored — a histogram has no row to hang a tenure on
+- **`slk deactivations --csv`** — the spreadsheet that always gets asked for
+  - Writes every match rather than the screenful `-n` would show: a truncated export is a wrong answer that looks like a right one
+  - With `--tenure` it gains `started_on`, `tenure_months` and a readable `tenure` column; unknown start dates leave empty cells rather than zeros, so averaging tenure in a spreadsheet skips them instead of counting people who left the day they arrived
+  - RFC 4180 quoting, hand-rolled, because Ruby 3.4 moved csv out of the default gems and this tool ships with no dependencies
+  - Progress and warnings go to stderr, so `slk deactivations --csv > file.csv` captures only data
+
+### Fixed
+
+- **A cache that cannot be written no longer costs you the run.** `MetaCache.write` returns disk failures instead of raising them: a full or read-only disk means "no cache", not "no answer". This mattered most for start date lookups, which sit behind minutes of rate-limited calls, but it also fixed the deactivation roster scan, which crashed outright on an unwritable cache directory. Other exceptions still raise — a bug in the value being cached is not a disk problem
+- **A cache that cannot be read no longer crashes.** An unreadable cache file now warns and is skipped, the same way a corrupt one already was. The file is left in place rather than deleted, since removing it needs the access that just failed
+- **A malformed API response fails as an API error.** Slack replying with a JSON array, string or null instead of an object used to surface as `TypeError` or `NoMethodError` from whichever command happened to dig into it first
+- **`slk cache clear` now clears all caches.** It removed only the user and channel caches while reporting "Cleared all caches"; start dates, deactivation rosters and resolved profiles survived it
+
 ## [0.9.0] - 2026-09-18
 
 ### Added
