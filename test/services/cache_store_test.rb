@@ -574,6 +574,8 @@ class CacheStoreTest < Minitest::Test
   # A cache is an optimisation. An unreadable file should cost speed, never
   # the command.
   def test_unreadable_cache_warns_and_carries_on
+    skip 'chmod does not prevent reads on Windows' if Gem.win_platform?
+
     with_temp_config do |dir|
       cache_dir = "#{dir}/cache/slk"
       FileUtils.mkdir_p(cache_dir)
@@ -595,6 +597,8 @@ class CacheStoreTest < Minitest::Test
   # Deleting it would need the same access we just failed to get, and the
   # file may not even be ours.
   def test_an_unreadable_cache_file_is_left_alone
+    skip 'chmod does not prevent reads on Windows' if Gem.win_platform?
+
     with_temp_config do |dir|
       cache_dir = "#{dir}/cache/slk"
       FileUtils.mkdir_p(cache_dir)

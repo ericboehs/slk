@@ -557,6 +557,8 @@ class DeactivationsCommandTest < Minitest::Test
 
   # A cache that cannot be written costs speed next time, not the answers now.
   def test_an_unwritable_cache_warns_but_still_prints_the_tenure
+    skip 'chmod does not prevent writes on Windows' if Gem.win_platform?
+
     stub_start_dates({ 'U1' => '2020-01-15' })
     FileUtils.chmod(0o500, temp_paths.dir)
 

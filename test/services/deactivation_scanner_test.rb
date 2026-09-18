@@ -140,6 +140,8 @@ class DeactivationScannerTest < Minitest::Test
   # The roster scan is the cheap half of this command, but a read-only cache
   # dir used to abort it outright. A cache is an optimisation.
   def test_a_cache_that_cannot_be_written_does_not_stop_the_scan
+    skip 'chmod does not prevent writes on Windows' if Gem.win_platform?
+
     api = Slk::TestHelpers::PagedUsersClient.new(roster)
     paths = Slk::TestHelpers::TempPaths.new
     store = Slk::Services::CacheStore.new(paths: paths)
