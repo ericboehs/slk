@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`slk deactivations`** — who left the workspace, and when
+  - Slack has no "who left" endpoint. It does have `users.list`, which returns departed accounts with `deleted: true` and an `updated` epoch for the last change to the account — and for a deactivated account that change is almost always the deactivation itself. The help text says so out loud, because an admin who edits a departed profile afterwards moves the date forward, and a date that looks authoritative but is not should say which it is
+  - Defaults to the 25 most recent departures, one per line with a full ISO date, so the output stays greppable. `-n 0` shows all of them
+  - `slk deactivations 90d` (or `--since 90d`, `--since 2026-01-01`) narrows to a window; `--grep` filters across name, handle, title and email
+  - `--chart` draws departures per calendar month, quiet months filled in with zero — a gap in a histogram should read as "nobody left", not as a month that never happened. Without `--since` it covers the last twelve months rather than the entire history of the workspace
+  - Bots and app users are excluded from the counts and the list; `--bots` puts them back
+  - The roster is one API call per 1000 members, so the derived result is cached for six hours. The footer says how old it is, because "nobody left this week" and "nobody left since the last time you asked" are different statements. `--refresh` re-fetches
+
 ## [0.8.0] - 2026-08-30
 
 ### Added

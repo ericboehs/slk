@@ -63,6 +63,20 @@ module Slk
         @api.post(@workspace, 'users.list', params)
       end
 
+      # Page through users.list until the cursor runs out.
+      # Yields the running total after each page so callers can show progress.
+      def list_all(limit: 1000)
+        members = []
+        cursor = nil
+        loop do
+          response = list(cursor: cursor, limit: limit)
+          members.concat(response['members'] || [])
+          yield(members.size) if block_given?
+          cursor = response.dig('response_metadata', 'next_cursor')
+          break members if cursor.to_s.empty?
+        end
+      end
+
       def info(user_id)
         @api.post_form(@workspace, 'users.info', { user: user_id })
       end

@@ -74,6 +74,7 @@ module Slk
     autoload :User, 'slk/models/user'
     autoload :Channel, 'slk/models/channel'
     autoload :Preset, 'slk/models/preset'
+    autoload :Deactivation, 'slk/models/deactivation'
     autoload :SearchResult, 'slk/models/search_result'
     autoload :SavedItem, 'slk/models/saved_item'
     autoload :Profile, 'slk/models/profile'
@@ -107,6 +108,7 @@ module Slk
     autoload :ProfileBuilder, 'slk/services/profile_builder'
     autoload :ProfileResolver, 'slk/services/profile_resolver'
     autoload :MetaCache, 'slk/services/meta_cache'
+    autoload :DeactivationScanner, 'slk/services/deactivation_scanner'
   end
 
   # Output formatters for messages, durations, and emoji
@@ -129,6 +131,7 @@ module Slk
     autoload :ProfileFormatter, 'slk/formatters/profile_formatter'
     autoload :ProfileFieldRenderer, 'slk/formatters/profile_field_renderer'
     autoload :ProfileRows, 'slk/formatters/profile_rows'
+    autoload :DeactivationFormatter, 'slk/formatters/deactivation_formatter'
   end
 
   # CLI commands implementing user-facing functionality
@@ -153,6 +156,7 @@ module Slk
     autoload :Debug, 'slk/commands/debug'
     autoload :Who, 'slk/commands/who'
     autoload :Org, 'slk/commands/org'
+    autoload :Deactivations, 'slk/commands/deactivations'
   end
 
   # Thin wrappers around Slack API endpoints
