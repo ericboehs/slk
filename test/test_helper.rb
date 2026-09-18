@@ -114,6 +114,8 @@ module Slk
     # Cache paths under a throwaway directory, so a test that writes the meta
     # cache cannot reach the real one in ~/.cache.
     class TempPaths
+      attr_reader :dir
+
       def initialize(prefix = 'slk-test')
         @dir = Dir.mktmpdir(prefix)
       end

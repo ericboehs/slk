@@ -57,4 +57,18 @@ class TenureTest < Minitest::Test
   def test_surrounding_whitespace_is_tolerated
     assert_equal '2024-02-12', Slk::Models::Tenure.build(' 2024-02-12 ', nil).started
   end
+
+  # month_span blows up on an active account; months is the guarded way in.
+  def test_month_span_is_not_part_of_the_public_surface
+    refute_respond_to Slk::Models::Tenure.build('2020-01-01', Time.now), :month_span
+  end
+
+  def test_unknown_says_whether_a_tenure_could_be_worked_out
+    assert_predicate Slk::Models::Tenure.build('2020-01-01', nil), :unknown?
+    refute_predicate Slk::Models::Tenure.build('2020-01-01', Time.new(2022, 1, 1)), :unknown?
+  end
+
+  def test_a_backwards_range_is_unknown_rather_than_negative
+    assert_predicate Slk::Models::Tenure.build('2026-01-01', Time.new(2020, 1, 1)), :unknown?
+  end
 end

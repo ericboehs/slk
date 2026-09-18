@@ -22,10 +22,19 @@ module Slk
         cache_store.get_meta(workspace_name, key, ttl: ttl)
       end
 
+      # A cache write that fails must never cost the caller the work it just
+      # did — a full or read-only disk means "no cache", not "no answer", and
+      # some of these writes sit behind minutes of rate-limited API calls.
+      #
+      # @return [Exception, nil] the write failure, for callers that want to
+      #   mention it; nil when the write succeeded or there was nothing to do
       def write(cache_store, workspace_name, key, value)
-        return unless cache_store && workspace_name && value
+        return nil unless cache_store && workspace_name && value
 
         cache_store.set_meta(workspace_name, key, value)
+        nil
+      rescue SystemCallError, IOError => e
+        e
       end
     end
   end

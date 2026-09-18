@@ -121,4 +121,35 @@ class StartDateFieldTest < Minitest::Test
   def test_missing_message_points_at_the_debug_command
     assert_match(/slk debug schema/, field(FakeTeamApi.new([])).missing_message)
   end
+
+  # --- malformed schemas ---------------------------------------------------
+
+  # A clear "this workspace cannot do tenure" beats an unexpected error.
+  def test_a_null_entry_in_the_field_list_is_skipped
+    assert_nil field(FakeTeamApi.new([nil])).id
+  end
+
+  def test_fields_that_are_not_hashes_are_ignored
+    assert_nil field(FakeTeamApi.new([nil, 'Start Date', 42])).id
+  end
+
+  def test_a_good_field_still_wins_among_junk
+    assert_equal 'Xf1', field(FakeTeamApi.new([nil, 'noise', { 'id' => 'Xf1', 'label' => 'Start Date' }])).id
+  end
+
+  def test_a_fields_value_that_is_not_a_list_is_no_field_at_all
+    assert_nil field(FakeTeamApi.new({ 'Xf1' => { 'label' => 'Start Date' } })).id
+  end
+
+  def test_a_missing_fields_key_is_no_field_at_all
+    assert_nil field(FakeTeamApi.new(nil)).id
+  end
+
+  def test_a_field_without_an_id_is_not_usable
+    assert_nil field(FakeTeamApi.new([{ 'label' => 'Start Date', 'type' => 'date' }])).id
+  end
+
+  def test_a_blank_id_is_not_usable
+    assert_nil field(FakeTeamApi.new([{ 'id' => '', 'label' => 'Start Date' }])).id
+  end
 end

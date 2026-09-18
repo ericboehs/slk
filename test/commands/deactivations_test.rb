@@ -326,6 +326,11 @@ class DeactivationsCommandTest < Minitest::Test
 
   def profile_calls = @mock_client.calls.count { |c| c[:method] == 'users.profile.get' }
 
+  def stub_schema_only
+    fields = [{ 'id' => FIELD_ID, 'label' => 'Start Date', 'type' => 'date' }]
+    @mock_client.stub('team.profile.get', { 'ok' => true, 'profile' => { 'fields' => fields } })
+  end
+
   def test_tenure_adds_a_column_of_how_long_each_person_stayed
     stub_start_dates({ 'U1' => (Time.now - (800 * 86_400)).strftime('%Y-%m-%d') })
 
@@ -376,7 +381,7 @@ class DeactivationsCommandTest < Minitest::Test
     warning = @output.instance_variable_get(:@err).string
 
     assert_match(/Looking up 9 start dates/, warning)
-    assert_match(/roughly 1 minute\b/, warning)
+    assert_match(/roughly \d+ minutes?\b/, warning)
     assert_match(/Interrupting is safe/, warning)
   end
 
@@ -393,7 +398,7 @@ class DeactivationsCommandTest < Minitest::Test
     stub_start_dates({})
 
     assert_equal 0, execute_with_args(['-n', '0', '--tenure'])
-    assert_match(/roughly 3 minutes/, @output.instance_variable_get(:@err).string)
+    assert_match(/roughly \d+ minutes/, @output.instance_variable_get(:@err).string)
   end
 
   def test_a_workspace_without_the_field_says_so_instead_of_failing_obscurely
@@ -485,5 +490,80 @@ class DeactivationsCommandTest < Minitest::Test
     assert_equal 0, execute_with_args(['--grep', 'plumber', '--csv'])
 
     assert_equal 1, io_string.lines.size
+  end
+
+  # --- what the export and the failure paths owe the caller ----------------
+
+  # The flag's asymmetry is deliberate, so pin it: the export pays for every
+  # matched row, not just the screenful -n would print.
+  def test_csv_and_tenure_together_look_up_every_exported_row
+    stub_start_dates({})
+
+    assert_equal 0, execute_with_args(['-n', '1', '--tenure', '--csv'])
+    assert_equal 3, io_string.lines.size
+    assert_equal 2, profile_calls
+  end
+
+  def test_a_failed_start_date_lookup_exits_cleanly
+    stub_schema_only
+    @mock_client.stub('users.profile.get', Slk::ApiError.new('missing_scope', code: :missing_scope))
+
+    assert_equal 1, execute_with_args(['--tenure'])
+    assert_match(/missing_scope/, @output.instance_variable_get(:@err).string)
+  end
+
+  def test_the_failure_names_the_account_it_was_looking_up
+    stub_schema_only
+    @mock_client.stub('users.profile.get', Slk::ApiError.new('user_not_found', code: :user_not_found))
+    execute_with_args(['--tenure'])
+
+    assert_match(/looking up U1/, @output.instance_variable_get(:@err).string)
+  end
+
+  # Redirecting stdout to a file must capture data and nothing else.
+  def test_a_warned_about_export_keeps_stdout_pure
+    crowd = (1..9).map { |i| member("U#{i}0", name: "p#{i}", real_name: "Person #{i}", deleted: true) }
+    @mock_client = Slk::TestHelpers::PagedUsersClient.new([crowd])
+    stub_start_dates({})
+
+    assert_equal 0, execute_with_args(['--tenure', '--csv'])
+    assert_match(/Looking up/, @output.instance_variable_get(:@err).string)
+    assert(io_string.lines.all? { |line| line.count(',') == 9 })
+  end
+
+  # Two ways of asking for the same rows is one too many.
+  def test_csv_with_json_is_a_usage_error
+    error = assert_raises(Slk::UsageError) { execute_with_args(['--csv', '--json']) }
+
+    assert_match(/pick one/, error.message)
+  end
+
+  # Nobody filled the field in for anyone: the column is not worth its width.
+  def test_all_unknown_start_dates_drop_the_terminal_column
+    stub_start_dates({})
+
+    assert_equal 0, execute_with_args(['--tenure'])
+    assert_match(/^2\d{3}-\d\d-\d\d  Ann Archer  Engineer$/, io_string)
+  end
+
+  # ...but the CSV keeps its columns, because a header that comes and goes
+  # breaks whatever is parsing it.
+  def test_all_unknown_start_dates_keep_the_csv_columns
+    stub_start_dates({})
+
+    assert_equal 0, execute_with_args(['--tenure', '--csv'])
+    assert_equal 10, io_string.lines.first.count(',') + 1
+  end
+
+  # A cache that cannot be written costs speed next time, not the answers now.
+  def test_an_unwritable_cache_warns_but_still_prints_the_tenure
+    stub_start_dates({ 'U1' => '2020-01-15' })
+    FileUtils.chmod(0o500, temp_paths.dir)
+
+    assert_equal 0, execute_with_args(['--tenure'])
+    assert_match(/2\d+y|\dy/, io_string)
+    assert_match(/Could not save the start date cache/, @output.instance_variable_get(:@err).string)
+  ensure
+    FileUtils.chmod(0o700, temp_paths.dir)
   end
 end

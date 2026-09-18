@@ -37,15 +37,19 @@ module Slk
       # A date-typed field wins over a text one with the same label: someone
       # typing "started summer 2019" into a text box is not a date.
       def discover
-        match = best_match(@team_api.profile_schema.dig('profile', 'fields') || [])
+        match = best_match(@team_api.profile_schema.dig('profile', 'fields'))
         id = match && match['id']
+        id = nil unless id.is_a?(String) && !id.empty?
         @on_debug&.call("start date field: #{id || 'not found in team schema'}")
         MetaCache.write(@cache, @workspace_name, CACHE_KEY, { 'id' => id })
         id
       end
 
+      # A workspace that answers with something other than a list of field
+      # hashes has no start date field as far as we are concerned — better a
+      # clear "this workspace cannot do tenure" than an unexpected error.
       def best_match(fields)
-        labelled = fields.select { |f| LABEL.match?(f['label'].to_s.strip) }
+        labelled = Array(fields).grep(Hash).select { |f| LABEL.match?(f['label'].to_s.strip) }
         labelled.find { |f| f['type'] == 'date' } || labelled.first
       end
     end

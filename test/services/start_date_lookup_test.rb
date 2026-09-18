@@ -165,4 +165,66 @@ class StartDateLookupTest < Minitest::Test
 
     assert_equal({ 'U1' => '2020-01-15' }, lookup(api).fetch(%w[U1]))
   end
+
+  # --- the cache is an optimisation, not the point -------------------------
+
+  class UnwritableCache
+    def get_meta(*) = nil
+    def set_meta(*) = raise(Errno::EACCES, 'cache dir')
+  end
+
+  def test_a_cache_that_cannot_be_written_does_not_lose_the_answers
+    api = FakeUsersApi.new({ 'U1' => '2020-01-15', 'U2' => '2019-02-02' })
+    subject = lookup(api, cache: UnwritableCache.new)
+
+    assert_equal({ 'U1' => '2020-01-15', 'U2' => '2019-02-02' }, subject.fetch(%w[U1 U2]))
+  end
+
+  def test_the_cache_failure_is_reported_once_for_the_caller_to_surface
+    subject = lookup(FakeUsersApi.new, cache: UnwritableCache.new)
+    subject.fetch(%w[U1 U2])
+
+    assert_match(/Permission denied/, subject.cache_error)
+  end
+
+  def test_no_cache_error_when_the_cache_works
+    subject = lookup(FakeUsersApi.new, cache: cache_store)
+    subject.fetch(%w[U1])
+
+    assert_nil subject.cache_error
+  end
+
+  # --- shape and blame -----------------------------------------------------
+
+  def test_a_failure_says_which_account_it_was_looking_up
+    api = FakeUsersApi.new({}, raise_for: 'U2')
+    error = assert_raises(Slk::ApiError) { lookup(api).fetch(%w[U2]) }
+
+    assert_match(/looking up U2/, error.message)
+    assert_equal :user_not_found, error.code
+  end
+
+  # Wrapping it in a plain ApiError would drop retry_after and the class the
+  # retry logic looks for.
+  def test_a_rate_limit_error_passes_through_unchanged
+    api = Object.new
+    api.define_singleton_method(:profile_for) { |_id| raise Slk::RateLimitError.new('ratelimited', retry_after: 30) }
+    error = assert_raises(Slk::RateLimitError) { lookup(api).fetch(%w[U1]) }
+
+    assert_equal 30, error.retry_after
+  end
+
+  def test_an_empty_field_id_counts_as_missing
+    assert_raises(Slk::Services::StartDateLookup::MissingFieldError) do
+      lookup(FakeUsersApi.new, field: FakeField.new('')).fetch(%w[U1])
+    end
+  end
+
+  # Learning "this workspace cannot do tenure" only when somebody matches the
+  # filter makes the limitation look intermittent.
+  def test_a_missing_field_is_reported_even_with_nothing_to_look_up
+    assert_raises(Slk::Services::StartDateLookup::MissingFieldError) do
+      lookup(FakeUsersApi.new, field: FakeField.new(nil)).fetch([])
+    end
+  end
 end

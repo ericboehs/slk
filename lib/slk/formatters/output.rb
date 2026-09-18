@@ -53,8 +53,9 @@ module Slk
       end
 
       # Transient progress on stderr: it never pollutes piped stdout, and it
-      # overwrites itself rather than scrolling. Silent when stderr is not a
-      # terminal, since a log file full of half-drawn counters helps nobody.
+      # overwrites itself rather than scrolling. Silent under --quiet, and
+      # when stderr is not a terminal, since a log file full of half-drawn
+      # counters helps nobody.
       def progress(message)
         return unless progress?
 
@@ -63,8 +64,10 @@ module Slk
         @err.flush
       end
 
+      # Erases whatever progress() last drew. Keyed off the saved width rather
+      # than re-checking tty state: if a line was drawn, it gets cleaned up.
       def clear_progress
-        return unless progress? && @last_progress_width
+        return unless @last_progress_width
 
         @err.print("\r#{' ' * @last_progress_width}\r")
         @err.flush

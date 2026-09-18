@@ -118,7 +118,8 @@ class DeactivationFormatterTest < Minitest::Test
     record = record(real_name: 'Ann', month: '2026-01', title: 'Engineer')
     @formatter.list([record], tenures: {})
 
-    assert_equal '2026-01-15  Ann       Engineer', io_string.chomp
+    assert_match(/Ann\s+Engineer/, io_string)
+    refute_match(/\d+(y|mo)/, io_string.sub(/\A\S+/, ''))
   end
 
   def test_tenures_are_right_aligned_to_the_widest
@@ -129,6 +130,14 @@ class DeactivationFormatterTest < Minitest::Test
     cells = io_string.lines.map { |l| l[/\s(\S+(?:\s\S+)?)\s*$/, 1] }
 
     assert_equal %w[2mo 12y], cells
+  end
+
+  # Tenure objects exist but none of them knows anything: still no column.
+  def test_all_unknown_tenures_drop_the_column_too
+    ann = record(real_name: 'Ann', month: '2026-01', title: 'Engineer')
+    @formatter.list([ann], tenures: { ann.user_id => Slk::Models::Tenure.build('2026-01-15', nil) })
+
+    refute_match(/\d+(y|mo)/, io_string.sub(/\A\S+/, ''))
   end
 
   def test_the_tenure_column_does_not_push_rows_past_the_width

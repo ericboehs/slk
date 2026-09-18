@@ -15,7 +15,9 @@ module Slk
       DEFAULT_LIMIT = 25
       CHART_MONTHS = 12
       # Measured against a live workspace: users.profile.get answers two or
-      # three calls in a row, then makes you wait thirty seconds.
+      # three calls in a row, then makes you wait out a thirty second
+      # Retry-After — about eight lookups a minute averaged over a long run,
+      # which is what the time estimate is built on.
       LOOKUPS_PER_MINUTE = 8
       COST_WARNING_AT = 5
       SWITCHES = {
@@ -129,7 +131,8 @@ module Slk
       end
 
       # --csv and --json export every match; the terminal list is the only
-      # view that pages, so it is the only one -n applies to.
+      # view that pages, so it is the only one -n applies to. (--chart spans
+      # its whole window too, for the same reason.)
       def emit(workspace, report, records)
         return render_csv(workspace, records) if @options[:csv]
         return render_json(workspace, report, records) if @options[:json]
@@ -149,10 +152,13 @@ module Slk
       # A histogram counts departures per month; it has no row to hang a
       # tenure on. Refusing beats quietly ignoring the flag someone paid
       # attention to type.
+      # Two ways of asking for the same rows is one too many, and picking a
+      # winner silently means the other flag looks broken.
       def validate_combination
-        return unless @options[:tenure] && @options[:chart]
-
-        raise UsageError, '--tenure has nothing to add to --chart; drop one of them.'
+        raise UsageError, '--tenure has nothing to add to --chart; drop one of them.' if
+          @options[:tenure] && @options[:chart]
+        raise UsageError, '--csv and --json are two different exports; pick one.' if
+          @options[:csv] && @options[:json]
       end
 
       def collect_records(report)
@@ -173,7 +179,9 @@ module Slk
       end
 
       # Start dates cost one rate-limited call each, so they are only ever
-      # fetched for rows that will actually be shown.
+      # fetched for rows that will actually be shown. The caller has already
+      # applied -n (or deliberately not, for an export); this memo assumes one
+      # record set per run, which is what a single command does.
       def tenures(workspace, records)
         return {} unless @options[:tenure]
 
@@ -183,9 +191,23 @@ module Slk
       def resolve_tenures(workspace, records)
         lookup = start_date_lookup(workspace)
         announce_cost(lookup, records)
-        dates = lookup.fetch(records.map(&:user_id))
-        output.clear_progress
+        dates = begin
+          lookup.fetch(records.map(&:user_id))
+        ensure
+          # Even when the lookup raises: otherwise the error message arrives
+          # glued to a half-drawn "start dates: 12/40".
+          output.clear_progress
+        end
+        report_cache_error(lookup)
         records.to_h { |r| [r.user_id, Models::Tenure.build(dates[r.user_id], r.deactivated_time)] }
+      end
+
+      # The answers still arrived; they just will not be there next time.
+      def report_cache_error(lookup)
+        return unless lookup.cache_error
+
+        warn("Could not save the start date cache (#{lookup.cache_error}). " \
+             'These lookups will have to be repeated next run.')
       end
 
       def start_date_lookup(workspace)

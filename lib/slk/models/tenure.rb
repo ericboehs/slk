@@ -44,6 +44,7 @@ module Slk
       def month_span
         ((ended_on.year - started_on.year) * 12) + (ended_on.month - started_on.month)
       end
+      private :month_span
 
       # "6y 2mo", "11mo", "<1mo" — whole months only.
       def to_s
@@ -54,6 +55,10 @@ module Slk
         years, rest = total.divmod(12)
         [years.positive? ? "#{years}y" : nil, rest.positive? ? "#{rest}mo" : nil].compact.join(' ')
       end
+
+      # Blank for a tenure that cannot be worked out — an active account, or
+      # an end date that predates the start.
+      def unknown? = months.nil?
 
       def started = started_on.iso8601
     end
