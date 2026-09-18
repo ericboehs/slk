@@ -36,13 +36,7 @@ class DeactivationsCommandTest < Minitest::Test
   end
 
   def temp_paths
-    @temp_paths ||= TempPaths.new
-  end
-
-  class TempPaths
-    def initialize = @dir = Dir.mktmpdir('slk-deactivations-cmd-test')
-    def cache_file(name) = File.join(@dir, name)
-    def ensure_cache_dir = FileUtils.mkdir_p(@dir)
+    @temp_paths ||= Slk::TestHelpers::TempPaths.new
   end
 
   def io_string = @output.instance_variable_get(:@io).string
@@ -312,5 +306,184 @@ class DeactivationsCommandTest < Minitest::Test
     assert_includes io_string, 'Bob Barker'
     list_calls = @mock_client.calls.count { |c| c[:method] == 'users.list' }
     assert_equal 3, list_calls
+  end
+
+  # --- tenure -------------------------------------------------------------
+
+  FIELD_ID = 'Xf05START'
+
+  def stub_start_dates(dates, field: FIELD_ID)
+    schema = { 'ok' => true,
+               'profile' => { 'fields' => [{ 'id' => FIELD_ID, 'label' => 'Start Date', 'type' => 'date' }] } }
+    schema['profile']['fields'] = [] unless field
+    @mock_client.stub('team.profile.get', schema)
+    @mock_client.stub('users.profile.get', lambda { |params|
+      value = dates[params[:user]]
+      fields = value ? { FIELD_ID => { 'value' => value } } : {}
+      { 'ok' => true, 'profile' => { 'fields' => fields } }
+    })
+  end
+
+  def profile_calls = @mock_client.calls.count { |c| c[:method] == 'users.profile.get' }
+
+  def test_tenure_adds_a_column_of_how_long_each_person_stayed
+    stub_start_dates({ 'U1' => (Time.now - (800 * 86_400)).strftime('%Y-%m-%d') })
+
+    assert_equal 0, execute_with_args(['--tenure'])
+    assert_match(/Ann Archer\s+2y \dmo/, io_string)
+  end
+
+  # A start date nobody filled in leaves the cell blank rather than guessing.
+  def test_an_unknown_start_date_leaves_the_cell_empty
+    stub_start_dates({ 'U1' => (Time.now - (400 * 86_400)).strftime('%Y-%m-%d') })
+
+    assert_equal 0, execute_with_args(['--tenure'])
+    assert_match(/Bob Barker\s+Designer/, io_string)
+  end
+
+  # The whole point of the flag's cost: it only pays for rows on screen.
+  def test_only_the_displayed_rows_cost_a_lookup
+    stub_start_dates({})
+
+    assert_equal 0, execute_with_args(['-n', '1', '--tenure'])
+    assert_equal 1, profile_calls
+  end
+
+  def test_a_second_run_uses_the_cached_start_dates
+    stub_start_dates({ 'U1' => '2020-01-15', 'U2' => '2019-02-02' })
+    execute_with_args(['--tenure'])
+    before = profile_calls
+    execute_with_args(['--tenure'])
+
+    assert_equal before, profile_calls
+  end
+
+  def test_tenure_is_not_fetched_unless_asked_for
+    stub_start_dates({ 'U1' => '2020-01-15' })
+
+    assert_equal 0, execute_with_args([])
+    assert_equal 0, profile_calls
+  end
+
+  # Better to say how long this will take than to let someone wonder whether
+  # the terminal has hung.
+  def test_a_long_lookup_warns_about_the_wait_first
+    crowd = (1..9).map { |i| member("U#{i}0", name: "p#{i}", real_name: "Person #{i}", deleted: true) }
+    @mock_client = Slk::TestHelpers::PagedUsersClient.new([crowd])
+    stub_start_dates({})
+
+    assert_equal 0, execute_with_args(['--tenure'])
+    warning = @output.instance_variable_get(:@err).string
+
+    assert_match(/Looking up 9 start dates/, warning)
+    assert_match(/roughly 1 minute\b/, warning)
+    assert_match(/Interrupting is safe/, warning)
+  end
+
+  def test_a_short_lookup_does_not_warn
+    stub_start_dates({ 'U1' => '2020-01-15' })
+
+    assert_equal 0, execute_with_args(['--tenure'])
+    refute_match(/Looking up/, @output.instance_variable_get(:@err).string)
+  end
+
+  def test_the_wait_estimate_is_plural_when_it_should_be
+    crowd = (1..20).map { |i| member("U#{i}0", name: "p#{i}", real_name: "Person #{i}", deleted: true) }
+    @mock_client = Slk::TestHelpers::PagedUsersClient.new([crowd])
+    stub_start_dates({})
+
+    assert_equal 0, execute_with_args(['-n', '0', '--tenure'])
+    assert_match(/roughly 3 minutes/, @output.instance_variable_get(:@err).string)
+  end
+
+  def test_a_workspace_without_the_field_says_so_instead_of_failing_obscurely
+    stub_start_dates({}, field: nil)
+
+    assert_equal 1, execute_with_args(['--tenure'])
+    assert_match(/no "Start Date" profile field/, @output.instance_variable_get(:@err).string)
+  end
+
+  # A histogram has no row to hang a tenure on; refusing beats ignoring.
+  def test_tenure_with_chart_is_a_usage_error
+    error = assert_raises(Slk::UsageError) { execute_with_args(['--tenure', '--chart']) }
+
+    assert_match(/nothing to add to --chart/, error.message)
+  end
+
+  def test_tenure_appears_in_json_only_when_requested
+    stub_start_dates({ 'U1' => '2020-01-15' })
+    execute_with_args(['--tenure', '--json'])
+    entry = JSON.parse(io_string)['deactivations'].first
+
+    assert_equal '2020-01-15', entry['started_on']
+    assert_operator entry['tenure_months'], :>, 60
+  end
+
+  def test_json_omits_tenure_keys_without_the_flag
+    execute_with_args(['--json'])
+    entry = JSON.parse(io_string)['deactivations'].first
+
+    refute entry.key?('started_on')
+    refute entry.key?('tenure_months')
+  end
+
+  # --- csv ----------------------------------------------------------------
+
+  def test_csv_has_a_header_and_one_row_per_match
+    assert_equal 0, execute_with_args(['--csv'])
+    lines = io_string.lines.map(&:chomp)
+
+    assert_equal 'deactivated_on,user_id,handle,real_name,title,email,bot', lines.first
+    assert_equal 3, lines.size
+    assert_includes lines[1], 'Ann Archer'
+  end
+
+  # A truncated export is a wrong answer that looks like a right one.
+  def test_csv_ignores_the_row_limit
+    assert_equal 0, execute_with_args(['-n', '1', '--csv'])
+
+    assert_equal 3, io_string.lines.size
+  end
+
+  def test_csv_gains_tenure_columns_with_the_flag
+    stub_start_dates({ 'U1' => '2020-01-15' })
+
+    assert_equal 0, execute_with_args(['--tenure', '--csv'])
+    lines = io_string.lines.map(&:chomp)
+
+    assert_equal 'deactivated_on,user_id,handle,real_name,title,email,bot,started_on,tenure_months,tenure',
+                 lines.first
+    assert_includes lines[1], ',2020-01-15,'
+  end
+
+  def test_csv_leaves_unknown_tenure_cells_empty
+    stub_start_dates({})
+
+    assert_equal 0, execute_with_args(['--tenure', '--csv'])
+
+    assert(io_string.lines[1].chomp.end_with?(',,,'))
+  end
+
+  def test_csv_quotes_a_title_containing_a_comma
+    @mock_client = Slk::TestHelpers::PagedUsersClient.new(
+      [[member('U9', name: 'zed', real_name: 'Zed Zane', title: 'Engineer, Senior', deleted: true)]]
+    )
+
+    assert_equal 0, execute_with_args(['--csv'])
+    assert_includes io_string, '"Engineer, Senior"'
+  end
+
+  def test_csv_respects_filters
+    assert_equal 0, execute_with_args(['--grep', 'designer', '--csv'])
+    lines = io_string.lines.map(&:chomp)
+
+    assert_equal 2, lines.size
+    assert_includes lines[1], 'Bob Barker'
+  end
+
+  def test_csv_of_nothing_is_still_a_header
+    assert_equal 0, execute_with_args(['--grep', 'plumber', '--csv'])
+
+    assert_equal 1, io_string.lines.size
   end
 end

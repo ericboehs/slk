@@ -103,4 +103,50 @@ class OutputTest < Minitest::Test
     out = Slk::Formatters::Output.new(io: @io, err: @err, color: false)
     refute out.color?
   end
+
+  # --- transient progress -------------------------------------------------
+
+  def tty_err
+    io = StringIO.new
+    io.define_singleton_method(:tty?) { true }
+    io
+  end
+
+  def test_progress_writes_to_stderr_not_stdout
+    err = tty_err
+    Slk::Formatters::Output.new(io: @io, err: err, color: false).progress('start dates: 1/9')
+
+    assert_equal "\rstart dates: 1/9", err.string
+    assert_empty @io.string
+  end
+
+  # A log file full of half-drawn counters helps nobody.
+  def test_progress_is_silent_when_stderr_is_not_a_terminal
+    output.progress('start dates: 1/9')
+
+    assert_empty @err.string
+  end
+
+  def test_progress_is_silent_when_quiet
+    err = tty_err
+    Slk::Formatters::Output.new(io: @io, err: err, color: false, quiet: true).progress('working')
+
+    assert_empty err.string
+  end
+
+  def test_clear_progress_blanks_the_line_it_drew
+    err = tty_err
+    out = Slk::Formatters::Output.new(io: @io, err: err, color: false)
+    out.progress('12345')
+    out.clear_progress
+
+    assert_equal "\r12345\r     \r", err.string
+  end
+
+  def test_clear_progress_does_nothing_when_nothing_was_drawn
+    err = tty_err
+    Slk::Formatters::Output.new(io: @io, err: err, color: false).clear_progress
+
+    assert_empty err.string
+  end
 end

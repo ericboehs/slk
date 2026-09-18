@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`slk deactivations --tenure`** — how long each person stayed
+  - Start dates come from the workspace's "Start Date" custom profile field, discovered from the team schema rather than hardcoded, since every workspace numbers its own fields. A date-typed field wins over a text one with the same label
+  - `users.list` does not carry custom fields, so this costs one `users.profile.get` per person, and Slack rate-limits that endpoint to roughly eight calls a minute. The command says how long it will take before it starts, and only looks up the rows it is about to show
+  - Every answer is cached the moment it arrives, not at the end, so interrupting a long lookup keeps the work already paid for. Accounts with no start date on file are cached too, otherwise every run would pay again to learn the same nothing
+  - Tenure is counted in whole months: somebody who started on the 20th and left on the 3rd has not completed that month. An end date before the start is a data entry error rather than a negative tenure, and reads as blank
+  - Blank means nobody filled the field in, and the column disappears entirely when no start date is known. `--tenure` with `--chart` is refused rather than ignored — a histogram has no row to hang a tenure on
+- **`slk deactivations --csv`** — the spreadsheet that always gets asked for
+  - Writes every match rather than the screenful `-n` would show: a truncated export is a wrong answer that looks like a right one
+  - With `--tenure` it gains `started_on`, `tenure_months` and a readable `tenure` column; unknown start dates leave empty cells rather than zeros, so averaging tenure in a spreadsheet skips them instead of counting people who left the day they arrived
+  - RFC 4180 quoting, hand-rolled, because Ruby's csv library left the default gems in 3.4 and this tool ships with no dependencies
+  - Progress and warnings go to stderr, so `slk deactivations --csv > file.csv` captures only data
+
 ## [0.9.0] - 2026-09-18
 
 ### Added

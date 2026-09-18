@@ -15,11 +15,16 @@ module Slk
         @width = width || 100
       end
 
-      # One line per departure: date, name, title. Full ISO dates on every row
-      # (rather than month headings) so the output stays greppable.
-      def list(records)
+      # One line per departure: date, name, tenure, title. Full ISO dates on
+      # every row (rather than month headings) so the output stays greppable.
+      #
+      # `tenures` is keyed by user ID and may cover only some of the rows: a
+      # start date nobody filled in leaves the column blank rather than
+      # guessing, and the column disappears entirely when none are known.
+      def list(records, tenures: {})
         name_width = name_column_width(records)
-        records.each { |record| @output.puts(row(record, name_width)) }
+        tenure_width = tenure_column_width(records, tenures)
+        records.each { |record| @output.puts(row(record, name_width, tenures, tenure_width)) }
       end
 
       def chart(records, from: nil, to: nil)
@@ -61,12 +66,22 @@ module Slk
         "#{@output.gray(month)}  #{count.to_s.rjust(label_width)}  #{bar}".rstrip
       end
 
-      def row(record, name_width)
-        date = record.date || 'unknown'
-        name = truncate(record.best_name.to_s, name_width).ljust(name_width)
-        title = truncate(record.title.to_s, title_width(name_width))
-        line = "#{@output.gray(date.ljust(DATE_WIDTH))}  #{name}"
+      def row(record, name_width, tenures = {}, tenure_width = 0)
+        line = "#{@output.gray((record.date || 'unknown').ljust(DATE_WIDTH))}  " \
+               "#{truncate(record.best_name.to_s, name_width).ljust(name_width)}"
+        line = "#{line}  #{@output.gray(tenure_cell(record, tenures, tenure_width))}" if tenure_width.positive?
+        title = truncate(record.title.to_s, title_width(name_width, tenure_width))
         title.empty? ? line : "#{line}  #{@output.gray(title)}"
+      end
+
+      def tenure_cell(record, tenures, width)
+        tenures[record.user_id].to_s.rjust(width)
+      end
+
+      def tenure_column_width(records, tenures)
+        return 0 if tenures.nil? || tenures.empty?
+
+        records.filter_map { |r| tenures[r.user_id]&.to_s&.length }.max || 0
       end
 
       def name_column_width(records)
@@ -74,8 +89,9 @@ module Slk
         longest.clamp(8, MAX_NAME_WIDTH)
       end
 
-      def title_width(name_width)
-        [@width - DATE_WIDTH - name_width - 4, MIN_TITLE_WIDTH].max
+      def title_width(name_width, tenure_width = 0)
+        tenure_space = tenure_width.positive? ? tenure_width + 2 : 0
+        [@width - DATE_WIDTH - name_width - tenure_space - 4, MIN_TITLE_WIDTH].max
       end
 
       # A month nobody left gets no bar at all. Rounding a zero up to one

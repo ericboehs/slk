@@ -33,13 +33,7 @@ class DeactivationScannerTest < Minitest::Test
   end
 
   def cache_store
-    @cache_store ||= Slk::Services::CacheStore.new(paths: TempPaths.new)
-  end
-
-  class TempPaths
-    def initialize = @dir = Dir.mktmpdir('slk-deactivations-test')
-    def cache_file(name) = File.join(@dir, name)
-    def ensure_cache_dir = FileUtils.mkdir_p(@dir)
+    @cache_store ||= Slk::Services::CacheStore.new(paths: Slk::TestHelpers::TempPaths.new)
   end
 
   def test_scan_returns_only_deactivated_accounts_newest_first

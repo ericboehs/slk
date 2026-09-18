@@ -87,6 +87,9 @@ module Slk
       def post(workspace, method, params = {})
         @calls << { workspace: workspace.name, method: method, params: params }
         response = @responses[method] || { 'ok' => true }
+        # A callable stub can vary its answer with the params, which is what
+        # per-user endpoints need.
+        response = response.call(params) if response.respond_to?(:call)
         # Stubbing an exception simulates the call failing rather than
         # returning an error payload — a network drop, a rate limit.
         raise response if response.is_a?(Exception)
@@ -106,6 +109,17 @@ module Slk
       def call_count
         @calls.size
       end
+    end
+
+    # Cache paths under a throwaway directory, so a test that writes the meta
+    # cache cannot reach the real one in ~/.cache.
+    class TempPaths
+      def initialize(prefix = 'slk-test')
+        @dir = Dir.mktmpdir(prefix)
+      end
+
+      def cache_file(name) = File.join(@dir, name)
+      def ensure_cache_dir = FileUtils.mkdir_p(@dir)
     end
 
     # Replays scripted users.list pages with the cursor contract Slack uses:

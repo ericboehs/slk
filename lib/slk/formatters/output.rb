@@ -52,6 +52,27 @@ module Slk
         puts(colorize(message))
       end
 
+      # Transient progress on stderr: it never pollutes piped stdout, and it
+      # overwrites itself rather than scrolling. Silent when stderr is not a
+      # terminal, since a log file full of half-drawn counters helps nobody.
+      def progress(message)
+        return unless progress?
+
+        @last_progress_width = message.length
+        @err.print("\r#{message}")
+        @err.flush
+      end
+
+      def clear_progress
+        return unless progress? && @last_progress_width
+
+        @err.print("\r#{' ' * @last_progress_width}\r")
+        @err.flush
+        @last_progress_width = nil
+      end
+
+      def progress? = @err.tty? && !@quiet
+
       def debug(message)
         return unless @verbose
 
