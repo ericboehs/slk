@@ -53,6 +53,14 @@ class DeactivationModelTest < Minitest::Test
     assert_equal 'U3', nameless.best_name
   end
 
+  # A record with nothing to call it still has to render rather than crash the
+  # row it appears in.
+  def test_best_name_is_always_a_string
+    anonymous = Slk::Models::Deactivation.from_api({ 'updated' => 1 })
+
+    assert_equal '', anonymous.best_name
+  end
+
   def test_matches_searches_every_field
     record = Slk::Models::Deactivation.from_api(member)
 

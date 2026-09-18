@@ -108,6 +108,31 @@ module Slk
       end
     end
 
+    # Replays scripted users.list pages with the cursor contract Slack uses:
+    # each page advertises the next cursor, the last page an empty one. Tests
+    # that page through a roster should exercise the real cursor-following
+    # code rather than a fake that assumes it works.
+    class PagedUsersClient < MockApiClient
+      def initialize(pages = [])
+        super()
+        @pages = pages
+        @index = 0
+      end
+
+      def post(workspace, method, params = {})
+        return super unless method == 'users.list'
+
+        @calls << { workspace: workspace.name, method: method, params: params }
+        # Wrap around so a second scan replays the same roster, the way a
+        # second call to a live API would.
+        index = @index % [@pages.size, 1].max
+        @index += 1
+        cursor = index + 1 < @pages.size ? "cursor-#{index + 1}" : ''
+        { 'ok' => true, 'members' => @pages[index] || [],
+          'response_metadata' => { 'next_cursor' => cursor } }
+      end
+    end
+
     # Generate a throwaway SSH key for tests that need a real one.
     #
     # The array form is load-bearing, not style. As a shell string, `-N ''`

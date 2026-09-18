@@ -22,8 +22,8 @@ module Slk
         records.each { |record| @output.puts(row(record, name_width)) }
       end
 
-      def chart(records)
-        counts = monthly_counts(records)
+      def chart(records, from: nil, to: nil)
+        counts = monthly_counts(records, from: from, to: to)
         return if counts.empty?
 
         peak = counts.values.max
@@ -41,11 +41,15 @@ module Slk
 
       # Deactivations per calendar month, oldest first, with empty months
       # filled in — a gap in a histogram should read as zero, not as absence.
-      def monthly_counts(records)
+      # `from`/`to` widen the span to the window the caller asked about, so a
+      # quiet first or last month is shown as quiet rather than dropped.
+      def monthly_counts(records, from: nil, to: nil)
         months = records.filter_map(&:month).sort
-        return {} if months.empty?
+        first = [from, months.first].compact.min
+        last = [to, months.last].compact.max
+        return {} if first.nil? || last.nil? || first > last
 
-        all_months(months.first, months.last).to_h do |month|
+        all_months(first, last).to_h do |month|
           [month, months.count(month)]
         end
       end
@@ -54,12 +58,12 @@ module Slk
 
       def chart_row(month, count, peak, label_width)
         bar = BAR_CHARS * bar_length(count, peak)
-        "#{@output.gray(month)}  #{count.to_s.rjust(label_width)}  #{bar}"
+        "#{@output.gray(month)}  #{count.to_s.rjust(label_width)}  #{bar}".rstrip
       end
 
       def row(record, name_width)
         date = record.date || 'unknown'
-        name = truncate(record.best_name, name_width).ljust(name_width)
+        name = truncate(record.best_name.to_s, name_width).ljust(name_width)
         title = truncate(record.title.to_s, title_width(name_width))
         line = "#{@output.gray(date.ljust(DATE_WIDTH))}  #{name}"
         title.empty? ? line : "#{line}  #{@output.gray(title)}"
@@ -74,8 +78,10 @@ module Slk
         [@width - DATE_WIDTH - name_width - 4, MIN_TITLE_WIDTH].max
       end
 
+      # A month nobody left gets no bar at all. Rounding a zero up to one
+      # block would draw departures that did not happen.
       def bar_length(count, peak)
-        return 0 if peak.zero?
+        return 0 if peak.zero? || count.zero?
 
         available = (@width - 16).clamp(10, MAX_BAR_WIDTH)
         [((count.to_f / peak) * available).round, 1].max

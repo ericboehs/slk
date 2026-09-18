@@ -217,7 +217,7 @@ slk deactivations                 # 25 most recent departures
 slk deactivations 90d             # Everyone who left in the last 90 days
 slk deactivations 2026-01-01 -n 0 # All departures this year
 slk deactivations --chart         # Departures per month
-slk deactivations --grep engineer # Filter by name, handle, title, or email
+slk deactivations --grep engineer # Filter by name, handle, title, email, or ID
 slk deactivations --bots          # Include deactivated bots and app users
 slk deactivations --json          # Machine-readable output
 ```

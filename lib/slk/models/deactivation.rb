@@ -48,7 +48,7 @@ module Slk
         return real_name unless real_name.to_s.empty?
         return handle unless handle.to_s.empty?
 
-        user_id
+        user_id.to_s
       end
 
       def deactivated_time
@@ -63,7 +63,8 @@ module Slk
         deactivated_time&.strftime('%Y-%m')
       end
 
-      # Case-insensitive match across every field a human would search by.
+      # Matches the caller's pattern against every field a human would search
+      # by. Case sensitivity is the pattern's to declare, not this method's.
       def matches?(pattern)
         [handle, real_name, title, email, user_id].compact.any? { |field| pattern.match?(field) }
       end

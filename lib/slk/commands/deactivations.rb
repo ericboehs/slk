@@ -7,7 +7,7 @@ module Slk
     #   slk deactivations                 # 25 most recent departures
     #   slk deactivations 90d             # everyone who left in the last 90 days
     #   slk deactivations --chart         # departures per month
-    #   slk deactivations --grep engineer # filter by name, handle, title, email
+    #   slk deactivations --grep engineer # filter by name, handle, title, email, ID
     # rubocop:disable Metrics/ClassLength
     class Deactivations < Base
       DEFAULT_LIMIT = 25
@@ -27,7 +27,7 @@ module Slk
 
       def handle_option(arg, args, _remaining)
         case arg
-        when '-n', '--limit' then @options[:limit] = option_value(arg, args).to_i
+        when '-n', '--limit' then @options[:limit] = parse_limit(arg, option_value(arg, args))
         when '--since' then @options[:since] = option_value(arg, args)
         when '--chart' then @options[:chart] = true
         when '--bots' then @options[:bots] = true
@@ -58,8 +58,17 @@ module Slk
         return 100 unless $stdout.tty?
 
         IO.console&.winsize&.last || 100
-      rescue StandardError
+      rescue Errno::ENOTTY, Errno::EINVAL, Errno::ENODEV, IOError, NotImplementedError
         100
+      end
+
+      # `-n foo` used to reach to_i, become 0, and quietly mean "no limit" —
+      # the opposite of asking for fewer rows.
+      def parse_limit(flag, value)
+        limit = Integer(value, exception: false)
+        return limit if limit && !limit.negative?
+
+        raise UsageError, "#{flag} expects a non-negative integer (got #{value.inspect})."
       end
 
       def add_options_section(help)
@@ -67,7 +76,7 @@ module Slk
           s.option('-n, --limit N', "Rows to show (default #{DEFAULT_LIMIT}, 0 for all)")
           s.option('--since SPEC', 'Only departures since 7d, 4w, 6m, or YYYY-MM-DD')
           s.option('--chart', 'Histogram of departures per month')
-          s.option('--grep PATTERN', 'Filter by name, handle, title, or email')
+          s.option('--grep PATTERN', 'Filter by name, handle, title, email, or user ID')
           s.option('--bots', 'Include deactivated bots and app users')
           s.option('--refresh', 'Re-fetch the roster instead of using the cache')
           s.option('--json', 'Raw JSON output')
@@ -85,7 +94,8 @@ module Slk
 
       def run
         workspace = runner.workspace(@options[:workspace])
-        @since = parse_since
+        @since_label = since_spec
+        @since = parse_since(@since_label)
         report = scan(workspace)
         records = collect_records(report)
 
@@ -93,6 +103,15 @@ module Slk
 
         render(workspace, report, records)
         0
+      end
+
+      # One window, or none. A second date is a different question, and
+      # answering the first one silently is how you misread the answer.
+      def since_spec
+        extra = positional_args[1..]
+        raise UsageError, "Unexpected argument: #{extra.first}. Only one time window is accepted." if extra&.any?
+
+        @options[:since] || positional_args.first
       end
 
       def collect_records(report)
@@ -115,12 +134,14 @@ module Slk
       end
 
       # Filters compose: --bots, --since, --grep all narrow the same list.
+      # Records Slack never dated cannot answer a question about a window, so
+      # they drop out of one — but they are counted, not silently discarded.
       def filter(records)
         records = records.reject(&:bot) unless @options[:bots]
-        records = reject_before(records, @since)
         pattern = grep_pattern
         records = records.select { |r| r.matches?(pattern) } if pattern
-        records
+        @undated = records.count { |r| r.deactivated_at.nil? }
+        reject_before(records, @since)
       end
 
       def reject_before(records, cutoff)
@@ -133,16 +154,28 @@ module Slk
       # Counting in months rather than in 31-day steps keeps the window exactly
       # as long as the label claims.
       def last_year(records)
-        now = Time.now
-        index = (now.year * 12) + (now.month - 1) - (CHART_MONTHS - 1)
-        reject_before(records, Time.new(index / 12, (index % 12) + 1, 1).to_i)
+        reject_before(records, last_year_cutoff)
       end
 
-      def parse_since
-        spec = @options[:since] || positional_args.first
+      def last_year_cutoff
+        now = Time.now
+        index = (now.year * 12) + (now.month - 1) - (CHART_MONTHS - 1)
+        Time.new(index / 12, (index % 12) + 1, 1).to_i
+      end
+
+      # The chart spans the window that was asked for, not merely the months
+      # that happen to contain a departure: a quiet opening month is the
+      # answer to "how bad is it lately", and dropping it flatters the trend.
+      def chart_bounds
+        {
+          from: Time.at(@since || last_year_cutoff).strftime('%Y-%m'),
+          to: Time.now.strftime('%Y-%m')
+        }
+      end
+
+      def parse_since(spec)
         return nil unless spec
 
-        @since_label = spec
         Support::DateParser.parse(spec)
       rescue ArgumentError => e
         raise UsageError, e.message
@@ -159,15 +192,21 @@ module Slk
       def render(workspace, report, records)
         formatter = Formatters::DeactivationFormatter.new(output: output, width: @options[:width])
         formatter.summary(summary_line(workspace, report, records))
-        return info('No deactivations match.') if records.empty?
-
-        puts
-        @options[:chart] ? formatter.chart(records) : render_list(formatter, records)
+        render_body(formatter, records)
         footer = footer(report, records)
         return if footer.empty?
 
         puts
         formatter.note(footer)
+      end
+
+      # Even an empty result keeps its footer: "nobody matched" is worth much
+      # less without how old the roster behind it is.
+      def render_body(formatter, records)
+        return info('No deactivations match.') if records.empty?
+
+        puts
+        @options[:chart] ? formatter.chart(records, **chart_bounds) : render_list(formatter, records)
       end
 
       def render_list(formatter, records)
@@ -196,8 +235,21 @@ module Slk
         age = cache_age(report)
         parts = []
         parts << "#{total} deactivated in all (of #{report.human_count} accounts ever created)" if records.size < total
+        parts << undated_note if undated_note
         parts << "roster cached #{age} ago; --refresh to update" if age
         parts.join(' · ')
+      end
+
+      # Only worth saying when a window was applied: without one nothing was
+      # dropped for want of a date.
+      def undated_note
+        return nil unless windowed? && @undated.to_i.positive?
+
+        "#{@undated} with no recorded date omitted"
+      end
+
+      def windowed?
+        !@since.nil? || @options[:chart]
       end
 
       def total_deactivated(report)

@@ -11,8 +11,9 @@ class DeactivationFormatterTest < Minitest::Test
   def io_string = @output.instance_variable_get(:@io).string
 
   def record(real_name:, month:, title: nil)
+    @seq = @seq.to_i + 1
     Slk::Models::Deactivation.from_api(
-      'id' => "U#{real_name.hash.abs}", 'name' => real_name.downcase,
+      'id' => format('U%03d', @seq), 'name' => real_name.downcase,
       'updated' => Time.new(month[0, 4].to_i, month[5, 2].to_i, 15, 12, 0, 0).to_i,
       'profile' => { 'real_name' => real_name, 'title' => title }
     )
@@ -43,6 +44,34 @@ class DeactivationFormatterTest < Minitest::Test
     @formatter.chart([])
 
     assert_empty io_string
+  end
+
+  # The caller's window, not the records, decides the span: a quiet first or
+  # last month is part of the answer.
+  def test_monthly_counts_honours_explicit_bounds
+    records = [record(real_name: 'Ann', month: '2026-03')]
+    counts = @formatter.monthly_counts(records, from: '2026-01', to: '2026-05')
+
+    assert_equal({ '2026-01' => 0, '2026-02' => 0, '2026-03' => 1, '2026-04' => 0, '2026-05' => 0 }, counts)
+  end
+
+  def test_explicit_bounds_never_hide_a_record_outside_them
+    records = [record(real_name: 'Ann', month: '2025-11'), record(real_name: 'Bob', month: '2026-02')]
+    counts = @formatter.monthly_counts(records, from: '2026-01', to: '2026-01')
+
+    assert_equal %w[2025-11 2025-12 2026-01 2026-02], counts.keys
+  end
+
+  def test_monthly_counts_is_empty_when_bounds_are_inverted_and_there_are_no_records
+    assert_empty @formatter.monthly_counts([], from: '2026-05', to: '2026-01')
+  end
+
+  # Rounding a zero up to one block would draw departures that did not happen.
+  def test_months_with_no_departures_draw_no_bar
+    @formatter.chart([record(real_name: 'Ann', month: '2026-01'), record(real_name: 'Bob', month: '2026-03')])
+    quiet = io_string.lines.find { |line| line.start_with?('2026-02') }
+
+    assert_equal '2026-02  0', quiet.chomp
   end
 
   def test_list_truncates_to_the_configured_width

@@ -13,6 +13,7 @@ module Slk
     class DeactivationScanner
       CACHE_KEY = 'deactivations_v1'
       DEFAULT_TTL = 21_600 # 6 hours
+      REQUIRED_KEYS = %w[fetched_at member_count human_count active_count records].freeze
 
       Report = Data.define(:records, :member_count, :human_count, :active_count, :fetched_at) do
         def deactivated_count = records.size
@@ -30,11 +31,32 @@ module Slk
 
       # @return [Report] every deactivated account, newest deactivation first
       def scan(refresh: false)
-        data = MetaCache.fetch(@cache, @workspace_name, CACHE_KEY, ttl: @ttl, refresh: refresh) { collect }
-        build_report(data)
+        build_report(cached(refresh: refresh) || store(collect))
       end
 
       private
+
+      def cached(refresh:)
+        return nil if refresh
+
+        data = MetaCache.read(@cache, @workspace_name, CACHE_KEY, ttl: @ttl)
+        return data if usable?(data)
+
+        @on_debug&.call('deactivations cache is unusable; re-fetching the roster') if data
+        nil
+      end
+
+      # A truncated or older-shaped entry would otherwise be read field by
+      # field into a report of zero active members and zero departures — a
+      # confident, wrong answer. Missing anything required means refetch.
+      def usable?(data)
+        data.is_a?(Hash) && data['records'].is_a?(Array) && REQUIRED_KEYS.all? { |key| data[key] }
+      end
+
+      def store(data)
+        MetaCache.write(@cache, @workspace_name, CACHE_KEY, data)
+        data
+      end
 
       def collect
         members = fetch_members
