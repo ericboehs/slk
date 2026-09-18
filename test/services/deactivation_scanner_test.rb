@@ -151,6 +151,7 @@ class DeactivationScannerTest < Minitest::Test
 
     refute_empty report.records
   ensure
-    FileUtils.chmod(0o700, paths.dir)
+    # skip raises, so paths may never have been assigned.
+    FileUtils.chmod(0o700, paths.dir) if paths
   end
 end
