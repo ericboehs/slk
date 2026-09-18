@@ -23,7 +23,8 @@ module Slk
       'help' => Commands::Help,
       'debug' => Commands::Debug,
       'who' => Commands::Who,
-      'org' => Commands::Org
+      'org' => Commands::Org,
+      'deactivations' => Commands::Deactivations
     }.freeze
 
     def initialize(argv, output: nil)

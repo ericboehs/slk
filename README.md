@@ -210,6 +210,36 @@ slk cache populate        # Pre-populate user cache
 slk cache clear           # Clear all caches
 ```
 
+### Deactivations
+
+```bash
+slk deactivations                 # 25 most recent departures
+slk deactivations 90d             # Everyone who left in the last 90 days
+slk deactivations 2026-01-01 -n 0 # All departures this year
+slk deactivations --chart         # Departures per month
+slk deactivations --grep engineer # Filter by name, handle, title, email, or ID
+slk deactivations --bots          # Include deactivated bots and app users
+slk deactivations --json          # Machine-readable output
+```
+
+```
+acme: 16 deactivated since 30d (664 active members)
+
+2026-09-14  Dana Whitfield          Platform Support
+2026-09-11  Priya Raghunathan       UX Researcher
+2026-09-09  Sam Okonkwo             Senior Software Engineer
+
+roster cached 5m ago; --refresh to update
+```
+
+Dates come from each account's `updated` field — the last change Slack recorded
+for that user. For a deactivated account that change is almost always the
+deactivation, but an admin editing a departed profile afterwards moves the date
+forward, so treat it as "last touched" rather than a payroll record.
+
+The roster costs one API call per 1000 members, so the result is cached for six
+hours; `--refresh` re-fetches it.
+
 ### Global Options
 
 ```bash

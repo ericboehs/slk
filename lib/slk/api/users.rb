@@ -3,6 +3,7 @@
 module Slk
   module Api
     # Wrapper for Slack users.* API endpoints
+    # rubocop:disable Metrics/ClassLength
     class Users
       def initialize(api_client, workspace, on_debug: nil)
         @api = api_client
@@ -63,6 +64,31 @@ module Slk
         @api.post(@workspace, 'users.list', params)
       end
 
+      # Page through users.list until the cursor runs out. Yields the running
+      # total after each page, for progress and debug output.
+      def list_all(limit: 1000, &progress)
+        members = []
+        cursor = nil
+        loop do
+          response = list(cursor: cursor, limit: limit)
+          members.concat(response['members'] || [])
+          progress&.call(members.size)
+          cursor = next_cursor(response, cursor)
+          break members unless cursor
+        end
+      end
+
+      # Slack ends the roster with an empty cursor. A cursor that comes back
+      # unchanged never will, and paging on it spins forever against a remote
+      # API — better to fail with the reason than to hang holding a terminal.
+      def next_cursor(response, previous)
+        cursor = response.dig('response_metadata', 'next_cursor').to_s
+        return nil if cursor.empty?
+        raise ApiError.new('users.list returned a repeating cursor', code: :invalid_cursor) if cursor == previous
+
+        cursor
+      end
+
       def info(user_id)
         @api.post_form(@workspace, 'users.info', { user: user_id })
       end
@@ -111,5 +137,6 @@ module Slk
         @api.post_form(@workspace, 'users.conversations', params)
       end
     end
+    # rubocop:enable Metrics/ClassLength
   end
 end

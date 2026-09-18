@@ -4,6 +4,26 @@ module Slk
   module Commands
     # Displays help information for commands
     class Help < Base
+      # Names are padded to the longest one rather than by hand, so adding a
+      # command cannot quietly break the column for every line below it.
+      COMMAND_SUMMARIES = [
+        ['status', 'Get or set your status'],
+        ['presence', 'Get or set your presence (away/active)'],
+        ['dnd', 'Manage Do Not Disturb'],
+        ['messages', 'Read channel or DM messages'],
+        ['search', 'Search messages across channels'],
+        ['unread', 'View and clear unread messages'],
+        ['activity', 'Show activity feed (reactions, mentions, threads)'],
+        ['later', 'Show saved "Later" items'],
+        ['who', 'Show a user profile'],
+        ['deactivations', 'Show who left the workspace, and when'],
+        ['preset', 'Manage and apply status presets'],
+        ['workspaces', 'Manage Slack workspaces'],
+        ['cache', 'Manage user/channel cache'],
+        ['emoji', 'Download workspace custom emoji'],
+        ['config', 'Configuration and setup']
+      ].freeze
+
       def execute
         topic = positional_args.first
 
@@ -35,26 +55,13 @@ module Slk
         HEADER
       end
 
-      # rubocop:disable Metrics/AbcSize
       def build_commands_section
-        <<~COMMANDS
-          #{output.bold('COMMANDS:')}
-            #{output.cyan('status')}       Get or set your status
-            #{output.cyan('presence')}     Get or set your presence (away/active)
-            #{output.cyan('dnd')}          Manage Do Not Disturb
-            #{output.cyan('messages')}     Read channel or DM messages
-            #{output.cyan('search')}       Search messages across channels
-            #{output.cyan('unread')}       View and clear unread messages
-            #{output.cyan('activity')}     Show activity feed (reactions, mentions, threads)
-            #{output.cyan('later')}        Show saved "Later" items
-            #{output.cyan('preset')}       Manage and apply status presets
-            #{output.cyan('workspaces')}   Manage Slack workspaces
-            #{output.cyan('cache')}        Manage user/channel cache
-            #{output.cyan('emoji')}        Download workspace custom emoji
-            #{output.cyan('config')}       Configuration and setup
-        COMMANDS
+        width = COMMAND_SUMMARIES.map { |name, _| name.length }.max + 2
+        rows = COMMAND_SUMMARIES.map do |name, summary|
+          "  #{output.cyan(name)}#{' ' * (width - name.length)}#{summary}"
+        end
+        "#{output.bold('COMMANDS:')}\n#{rows.join("\n")}\n"
       end
-      # rubocop:enable Metrics/AbcSize
 
       def build_options_section
         <<~OPTIONS

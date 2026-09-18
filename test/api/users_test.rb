@@ -232,4 +232,69 @@ class UsersApiTest < Minitest::Test
     muted = @api.muted_channels
     assert_equal [], muted
   end
+
+  # Scripted pages for the cursor contract: one response per call, in order.
+  class ScriptedClient < Slk::TestHelpers::MockApiClient
+    def initialize(responses)
+      super()
+      @responses_in_order = responses
+    end
+
+    def post(workspace, method, params = {})
+      @calls << { workspace: workspace.name, method: method, params: params }
+      @responses_in_order.shift || { 'ok' => true, 'members' => [] }
+    end
+  end
+
+  def page(members, cursor: '')
+    { 'ok' => true, 'members' => members, 'response_metadata' => { 'next_cursor' => cursor } }
+  end
+
+  def scripted(responses)
+    client = ScriptedClient.new(responses)
+    [client, Slk::Api::Users.new(client, @workspace)]
+  end
+
+  def test_list_all_follows_the_cursor_across_pages
+    _client, api = scripted([page([{ 'id' => 'U1' }], cursor: 'c1'), page([{ 'id' => 'U2' }])])
+
+    assert_equal(%w[U1 U2], api.list_all.map { |m| m['id'] })
+  end
+
+  def test_list_all_passes_the_cursor_and_limit_through
+    client, api = scripted([page([{ 'id' => 'U1' }], cursor: 'c1'), page([])])
+    api.list_all(limit: 7)
+
+    assert_equal([{ limit: 7 }, { limit: 7, cursor: 'c1' }], client.calls.map { |c| c[:params] })
+  end
+
+  def test_list_all_reports_the_running_total
+    _client, api = scripted([page([{ 'id' => 'U1' }, { 'id' => 'U2' }], cursor: 'c1'), page([{ 'id' => 'U3' }])])
+    totals = []
+    api.list_all { |total| totals << total }
+
+    assert_equal [2, 3], totals
+  end
+
+  def test_list_all_stops_when_response_metadata_is_missing
+    _client, api = scripted([{ 'ok' => true, 'members' => [{ 'id' => 'U1' }] }])
+
+    assert_equal(%w[U1], api.list_all.map { |m| m['id'] })
+  end
+
+  def test_list_all_tolerates_a_page_with_no_members_key
+    _client, api = scripted([{ 'ok' => true, 'response_metadata' => { 'next_cursor' => 'c1' } },
+                             page([{ 'id' => 'U1' }])])
+
+    assert_equal(%w[U1], api.list_all.map { |m| m['id'] })
+  end
+
+  # A cursor that comes back unchanged would page forever against a live API.
+  def test_list_all_raises_on_a_repeating_cursor
+    _client, api = scripted([page([{ 'id' => 'U1' }], cursor: 'c1'), page([{ 'id' => 'U2' }], cursor: 'c1')])
+
+    error = assert_raises(Slk::ApiError) { api.list_all }
+    assert_equal :invalid_cursor, error.code
+    assert_match(/repeating cursor/, error.message)
+  end
 end
