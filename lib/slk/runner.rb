@@ -159,6 +159,10 @@ module Slk
       )
     end
 
+    def sent_channel_label
+      @sent_channel_label ||= Services::SentChannelLabel.new(runner: self)
+    end
+
     # Logging
     def log_error(error)
       Support::ErrorLogger.log(error)

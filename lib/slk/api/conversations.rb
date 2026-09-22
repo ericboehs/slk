@@ -15,13 +15,16 @@ module Slk
         @api.post(@workspace, 'conversations.list', params)
       end
 
-      def history(channel:, limit: 20, cursor: nil, oldest: nil, latest: nil)
+      # rubocop:disable Metrics/ParameterLists
+      def history(channel:, limit: 20, cursor: nil, oldest: nil, latest: nil, inclusive: false)
         params = { channel: channel, limit: limit }
         params[:cursor] = cursor if cursor
         params[:oldest] = oldest if oldest
         params[:latest] = latest if latest
+        params[:inclusive] = true if inclusive
         @api.post(@workspace, 'conversations.history', params)
       end
+      # rubocop:enable Metrics/ParameterLists
 
       def replies(channel:, timestamp:, limit: 100, cursor: nil)
         params = { channel: channel, ts: timestamp, limit: limit }

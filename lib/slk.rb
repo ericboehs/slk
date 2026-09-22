@@ -115,6 +115,7 @@ module Slk
     autoload :StartDateField, 'slk/services/start_date_field'
     autoload :SearchPages, 'slk/services/search_pages'
     autoload :SentConversations, 'slk/services/sent_conversations'
+    autoload :SentChannelLabel, 'slk/services/sent_channel_label'
   end
 
   # Output formatters for messages, durations, and emoji

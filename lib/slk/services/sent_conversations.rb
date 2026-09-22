@@ -8,9 +8,9 @@ module Slk
     # histories and full threads. Search is the seed, not the context source.
     # rubocop:disable Metrics/ClassLength
     class SentConversations
-      Conversation = Data.define(:workspace, :channel_id, :channel_name, :type, :thread_ts,
+      Conversation = Data.define(:workspace, :channel_id, :channel_name, :channel_type, :type, :thread_ts,
                                  :first_sent_ts, :messages, :last_speaker_is_me, :dropped_messages,
-                                 :self_user_id, :parent_text)
+                                 :self_user_id, :self_username, :parent_text)
       DEFAULT_BEFORE = 5
       DEFAULT_AFTER_MINUTES = 30
       DEFAULT_MAX = 200
@@ -108,7 +108,7 @@ module Slk
         return [] if @after_seconds.zero?
 
         end_at = (BigDecimal(window.last.ts) + @after_seconds).to_s('F')
-        page_through(:history, channel: channel_id, oldest: window.first.ts, latest: end_at)
+        page_through(:history, channel: channel_id, oldest: window.first.ts, latest: end_at, inclusive: true)
       end
 
       def merge_windows(hits)
@@ -156,11 +156,22 @@ module Slk
         messages = normalize(raw, seed.channel_id)
         last_is_me = messages.last&.user_id == @self_id
         Conversation.new(workspace: workspace, channel_id: seed.channel_id, channel_name: seed.channel_name,
-                         type: type, thread_ts: root, first_sent_ts: hits.first.ts,
+                         channel_type: seed.channel_type, type: type, thread_ts: root, first_sent_ts: hits.first.ts,
                          messages: messages, last_speaker_is_me: last_is_me, dropped_messages: 0,
-                         self_user_id: @self_id, parent_text: messages.find { |message| message.ts == root }&.text)
+                         self_user_id: @self_id, self_username: hits.first.username,
+                         parent_text: parent_preview(messages, root))
       end
       # rubocop:enable Metrics/AbcSize, Metrics/ParameterLists
+
+      def parent_preview(messages, root)
+        return nil unless root
+
+        parent = messages.find { |message| message.ts == root }
+        return '[No text]' unless parent
+        return parent.text unless parent.text.strip.empty?
+
+        parent.files.any? ? '[file]' : '[No text]'
+      end
 
       def search_message(hit)
         { 'ts' => hit.ts, 'user' => @self_id, 'username' => hit.username, 'text' => hit.text,

@@ -28,7 +28,7 @@ module Slk
 
       def json_conversation(conversation)
         { workspace: conversation.workspace.name, channel_id: conversation.channel_id,
-          channel_name: conversation.channel_name, type: conversation.type,
+          channel_name: conversation.channel_name, channel_label: channel_label(conversation), type: conversation.type,
           thread_ts: conversation.thread_ts, last_speaker_is_me: conversation.last_speaker_is_me,
           dropped_messages: conversation.dropped_messages,
           messages: conversation.messages.map { |message| json_message(message, conversation) } }
@@ -62,12 +62,8 @@ module Slk
       end
 
       # Header combines the resolved channel, optional thread root and signal.
-      # rubocop:disable Metrics/AbcSize
       def display_header(conversation)
-        label = @runner.search_formatter.channel_label_for(
-          conversation.type, conversation.channel_name, conversation.workspace
-        )
-        heading = "[#{conversation.workspace.name}] #{label}"
+        heading = "[#{conversation.workspace.name}] #{channel_label(conversation)}"
         heading += " (thread: #{thread_snippet(conversation)})" if conversation.type == 'thread'
         @runner.output.puts heading
         signal = conversation.last_speaker_is_me ? '• you had the last word' : '↩ replied after you'
@@ -76,14 +72,21 @@ module Slk
 
         @runner.output.puts "(#{conversation.dropped_messages} older messages omitted by --max)"
       end
-      # rubocop:enable Metrics/AbcSize
 
       def display_message(message, conversation)
         marker = mine?(message, conversation) ? '▶ ' : '  '
-        formatted = @runner.message_formatter.format_simple(
+        formatted = @runner.message_formatter.format(
           message, workspace: conversation.workspace, options: @options
         )
         @runner.output.puts "#{marker}#{formatted}"
+      end
+
+      def channel_label(conversation)
+        @runner.sent_channel_label.label(
+          workspace: conversation.workspace, type: conversation.channel_type,
+          name: conversation.channel_name, channel_id: conversation.channel_id,
+          self_user_id: conversation.self_user_id, self_username: conversation.self_username
+        )
       end
 
       def thread_snippet(conversation)

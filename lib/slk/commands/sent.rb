@@ -43,9 +43,10 @@ module Slk
         help.note('Long --since ranges can be slow (search is rate-limited; 429s retry once).')
         help.note('Conversations you only read or were mentioned in but never posted in are out of scope.')
         help.note('A future --mentions flag could seed mentioned conversations via to:me search.')
-        help.note('JSON: {date, range, conversations:[{workspace, channel_id, channel_name, type,')
+        help.note('JSON: {date, range, conversations:[{workspace, channel_id, channel_name, channel_label, type,')
         help.note('thread_ts, last_speaker_is_me, dropped_messages, messages:[{ts, user,')
-        help.note('user_name, text, mine, thread_ts}]}]}; --mine keeps counts/results JSON.')
+        help.note('user_name, text, mine, thread_ts}]}]}; --mine keeps counts/results JSON,')
+        help.note('with channel_label added to counts. channel_name remains the raw Slack name.')
         help.section('OPTIONS') do |s|
           s.option('--since YYYY-MM-DD', 'From this date through today (inclusive)')
           s.option('--mine', 'Only your messages, flat timeline with counts (previous behavior)')
@@ -172,6 +173,7 @@ module Slk
         counts.map do |(workspace, channel_id), group|
           result = group.first.last
           { workspace: workspace, channel_id: channel_id, channel_name: result.channel_name,
+            channel_label: destination_label(runner.workspace(workspace), result),
             channel_type: result.channel_type, count: group.size }
         end
       end
@@ -184,15 +186,24 @@ module Slk
 
         counts.each_value { |group| display_count(group) }
         puts
-        entries.each do |workspace, result|
-          runner.search_formatter.display_result(result, workspace, format_options.merge(workspace_label: true))
-        end
+        entries.each { |workspace, result| display_entry(workspace, result) }
+      end
+
+      def display_entry(workspace, result)
+        options = format_options.merge(workspace_label: true, channel_label: destination_label(workspace, result))
+        runner.search_formatter.display_result(result, workspace, options)
       end
 
       def display_count(group)
         workspace, result = group.first
-        channel = runner.search_formatter.channel_label(result, workspace)
-        puts "[#{workspace.name}] #{channel}: #{group.size}"
+        puts "[#{workspace.name}] #{destination_label(workspace, result)}: #{group.size}"
+      end
+
+      def destination_label(workspace, result)
+        runner.sent_channel_label.label(
+          workspace: workspace, type: result.channel_type, name: result.channel_name,
+          channel_id: result.channel_id, self_user_id: result.user_id, self_username: result.username
+        )
       end
     end
     # rubocop:enable Metrics/ClassLength

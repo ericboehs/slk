@@ -23,7 +23,7 @@ module Slk
       # Display a single search result
       def display_result(result, workspace, options = {})
         timestamp = @output.blue("[#{format_time(result.timestamp)}]")
-        channel = @output.cyan(channel_label(result, workspace))
+        channel = @output.cyan(display_channel_label(result, workspace, options))
         user = @output.bold("#{resolve_user(result, workspace)}:")
         text = prepare_text(result.text, workspace, options)
 
@@ -46,6 +46,10 @@ module Slk
       end
 
       private
+
+      def display_channel_label(result, workspace, options)
+        options[:channel_label] || channel_label(result, workspace)
+      end
 
       def workspace_prefix(workspace, options)
         options[:workspace_label] ? "#{@output.cyan("[#{workspace.name}]")} " : ''

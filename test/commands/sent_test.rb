@@ -66,6 +66,9 @@ class SentCommandTest < Minitest::Test
     assert_equal(%w[First Middle Final], data['results'].map { |row| row['text'] })
     assert_equal(%w[acme dsva acme], data['results'].map { |row| row['workspace'] })
     assert_equal 2, data['counts'].find { |row| row['workspace'] == 'acme' }['count']
+    dm = data['counts'].find { |row| row['channel_id'] == 'D2' }
+    assert_equal 'U2', dm['channel_name']
+    assert_equal '@U2', dm['channel_label']
   end
 
   def test_collects_all_search_pages
@@ -105,6 +108,71 @@ class SentCommandTest < Minitest::Test
     assert_equal(2, @client.calls.count { |call| call[:method] == 'conversations.replies' })
   end
 
+  def test_dm_thread_uses_resolved_dm_label_and_file_preview
+    sent = match('2.0', 'mine in thread', 'D2', 'U2', is_im: true).merge(
+      'permalink' => 'https://slack.test/archives/D2/p2?thread_ts=1.0'
+    )
+    stub_matches('acme' => [sent])
+    @cache_store.set_user('acme', 'U2', 'Katherine Johnson')
+    @client.stub('conversations.replies', {
+                   'messages' => [raw('1.0', 'U2', '').merge('files' => [{ 'name' => 'photo.png' }]),
+                                  raw('2.0', 'U1', 'mine in thread', thread_ts: '1.0')]
+                 })
+    assert_equal 0, command(['-w', 'acme']).execute
+    assert_includes @io.string, '[acme] @Katherine Johnson (thread: "[file]")'
+    assert_includes @io.string, '[File: photo.png]'
+    refute_includes @io.string, '#U2'
+
+    @io.truncate(0)
+    @io.rewind
+    assert_equal 0, command(['-w', 'acme', '--json']).execute
+    thread = JSON.parse(@io.string)['conversations'].first
+    assert_equal 'thread', thread['type']
+    assert_equal 'U2', thread['channel_name']
+    assert_equal '@Katherine Johnson', thread['channel_label']
+  end
+
+  def test_group_dm_header_and_json_count_show_participants_not_slug
+    name = 'mpdm-ada.lovelace--eric.boehs--grace.hopper-1'
+    sent = match('2.0', 'hello', 'G2', name).merge(
+      'username' => 'eric.boehs', 'channel' => { 'id' => 'G2', 'name' => name, 'is_mpim' => true }
+    )
+    stub_matches('acme' => [sent])
+    @cache_store.set_user('acme', 'U2', 'Ada Lovelace')
+    @cache_store.set_user('acme', 'U3', 'Grace Hopper')
+    @client.stub('conversations.info', { 'channel' => { 'members' => %w[U2 U1 U3] } })
+    @client.stub('conversations.history', { 'messages' => [raw('2.0', 'U1', 'hello')] })
+    assert_equal 0, command(['-w', 'acme']).execute
+    assert_includes @io.string, '[acme] @Ada Lovelace, Grace Hopper'
+    refute_includes @io.string, 'mpdm-'
+
+    @io.truncate(0)
+    @io.rewind
+    assert_equal 0, command(['-w', 'acme', '--json']).execute
+    conversation = JSON.parse(@io.string)['conversations'].first
+    assert_equal name, conversation['channel_name']
+    assert_equal '@Ada Lovelace, Grace Hopper', conversation['channel_label']
+
+    @io.truncate(0)
+    @io.rewind
+    assert_equal 0, command(['-w', 'acme', '--mine', '--json']).execute
+    count = JSON.parse(@io.string)['counts'].first
+    assert_equal name, count['channel_name']
+    assert_equal '@Ada Lovelace, Grace Hopper', count['channel_label']
+  end
+
+  def test_group_dm_falls_back_to_readable_handles_without_members_scope
+    name = 'mpdm-ada.lovelace--eric.boehs--grace.hopper-1'
+    sent = match('2.0', 'hello', 'G2', name).merge(
+      'username' => 'eric.boehs', 'channel' => { 'id' => 'G2', 'name' => name, 'is_mpim' => true }
+    )
+    stub_matches('acme' => [sent])
+    @client.stub('conversations.info', ->(_params) { raise Slk::ApiError, 'missing_scope' })
+    assert_equal 0, command(['-w', 'acme', '--mine']).execute
+    assert_includes @io.string, '[acme] @Ada Lovelace, Grace Hopper: 1'
+    refute_includes @io.string, 'eric.boehs--'
+  end
+
   def test_dm_fetches_full_paged_day_and_caps_only_output_not_signal
     stub_matches('dsva' => [match('12.0', 'my DM', 'D2', 'U2', is_im: true)])
     @client.stub('conversations.history', lambda { |params|
@@ -127,6 +195,31 @@ class SentCommandTest < Minitest::Test
     params = @client.calls.find { |call| call[:method] == 'conversations.history' }[:params]
     assert params[:oldest]
     assert params[:latest]
+  end
+
+  def test_following_history_includes_first_post_and_expands_its_thread
+    sent = match('100.0', 'own post', 'C1', 'project').merge('username' => 'eric.boehs')
+    stub_matches('acme' => [sent])
+    @client.stub('conversations.history', lambda { |params|
+      next { 'messages' => [] } unless params[:oldest] && params[:inclusive]
+
+      { 'messages' => [raw('100.0', 'U1', 'own post', reply_count: 1).merge(
+        'user_profile' => { 'display_name' => 'Eric Boehs' },
+        'reactions' => [{ 'name' => 'tada', 'count' => 1, 'users' => ['U2'] }]
+      )] }
+    })
+    @client.stub('conversations.replies', {
+                   'messages' => [raw('100.0', 'U1', 'own post'),
+                                  raw('101.0', 'U2', 'answer', thread_ts: '100.0')]
+                 })
+    assert_equal 0, command(['-w', 'acme']).execute
+    assert_includes @io.string, 'Eric Boehs:'
+    assert_includes @io.string, 'answer'
+    assert_includes @io.string, '🎉'
+    refute_includes @io.string, 'eric.boehs:'
+    assert_equal true, @client.calls.find { |call| call[:params][:oldest] }[:params][:inclusive]
+    reply_calls = @client.calls.count { |call| call[:method] == 'conversations.replies' }
+    assert_equal 1, reply_calls
   end
 
   def test_channel_merges_overlapping_windows_and_includes_replies_to_own_post
