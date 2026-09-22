@@ -153,6 +153,7 @@ module Slk
     autoload :Catchup, 'slk/commands/catchup'
     autoload :Activity, 'slk/commands/activity'
     autoload :Search, 'slk/commands/search'
+    autoload :Sent, 'slk/commands/sent'
     autoload :Preset, 'slk/commands/preset'
     autoload :Workspaces, 'slk/commands/workspaces'
     autoload :Cache, 'slk/commands/cache'

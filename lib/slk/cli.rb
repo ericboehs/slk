@@ -15,6 +15,7 @@ module Slk
       'activity' => Commands::Activity,
       'later' => Commands::Later,
       'search' => Commands::Search,
+      'sent' => Commands::Sent,
       'preset' => Commands::Preset,
       'workspaces' => Commands::Workspaces,
       'cache' => Commands::Cache,

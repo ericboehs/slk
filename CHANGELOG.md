@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `slk sent [today|yesterday|YYYY-MM-DD]` shows every indexed message you sent, across workspaces by default, in one chronological timeline with per-channel counts; `--since YYYY-MM-DD` searches through today, `-w` selects a workspace, and `--json` exports counts and results. Slack's index can lag, excludes deleted messages, and uses your profile timezone for date operators.
+
 ### Fixed
 
 - `slk search --all` now searches every workspace and tags each result. Search paginates past Slack's 100-result page size when `-n` requests more, and warns when the requested limit cuts off matches.

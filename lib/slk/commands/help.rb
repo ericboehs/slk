@@ -12,6 +12,7 @@ module Slk
         ['dnd', 'Manage Do Not Disturb'],
         ['messages', 'Read channel or DM messages'],
         ['search', 'Search messages across channels'],
+        ['sent', 'Show your sent messages across workspaces'],
         ['unread', 'View and clear unread messages'],
         ['activity', 'Show activity feed (reactions, mentions, threads)'],
         ['later', 'Show saved "Later" items'],
@@ -84,6 +85,7 @@ module Slk
             slk status schedule "Vet" 1p-3p  Schedule a status (am/pm or 24h)
             slk dnd 1h                       Enable DND for 1 hour
             slk messages #general            Read channel messages
+            slk sent                         Show messages you sent today
             slk preset meeting               Apply preset
         EXAMPLES
       end
