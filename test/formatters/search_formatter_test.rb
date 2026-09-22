@@ -178,6 +178,7 @@ class SearchFormatterTest < Minitest::Test
       channel_name: 'general',
       channel_type: 'channel',
       thread_ts: nil,
+      reply_count: 0,
       permalink: 'https://workspace.slack.com/archives/C12345/p1234567890123456',
       files: []
     }

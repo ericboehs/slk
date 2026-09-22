@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `slk sent` now expands your sent-message search hits into conversations: full paginated threads and DMs, merged channel windows (5 messages before and 30 minutes after your posts), and replies to your top-level posts. It groups by conversation, highlights your messages, reports whether someone spoke after you, and caps displayed messages with `--max` (default 200, `0` for all). `--before` and `--after-minutes` tune channel windows. `--mine` keeps the previous flat timeline and JSON shape.
+- `slk sent --json` now returns `{date, range, conversations}`. Each conversation includes its workspace, channel, type, thread timestamp, `last_speaker_is_me`, `dropped_messages`, and chronological messages with sender, name, text, and `mine`. The sender-only format remains available through `--mine --json`.
+
 ### Added
 
-- `slk sent [today|yesterday|YYYY-MM-DD]` shows every indexed message you sent, across workspaces by default, in one chronological timeline with per-channel counts; `--since YYYY-MM-DD` searches through today, `-w` selects a workspace, and `--json` exports counts and results. Slack's index can lag, excludes deleted messages, and uses your profile timezone for date operators.
+- `slk sent [today|yesterday|YYYY-MM-DD]` finds conversations you posted in, across workspaces by default. `--since YYYY-MM-DD` searches through today, `-w` selects a workspace, and `--mine` shows only your indexed messages in a flat chronological timeline with per-channel counts. Slack's index can lag, excludes deleted messages, and uses your profile timezone for date operators; DM history bounds use your local timezone.
 
 ### Fixed
 

@@ -23,7 +23,7 @@ module Slk
       # Display a single search result
       def display_result(result, workspace, options = {})
         timestamp = @output.blue("[#{format_time(result.timestamp)}]")
-        channel = @output.cyan(resolve_channel(result, workspace))
+        channel = @output.cyan(channel_label(result, workspace))
         user = @output.bold("#{resolve_user(result, workspace)}:")
         text = prepare_text(result.text, workspace, options)
 
@@ -34,22 +34,21 @@ module Slk
 
       # Channel label used by search timelines and per-channel summaries.
       def channel_label(result, workspace)
-        resolve_channel(result, workspace)
+        channel_label_for(result.channel_type, result.channel_name, workspace)
+      end
+
+      def channel_label_for(type, name, workspace)
+        if %w[im mpim].include?(type)
+          @mentions.replace("<@#{name}>", workspace)
+        else
+          "##{name}"
+        end
       end
 
       private
 
       def workspace_prefix(workspace, options)
         options[:workspace_label] ? "#{@output.cyan("[#{workspace.name}]")} " : ''
-      end
-
-      def resolve_channel(result, workspace)
-        if result.dm?
-          # For DMs, channel_name is a user ID - resolve it
-          @mentions.replace("<@#{result.channel_name}>", workspace)
-        else
-          "##{result.channel_name}"
-        end
       end
 
       def resolve_user(result, workspace)

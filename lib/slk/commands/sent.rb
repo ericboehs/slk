@@ -9,12 +9,7 @@ module Slk
         result = validate_options
         return result if result
 
-        raise UsageError, 'Use either --all or --workspace, not both.' if @options[:all] && @options[:workspace]
-
-        query = date_query
-        entries = collect_entries(query)
-        emit(entries, query)
-        0
+        run_sent
       rescue ApiError => e
         error("Sent search failed: #{e.message}")
         1
@@ -23,40 +18,80 @@ module Slk
       protected
 
       def default_options
-        super.merge(since: nil)
+        super.merge(since: nil, mine: false, before: Services::SentConversations::DEFAULT_BEFORE,
+                    after_minutes: Services::SentConversations::DEFAULT_AFTER_MINUTES,
+                    max: Services::SentConversations::DEFAULT_MAX)
       end
 
       def handle_option(arg, args, remaining)
         case arg
         when '--since' then @options[:since] = option_value(arg, args)
+        when '--mine' then @options[:mine] = true
+        when '--before' then @options[:before] = before_limit(arg, args)
+        when '--after-minutes' then @options[:after_minutes] = nonnegative_integer(arg, args)
+        when '--max' then @options[:max] = nonnegative_integer(arg, args)
         else super
         end
       end
 
-      # rubocop:disable Metrics/MethodLength
+      # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
       def help_text
         help = Support::HelpFormatter.new('slk sent [today|yesterday|YYYY-MM-DD] [options]')
-        help.description('Show your sent messages across all workspaces, oldest first.')
+        help.description('Catch up on conversations you posted in, across all workspaces.')
         help.note('Search is indexed: very recent and deleted messages may be missing.')
-        help.note('Dates use your local clock; Slack on:/after:/before: use your profile timezone.')
-        help.note('Long --since ranges can be slow (search is rate-limited).')
+        help.note('Dates/DM history bounds use your local clock; Slack search uses your profile timezone.')
+        help.note('Long --since ranges can be slow (search is rate-limited; 429s retry once).')
+        help.note('Conversations you only read or were mentioned in but never posted in are out of scope.')
+        help.note('A future --mentions flag could seed mentioned conversations via to:me search.')
+        help.note('JSON: {date, range, conversations:[{workspace, channel_id, channel_name, type,')
+        help.note('thread_ts, last_speaker_is_me, dropped_messages, messages:[{ts, user,')
+        help.note('user_name, text, mine, thread_ts}]}]}; --mine keeps counts/results JSON.')
         help.section('OPTIONS') do |s|
           s.option('--since YYYY-MM-DD', 'From this date through today (inclusive)')
+          s.option('--mine', 'Only your messages, flat timeline with counts (previous behavior)')
+          s.option('--before N', 'Channel messages before a window (default: 5, max: 200)')
+          s.option('--after-minutes N', 'Channel window after each post (default: 30)')
+          s.option('--max N', 'Messages per conversation (default: 200; 0 for all)')
           s.option('-w, --workspace NAME', 'Search one workspace instead of all')
           s.option('--all', 'Search all workspaces (default)')
-          s.option('--json', 'Output counts and messages as JSON')
+          s.option('--json', 'Output conversations as JSON (or counts/results with --mine)')
         end
         help.section('EXAMPLES') do |s|
           s.example('slk sent', 'Today in all workspaces')
           s.example('slk sent yesterday', 'Yesterday in all workspaces')
           s.example('slk sent 2026-09-19', 'One specific day')
           s.example('slk sent --since 2026-09-15', 'From Sep 15 through today')
+          s.example('slk sent --mine --json', 'Only your sent messages, flat JSON')
         end
         help.render
       end
-      # rubocop:enable Metrics/MethodLength
+      # rubocop:enable Metrics/MethodLength, Metrics/AbcSize
 
       private
+
+      def run_sent
+        raise UsageError, 'Use either --all or --workspace, not both.' if @options[:all] && @options[:workspace]
+
+        query = date_query
+        entries = collect_entries(query)
+        @options[:mine] ? emit(entries, query) : emit_context(entries)
+        0
+      end
+
+      def before_limit(flag, args)
+        number = nonnegative_integer(flag, args)
+        raise UsageError, '--before must be at most 200.' if number > 200
+
+        number
+      end
+
+      def nonnegative_integer(flag, args)
+        value = option_value(flag, args)
+        number = Integer(value, exception: false)
+        raise UsageError, "#{flag} expects a non-negative integer." unless number && !number.negative?
+
+        number
+      end
 
       def date_query
         raise UsageError, 'Use either a date or --since, not both.' if @options[:since] && positional_args.any?
@@ -98,6 +133,28 @@ module Slk
       def fetch_workspace(workspace, query)
         pages = Services::SearchPages.new(runner.search_api(workspace.name)).fetch(query: query, sort_dir: 'asc')
         pages[:results].map { |result| [workspace, result] }
+      end
+
+      def emit_context(entries)
+        start_date, end_date = selected_dates
+        conversations = Services::SentConversations.new(
+          runner: runner, start_date: start_date, end_date: end_date,
+          before: @options[:before], after_minutes: @options[:after_minutes], max: @options[:max]
+        ).collect(entries)
+        Formatters::SentFormatter.new(runner: runner, options: format_options).display(
+          conversations, start_date: start_date, end_date: end_date, json: @options[:json]
+        )
+      end
+
+      def selected_dates
+        return [parse_date(@options[:since]), Date.today] if @options[:since]
+
+        date = case positional_args.first
+               when nil, 'today' then Date.today
+               when 'yesterday' then Date.today - 1
+               else parse_date(positional_args.first)
+               end
+        [date, date]
       end
 
       def emit(entries, query)

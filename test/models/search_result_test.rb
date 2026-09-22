@@ -71,6 +71,12 @@ class SearchResultTest < Minitest::Test
     assert result.thread?
   end
 
+  def test_preserves_reply_count_for_own_top_level_posts
+    result = Slk::Models::SearchResult.from_api(build_match_data(reply_count: 3))
+
+    assert_equal 3, result.reply_count
+  end
+
   def test_thread_false_without_thread_ts
     match = build_match_data(permalink: 'https://workspace.slack.com/archives/C12345/p1234567890123456')
 
