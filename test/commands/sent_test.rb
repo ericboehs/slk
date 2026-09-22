@@ -670,6 +670,236 @@ class SentCommandTest < Minitest::Test
     refute(@client.calls.any? { |call| call[:method] == 'conversations.history' && call[:params][:latest] })
   end
 
+  def test_changed_since_pages_parent_metadata_and_ignores_threads_last_active_before_cutoff
+    since = Time.local(2026, 9, 22, 15, 0).to_i
+    active = "#{since - 120}.1"
+    quiet = "#{since - 60}.2"
+    reply = "#{since + 1}.1"
+    stub_matches('acme' => [match(active, 'active root', 'C1', 'project'),
+                            match(quiet, 'quiet root', 'C1', 'project')])
+    quiet_parent = raw(quiet, 'U1', 'quiet root', reply_count: 1).merge('latest_reply' => "#{since - 1}.0")
+    @client.stub('conversations.history', lambda { |params|
+      if params[:cursor]
+        { 'messages' => [raw(active, 'U1', 'active root', reply_count: 1).merge('latest_reply' => reply)],
+          'has_more' => true }
+      else
+        { 'messages' => [quiet_parent],
+          'has_more' => true, 'response_metadata' => { 'next_cursor' => 'p2' } }
+      end
+    })
+    @client.stub('conversations.replies', {
+                   'messages' => [raw(active, 'U1', 'active root'), raw(reply, 'U2', 'answer', thread_ts: active)]
+                 })
+    assert_equal 0, command(changed_args('--json')).execute
+    conversations = JSON.parse(@io.string)['conversations']
+    assert_equal([active], conversations.map { |row| row['thread_ts'] })
+    history = @client.calls.select { |call| call[:method] == 'conversations.history' }
+    replies = @client.calls.select { |call| call[:method] == 'conversations.replies' }
+    assert_equal([nil, 'p2'], history.map { |call| call[:params][:cursor] })
+    assert_equal 1, replies.size
+  end
+
+  def test_changed_since_rejects_history_without_a_progressing_cursor
+    root = "#{Time.local(2026, 9, 21, 15, 0).to_i}.0"
+    stub_matches('acme' => [match(root, 'old root', 'C1', 'project')])
+    @client.stub('conversations.history', { 'messages' => [], 'has_more' => true })
+    assert_equal 1, command(changed_args('--json')).execute
+    assert_empty @io.string
+    assert_includes @err.string, 'has_more without a new cursor'
+  end
+
+  def test_changed_since_thread_only_search_hit_does_not_scan_channel_history
+    root = "#{Time.local(2026, 9, 21, 15, 0).to_i}.0"
+    own_reply = "#{Time.local(2026, 9, 21, 15, 1).to_i}.0"
+    new_reply = "#{Time.local(2026, 9, 22, 15, 1).to_i}.0"
+    hit = match(own_reply, 'mine', 'C1', 'project').merge(
+      'permalink' => "https://slack.test/archives/C1/p2?thread_ts=#{root}"
+    )
+    stub_matches('acme' => [hit])
+    @client.stub('conversations.replies', lambda { |params|
+      messages = if params[:oldest]
+                   [raw(new_reply, 'U2', 'new', thread_ts: root)]
+                 else
+                   [raw(root, 'U3', 'parent'), raw(own_reply, 'U1', 'mine', thread_ts: root),
+                    raw(new_reply, 'U2', 'new', thread_ts: root)]
+                 end
+      { 'messages' => messages }
+    })
+    assert_equal 0, command(changed_args('--json')).execute
+    row = JSON.parse(@io.string)['conversations'].first
+    assert_equal 'thread', row['type']
+    assert_equal 1, row['new_count']
+    refute(@client.calls.any? { |call| call[:method] == 'conversations.history' })
+  end
+
+  def test_changed_since_treats_deleted_thread_as_unchanged_but_reports_other_api_errors
+    root = "#{Time.local(2026, 9, 21, 15, 0).to_i}.0"
+    stub_matches('acme' => [match(root, 'deleted root', 'C1', 'project')])
+    @client.stub('conversations.history', { 'messages' => [] })
+    @client.stub('conversations.replies', Slk::ApiError.new('thread_not_found'))
+    assert_equal 0, command(changed_args('--json')).execute
+    assert_equal [], JSON.parse(@io.string)['conversations']
+
+    @io.truncate(0)
+    @io.rewind
+    @client.stub('conversations.replies', Slk::ApiError.new('not_in_channel'))
+    assert_equal 1, command(changed_args('--json')).execute
+    assert_empty @io.string
+    assert_includes @err.string, 'not_in_channel'
+  end
+
+  def test_changed_since_subscriptions_skip_incomplete_roots_and_resolve_im_and_mpim
+    root = '1790000000.123456'
+    reply = "#{Time.local(2026, 9, 22, 15, 1).to_i}.1"
+    @client.stub('auth.test', { 'user_id' => 'U1' })
+    @client.stub('subscriptions.thread.getView', {
+                   'threads' => [
+                     { 'root_msg' => { 'channel' => 'C0' } },
+                     { 'root_msg' => { 'channel' => 'C0', 'thread_ts' => root } },
+                     { 'root_msg' => { 'channel' => 'D2', 'thread_ts' => root } },
+                     { 'root_msg' => { 'channel' => 'G3', 'thread_ts' => root } }
+                   ]
+                 })
+    @client.stub('conversations.info', lambda { |params|
+      channel = case params[:channel]
+                when 'D2' then { 'is_im' => true, 'user' => 'U2' }
+                when 'G3' then { 'is_mpim' => true, 'name' => 'mpdm-ada.lovelace--eric.boehs--grace.hopper-1' }
+                else {}
+                end
+      { 'channel' => channel }
+    })
+    @client.stub('conversations.replies', lambda { |params|
+      messages = if params[:oldest]
+                   [raw(reply, 'U2', 'answer', thread_ts: root)]
+                 else
+                   [raw(root, 'U1', 'old root'), raw(reply, 'U2', 'answer', thread_ts: root)]
+                 end
+      { 'messages' => messages }
+    })
+    assert_equal 0, command(changed_args('--json')).execute
+    rows = JSON.parse(@io.string)['conversations']
+    assert_equal(%w[D2 G3], rows.map { |row| row['channel_id'] })
+    assert_equal 'U2', rows.first['channel_name']
+    assert_equal 'mpdm-ada.lovelace--eric.boehs--grace.hopper-1', rows.last['channel_name']
+    refute(@client.calls.any? { |call| call[:method] == 'conversations.replies' && call[:params][:channel] == 'C0' })
+  end
+
+  def test_changed_since_unavailable_subscriptions_are_optional_and_empty_text_is_clear
+    @client.stub('auth.test', { 'user_id' => 'U1' })
+    @client.stub('subscriptions.thread.getView', Slk::ApiError.new('missing_scope'))
+    assert_equal 0, command(changed_args).execute
+    assert_includes @io.string, 'No changed sent conversations found.'
+    refute_includes @err.string, 'missing_scope'
+  end
+
+  def test_changed_since_pages_busy_dm_after_probe_and_keeps_prior_context
+    since = Time.local(2026, 9, 22, 15, 0).to_i
+    root = "#{since - 86_400}.0"
+    first = "#{since + 1}.0"
+    second = "#{since + 2}.0"
+    stub_matches('acme' => [match(root, 'old DM', 'D2', 'U2', is_im: true)])
+    @client.stub('conversations.history', lambda { |params|
+      if params[:latest] || params[:oldest] == root
+        { 'messages' => [raw(root, 'U1', 'old DM')] }
+      elsif params[:cursor]
+        { 'messages' => [raw(second, 'U2', 'second')] }
+      else
+        { 'messages' => [raw(first, 'U2', 'first')], 'has_more' => true,
+          'response_metadata' => { 'next_cursor' => 'p2' } }
+      end
+    })
+    assert_equal 0, command(changed_args('--json')).execute
+    row = JSON.parse(@io.string)['conversations'].first
+    assert_equal 2, row['new_count']
+    assert_equal 2, row['new_from_others']
+    assert_equal([false, true, true], row['messages'].map { |message| message['new'] })
+    history = @client.calls.select { |call| call[:method] == 'conversations.history' }
+    assert_equal([200, 1, 200, 200, 2], history.map { |call| call[:params][:limit] })
+  end
+
+  def test_changed_since_own_new_dm_thread_is_not_repeated_in_dm_history
+    since = Time.local(2026, 9, 22, 15, 0).to_i
+    root = "#{since + 1}.0"
+    reply = "#{since + 2}.0"
+    stub_matches('acme' => [match(root, 'new DM root', 'D2', 'U2', is_im: true)])
+    parent = raw(root, 'U1', 'new DM root', reply_count: 1).merge('latest_reply' => reply)
+    @client.stub('conversations.history', { 'messages' => [parent] })
+    @client.stub('conversations.replies', {
+                   'messages' => [raw(root, 'U1', 'new DM root'), raw(reply, 'U2', 'answer', thread_ts: root)]
+                 })
+    assert_equal 0, command(changed_args('--json')).execute
+    rows = JSON.parse(@io.string)['conversations']
+    assert_equal 1, rows.size
+    assert_equal 'thread', rows.first['type']
+    assert_equal 2, rows.first['new_count']
+    assert_equal([true, true], rows.first['messages'].map { |message| message['new'] })
+  end
+
+  def test_changed_since_own_channel_root_with_new_replies_is_not_duplicated_in_window
+    since = Time.local(2026, 9, 22, 15, 0).to_i
+    root = "#{since + 1}.0"
+    reply = "#{since + 2}.0"
+    parent = raw(root, 'U1', 'new post', reply_count: 1).merge('latest_reply' => reply)
+    stub_matches('acme' => [match(root, 'new post', 'C1', 'project')])
+    @client.stub('conversations.history', lambda { |params|
+      { 'messages' => params[:latest] && !params[:oldest] ? [] : [parent] }
+    })
+    @client.stub('conversations.replies', {
+                   'messages' => [parent, raw(reply, 'U2', 'answer', thread_ts: root)]
+                 })
+    assert_equal 0, command(changed_args('--json')).execute
+    rows = JSON.parse(@io.string)['conversations']
+    assert_equal 1, rows.size
+    assert_equal 'thread', rows.first['type']
+    assert_equal 2, rows.first['new_count']
+    assert_equal([root, reply], rows.first['messages'].map { |message| message['ts'] })
+  end
+
+  def test_changed_since_missing_thread_parent_still_shows_reply_with_preview_fallback
+    root = "#{Time.local(2026, 9, 21, 15, 0).to_i}.0"
+    own_reply = "#{Time.local(2026, 9, 21, 15, 1).to_i}.0"
+    new_reply = "#{Time.local(2026, 9, 22, 15, 1).to_i}.0"
+    hit = match(own_reply, 'mine', 'C1', 'project').merge(
+      'permalink' => "https://slack.test/archives/C1/p2?thread_ts=#{root}"
+    )
+    stub_matches('acme' => [hit])
+    @client.stub('conversations.replies', {
+                   'messages' => [raw(new_reply, 'U2', 'new answer', thread_ts: root)]
+                 })
+    assert_equal 0, command(changed_args('--max', '0')).execute
+    assert_includes @io.string, '(thread: "[No text]")'
+    assert_includes @io.string, '1 new (1 from others)'
+    assert_includes @io.string, 'new answer'
+    refute_includes @io.string, 'older messages omitted'
+  end
+
+  def test_changed_since_file_only_and_blank_thread_parents_have_distinct_previews
+    root = "#{Time.local(2026, 9, 21, 15, 0).to_i}.0"
+    own_reply = "#{Time.local(2026, 9, 21, 15, 1).to_i}.0"
+    new_reply = "#{Time.local(2026, 9, 22, 15, 1).to_i}.0"
+    hits = %w[C1 C2].map do |channel|
+      match(own_reply, 'mine', channel, 'project').merge(
+        'permalink' => "https://slack.test/archives/#{channel}/p2?thread_ts=#{root}"
+      )
+    end
+    stub_matches('acme' => hits)
+    @client.stub('conversations.replies', lambda { |params|
+      parent = raw(root, 'U1', '')
+      parent['files'] = [{ 'name' => 'plan.pdf' }] if params[:channel] == 'C1'
+      messages = [parent, raw(new_reply, 'U2', 'answer', thread_ts: root)]
+      { 'messages' => params[:oldest] ? messages.last(1) : messages }
+    })
+    assert_equal 0, command(changed_args).execute
+    assert_includes @io.string, '(thread: "[file]")'
+    assert_includes @io.string, '(thread: "[No text]")'
+    assert_equal 2, @io.string.scan('1 new (1 from others)').size
+  end
+
+  def test_sent_empty_mine_text_is_explicit
+    assert_equal 0, command(['--mine', '-w', 'acme']).execute
+    assert_includes @io.string, 'No sent messages found.'
+  end
+
   def test_changed_since_epoch_json_preserves_microseconds
     time = Time.local(2026, 9, 22, 15, 0) + Rational(123_456, 1_000_000)
     timestamp = Slk::Support::CheckInTime.timestamp(time)
@@ -734,6 +964,10 @@ class SentCommandTest < Minitest::Test
   end
 
   private
+
+  def changed_args(*options)
+    ['-w', 'acme', '--changed-since', '2026-09-22T15:00', *options]
+  end
 
   def match(timestamp, text, id, name, is_im: false)
     { 'ts' => timestamp, 'text' => text, 'user' => 'U1', 'username' => 'me',
