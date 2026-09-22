@@ -26,9 +26,10 @@ module Slk
       end
       # rubocop:enable Metrics/ParameterLists
 
-      def replies(channel:, timestamp:, limit: 100, cursor: nil)
+      def replies(channel:, timestamp:, limit: 100, cursor: nil, oldest: nil)
         params = { channel: channel, ts: timestamp, limit: limit }
         params[:cursor] = cursor if cursor
+        params[:oldest] = oldest if oldest
         # Use form encoding - some workspaces (Enterprise Grid) require it
         @api.post_form(@workspace, 'conversations.replies', params)
       end

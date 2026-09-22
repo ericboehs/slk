@@ -115,6 +115,7 @@ module Slk
     autoload :StartDateField, 'slk/services/start_date_field'
     autoload :SearchPages, 'slk/services/search_pages'
     autoload :SentConversations, 'slk/services/sent_conversations'
+    autoload :SentChanges, 'slk/services/sent_changes'
     autoload :SentChannelLabel, 'slk/services/sent_channel_label'
   end
 
@@ -198,6 +199,7 @@ module Slk
     autoload :TextWrapper, 'slk/support/text_wrapper'
     autoload :InteractivePrompt, 'slk/support/interactive_prompt'
     autoload :DateParser, 'slk/support/date_parser'
+    autoload :CheckInTime, 'slk/support/check_in_time'
     autoload :TimeParser, 'slk/support/time_parser'
     autoload :TimeRangeParser, 'slk/support/time_range_parser'
   end

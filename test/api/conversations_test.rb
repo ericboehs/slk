@@ -96,6 +96,14 @@ class ConversationsApiTest < Minitest::Test
     assert_equal '1234.0000', call[:params][:ts]
   end
 
+  def test_replies_with_exact_oldest_timestamp
+    @mock_client.stub('conversations.replies', { 'ok' => true, 'messages' => [] })
+
+    @api.replies(channel: 'C123', timestamp: '1234.0', oldest: '1235.000001')
+
+    assert_equal '1235.000001', @mock_client.calls.last[:params][:oldest]
+  end
+
   def test_open_calls_api
     @mock_client.stub('conversations.open', {
                         'ok' => true,
