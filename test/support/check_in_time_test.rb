@@ -27,7 +27,13 @@ class CheckInTimeTest < Minitest::Test
   end
 
   def test_iso_with_offset
-    assert_equal Time.iso8601('2026-09-22T15:17:00-05:00'), parse('2026-09-22T15:17-05:00')
+    # An explicit offset names an absolute instant, so compare against an
+    # absolute `now`; a Time.local `now` shifts with the runner's TZ (CI is UTC).
+    now = Time.iso8601('2026-09-22T16:30:00-05:00')
+    assert_equal Time.iso8601('2026-09-22T15:17:00-05:00'),
+                 Slk::Support::CheckInTime.parse('2026-09-22T15:17-05:00', now: now)
+    assert_equal Time.iso8601('2026-09-22T20:17:00Z'),
+                 Slk::Support::CheckInTime.parse('2026-09-22T20:17Z', now: now)
   end
 
   def test_rejects_invalid_and_future_times
