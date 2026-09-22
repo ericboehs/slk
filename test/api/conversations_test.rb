@@ -60,6 +60,15 @@ class ConversationsApiTest < Minitest::Test
     assert_equal '1234567890.123456', call[:params][:oldest]
   end
 
+  def test_history_can_include_oldest_boundary
+    @mock_client.stub('conversations.history', { 'ok' => true, 'messages' => [] })
+
+    @api.history(channel: 'C123', oldest: '1234.5678', latest: '1235.0000', inclusive: true)
+
+    assert_equal true, @mock_client.calls.last[:params][:inclusive]
+    assert_equal '1234.5678', @mock_client.calls.last[:params][:oldest]
+  end
+
   def test_history_with_limit
     @mock_client.stub('conversations.history', { 'ok' => true, 'messages' => [] })
 

@@ -13,6 +13,7 @@ module Slk
       :channel_name,
       :channel_type,
       :thread_ts,
+      :reply_count,
       :permalink,
       :files
     ) do
@@ -32,6 +33,7 @@ module Slk
           channel_name: channel['name'],
           channel_type: determine_channel_type(channel),
           thread_ts: extract_thread_ts(match),
+          reply_count: match['reply_count'].to_i,
           permalink: match['permalink'],
           files: extract_files(match)
         }

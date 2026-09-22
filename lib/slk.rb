@@ -113,6 +113,9 @@ module Slk
     autoload :DeactivationScanner, 'slk/services/deactivation_scanner'
     autoload :StartDateLookup, 'slk/services/start_date_lookup'
     autoload :StartDateField, 'slk/services/start_date_field'
+    autoload :SearchPages, 'slk/services/search_pages'
+    autoload :SentConversations, 'slk/services/sent_conversations'
+    autoload :SentChannelLabel, 'slk/services/sent_channel_label'
   end
 
   # Output formatters for messages, durations, and emoji
@@ -130,6 +133,7 @@ module Slk
     autoload :AttachmentFormatter, 'slk/formatters/attachment_formatter'
     autoload :BlockFormatter, 'slk/formatters/block_formatter'
     autoload :SearchFormatter, 'slk/formatters/search_formatter'
+    autoload :SentFormatter, 'slk/formatters/sent_formatter'
     autoload :SavedItemFormatter, 'slk/formatters/saved_item_formatter'
     autoload :TextProcessor, 'slk/formatters/text_processor'
     autoload :ProfileFormatter, 'slk/formatters/profile_formatter'
@@ -152,6 +156,7 @@ module Slk
     autoload :Catchup, 'slk/commands/catchup'
     autoload :Activity, 'slk/commands/activity'
     autoload :Search, 'slk/commands/search'
+    autoload :Sent, 'slk/commands/sent'
     autoload :Preset, 'slk/commands/preset'
     autoload :Workspaces, 'slk/commands/workspaces'
     autoload :Cache, 'slk/commands/cache'

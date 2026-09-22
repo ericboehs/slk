@@ -23,23 +23,36 @@ module Slk
       # Display a single search result
       def display_result(result, workspace, options = {})
         timestamp = @output.blue("[#{format_time(result.timestamp)}]")
-        channel = @output.cyan(resolve_channel(result, workspace))
+        channel = @output.cyan(display_channel_label(result, workspace, options))
         user = @output.bold("#{resolve_user(result, workspace)}:")
         text = prepare_text(result.text, workspace, options)
 
-        @output.puts "#{timestamp} #{channel} #{user} #{text}"
-        display_files(result.files) if result.files&.any?
+        workspace_label = workspace_prefix(workspace, options)
+        @output.puts "#{timestamp} #{workspace_label}#{channel} #{user} #{text}"
+        display_files(result.files, workspace, options) if result.files&.any?
+      end
+
+      # Channel label used by search timelines and per-channel summaries.
+      def channel_label(result, workspace)
+        channel_label_for(result.channel_type, result.channel_name, workspace)
+      end
+
+      def channel_label_for(type, name, workspace)
+        if %w[im mpim].include?(type)
+          @mentions.replace("<@#{name}>", workspace)
+        else
+          "##{name}"
+        end
       end
 
       private
 
-      def resolve_channel(result, workspace)
-        if result.dm?
-          # For DMs, channel_name is a user ID - resolve it
-          @mentions.replace("<@#{result.channel_name}>", workspace)
-        else
-          "##{result.channel_name}"
-        end
+      def display_channel_label(result, workspace, options)
+        options[:channel_label] || channel_label(result, workspace)
+      end
+
+      def workspace_prefix(workspace, options)
+        options[:workspace_label] ? "#{@output.cyan("[#{workspace.name}]")} " : ''
       end
 
       def resolve_user(result, workspace)
@@ -57,9 +70,10 @@ module Slk
         @text_processor.process(text, workspace, options)
       end
 
-      def display_files(files)
+      def display_files(files, workspace, options)
         files.each do |file|
-          @output.puts @output.blue("[Image: #{file[:name]}]")
+          name = prepare_text(file[:name], workspace, options)
+          @output.puts @output.blue("[Image: #{name}]")
         end
       end
 

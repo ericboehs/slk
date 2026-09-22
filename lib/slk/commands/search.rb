@@ -41,8 +41,8 @@ module Slk
       # rubocop:disable Metrics/MethodLength, Metrics/CyclomaticComplexity, Metrics/AbcSize
       def handle_option(arg, args, remaining)
         case arg
-        when '-n', '--limit' then @options[:limit] = require_value(arg, args).to_i
-        when '--page' then @options[:page] = require_value(arg, args).to_i
+        when '-n', '--limit' then @options[:limit] = positive_integer(arg, args)
+        when '--page' then @options[:page] = positive_integer(arg, args)
         when '--in' then @options[:in_channel] = require_value(arg, args)
         when '--from' then @options[:from_user] = require_value(arg, args)
         when '--after' then @options[:after_date] = require_value(arg, args)
@@ -56,9 +56,17 @@ module Slk
 
       def require_value(option, args)
         value = args.shift
-        raise ArgumentError, "#{option} requires a value" unless value
+        raise ArgumentError, "#{option} requires a value" unless value && !value.start_with?('-')
 
         value
+      end
+
+      def positive_integer(option, args)
+        value = require_value(option, args)
+        number = Integer(value, exception: false)
+        raise ArgumentError, "#{option} expects a positive integer" unless number&.positive?
+
+        number
       end
 
       def help_text
@@ -84,11 +92,12 @@ module Slk
 
       def add_options_section(help)
         help.section('OPTIONS') do |s|
-          s.option('-n, --limit N', 'Number of results (default: 20, max: 100)')
-          s.option('--page N', 'Page number for pagination')
+          s.option('-n, --limit N', 'Results per workspace (default: 20; paginates past 100)')
+          s.option('--page N', 'Starting page in each workspace')
           s.option('--threads', 'Show thread replies inline')
           s.option('--json', 'Output as JSON')
-          s.option('-w, --workspace', 'Specify workspace')
+          s.option('-w, --workspace NAME', 'Specify workspace')
+          s.option('--all', 'Search every workspace (results tagged by workspace)')
           s.option('-v, --verbose', 'Show debug information')
           s.option('-q, --quiet', 'Suppress output')
         end
@@ -110,23 +119,19 @@ module Slk
         1
       end
 
-      # rubocop:disable Metrics/MethodLength
       def search_and_display(query)
-        workspace = target_workspaces.first
+        raise ArgumentError, 'Use either --all or --workspace, not both' if @options[:all] && @options[:workspace]
+
         full_query = build_query(query)
-
         debug("Searching: #{full_query}")
-        response = runner.search_api(workspace.name).messages(
-          query: full_query,
-          count: @options[:limit],
-          page: @options[:page]
-        )
-
-        results = parse_results(response)
-        display_results(results, workspace, response)
+        searches = target_workspaces.map do |workspace|
+          [workspace, Services::SearchPages.new(runner.search_api(workspace.name)).fetch(
+            query: full_query, limit: @options[:limit], page: @options[:page]
+          )]
+        end
+        display_results(searches)
         0
       end
-      # rubocop:enable Metrics/MethodLength
 
       def build_query(base_query)
         parts = [base_query]
@@ -138,47 +143,50 @@ module Slk
         parts.join(' ')
       end
 
-      def parse_results(response)
-        matches = response.dig('messages', 'matches') || []
-        matches.map { |m| Models::SearchResult.from_api(m) }
-      end
-
-      def display_results(results, workspace, response)
+      def display_results(searches)
         if @options[:json]
-          output_json_results(results, response)
+          output_json_results(searches)
         else
-          display_text_results(results, workspace, response)
+          display_text_results(searches)
         end
       end
 
-      def output_json_results(results, response)
-        pagination = response.dig('messages', 'pagination') || {}
-        output_json({
-                      results: results.map(&:to_h),
-                      pagination: {
-                        page: pagination['page'],
-                        page_count: pagination['page_count'],
-                        total_count: pagination['total_count']
-                      }
-                    })
+      def output_json_results(searches)
+        results = searches.flat_map do |workspace, data|
+          data[:results].map { |result| result.to_h.merge(workspace: workspace.name) }
+        end
+        output_json(results: results, pagination: json_pagination(searches))
       end
 
-      def display_text_results(results, workspace, response)
-        show_pagination_info(response) if @options[:verbose]
-
-        if results.empty?
-          puts 'No results found.'
-          return
+      def json_pagination(searches)
+        pages = searches.to_h do |workspace, data|
+          [workspace.name, data[:pagination].merge('truncated' => data[:truncated] == true)]
         end
+        searches.length == 1 ? pages.values.first : pages
+      end
 
-        results.each_with_index do |result, index|
+      def display_text_results(searches)
+        searches.each { |workspace, data| report_search(workspace, data) }
+        entries = searches.flat_map { |workspace, data| data[:results].map { |result| [result, workspace] } }
+        return puts 'No results found.' if entries.empty?
+
+        entries.each_with_index do |(result, workspace), index|
           display_single_result(result, workspace)
-          puts if index < results.length - 1
+          puts if index < entries.length - 1
         end
+      end
+
+      def report_search(workspace, data)
+        show_pagination_info(data[:pagination], workspace) if @options[:verbose]
+        return unless data[:truncated]
+
+        total = data[:pagination]['total_count']
+        quantity = total ? "#{data[:results].length} of #{total}" : data[:results].length.to_s
+        warn("#{workspace.name}: Showing #{quantity} matches; raise -n for more.")
       end
 
       def display_single_result(result, workspace)
-        runner.search_formatter.display_result(result, workspace, format_options)
+        runner.search_formatter.display_result(result, workspace, format_options.merge(workspace_label: @options[:all]))
         show_thread_replies(result, workspace) if should_show_thread?(result)
       end
 
@@ -209,13 +217,12 @@ module Slk
         lines[1..].each { |line| puts "    #{line}" }
       end
 
-      def show_pagination_info(response)
-        pagination = response.dig('messages', 'pagination') || {}
+      def show_pagination_info(pagination, workspace)
         total = pagination['total_count'] || 0
         page = pagination['page'] || 1
         page_count = pagination['page_count'] || 1
 
-        debug("Page #{page}/#{page_count} (#{total} total results)")
+        debug("#{workspace.name}: Page #{page}/#{page_count} (#{total} total results)")
       end
     end
     # rubocop:enable Metrics/ClassLength

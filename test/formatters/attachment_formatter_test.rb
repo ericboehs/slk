@@ -85,6 +85,30 @@ class AttachmentFormatterTest < Minitest::Test
     assert(lines.any? { |l| l.include?('[Image: screenshot.png]') })
   end
 
+  def test_unfurl_title_author_text_and_block_image_title_use_text_processor
+    passthrough = Object.new
+    passthrough.define_singleton_method(:replace) { |text, _workspace| text }
+    processor = Slk::Formatters::TextProcessor.new(mention_replacer: passthrough, emoji_replacer: passthrough)
+    workspace = mock_workspace('test')
+    formatter = Slk::Formatters::AttachmentFormatter.new(
+      output: @output, text_processor: ->(text) { processor.process(text, workspace) }
+    )
+    attachments = [
+      { 'author_name' => 'Author &amp; Friend', 'text' => 'A &lt; B &amp; C &gt; D',
+        'title' => 'Models &amp; Tools', 'image_url' => 'https://example.com/image.png' },
+      { 'blocks' => [{ 'type' => 'image', 'title' => { 'text' => 'One &amp; Two' } }] }
+    ]
+    lines = []
+
+    formatter.format(attachments, lines, {})
+
+    assert_includes lines, '> Author & Friend:'
+    assert_includes lines, '> A < B & C > D'
+    assert_includes lines, '> [Image: Models & Tools]'
+    assert_includes lines, '> [Image: One & Two]'
+    refute(lines.any? { |line| line.include?('&amp;') })
+  end
+
   def test_format_attachment_with_block_images
     attachments = [{
       'blocks' => [
