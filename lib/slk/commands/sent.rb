@@ -47,6 +47,8 @@ module Slk
         help.note('thread_ts, last_speaker_is_me, dropped_messages, messages:[{ts, user,')
         help.note('user_name, text, mine, thread_ts}]}]}; --mine keeps counts/results JSON,')
         help.note('with channel_label added to counts. channel_name remains the raw Slack name.')
+        help.note('JSON messages stay flat and timestamp-sorted; thread_ts links replies to their parent.')
+        help.note('Text output nests expanded replies under their parent, even when sent later.')
         help.section('OPTIONS') do |s|
           s.option('--since YYYY-MM-DD', 'From this date through today (inclusive)')
           s.option('--mine', 'Only your messages, flat timeline with counts (previous behavior)')

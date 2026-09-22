@@ -32,7 +32,7 @@ module Slk
         format_author(attachment, lines)
         format_text(att_text, lines, options) if att_text && block_images.empty?
         format_image(attachment, lines, options, message_ts: message_ts, index: index) if image_url
-        block_images.each { |img| lines << "> [Image: #{img}]" }
+        format_block_images(block_images, lines)
       end
       # rubocop:enable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
@@ -46,9 +46,13 @@ module Slk
         end
       end
 
+      def format_block_images(images, lines)
+        images.each { |img| lines << "> [Image: #{@text_processor.call(img)}]" }
+      end
+
       def format_author(attachment, lines)
         author = attachment['author_name'] || attachment['author_subname']
-        lines << "> #{@output.bold(author)}:" if author
+        lines << "> #{@output.bold(@text_processor.call(author))}:" if author
       end
 
       def format_text(att_text, lines, options)
@@ -73,7 +77,7 @@ module Slk
         else
           image_url = attachment['image_url'] || attachment['thumb_url']
           filename = attachment['title'] || extract_filename(image_url)
-          lines << "> [Image: #{filename}]"
+          lines << "> [Image: #{@text_processor.call(filename)}]"
         end
       end
 

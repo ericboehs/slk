@@ -58,7 +58,19 @@ module Slk
 
       def display_conversation(conversation)
         display_header(conversation)
-        conversation.messages.each { |message| display_message(message, conversation) }
+        replies = replies_by_parent(conversation.messages)
+        conversation.messages.each do |message|
+          next if replies.key?(message.thread_ts) && message.reply?
+
+          display_message(message, conversation, orphan: message.reply?)
+          replies.fetch(message.ts, []).each { |reply| display_message(reply, conversation) }
+        end
+      end
+
+      def replies_by_parent(messages)
+        timestamps = messages.to_h { |message| [message.ts, true] }
+        messages.select { |message| message.reply? && timestamps.key?(message.thread_ts) }
+                .group_by(&:thread_ts)
       end
 
       # Header combines the resolved channel, optional thread root and signal.
@@ -73,12 +85,15 @@ module Slk
         @runner.output.puts "(#{conversation.dropped_messages} older messages omitted by --max)"
       end
 
-      def display_message(message, conversation)
+      def display_message(message, conversation, orphan: false)
         marker = mine?(message, conversation) ? '▶ ' : '  '
+        prefix = message.reply? ? "    ↳ #{marker}" : marker
+        prefix += "(thread #{message.thread_ts}) " if orphan
         formatted = @runner.message_formatter.format(
           message, workspace: conversation.workspace, options: @options
         )
-        @runner.output.puts "#{marker}#{formatted}"
+        formatted = formatted.gsub("\n", "\n#{' ' * prefix.length}") if message.reply?
+        @runner.output.puts "#{prefix}#{formatted}"
       end
 
       def channel_label(conversation)

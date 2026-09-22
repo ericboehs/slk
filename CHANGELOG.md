@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `slk sent` now includes the first post of each channel window in Slack history (and expands its replies), displays DM names even for threads, resolves group-DM participants, and gives file-only thread parents a useful preview.
+- `slk sent` now includes the first post of each channel window in Slack history (and expands its replies), displays DM names even for threads, resolves group-DM participants, and gives file-only thread parents a useful preview. Expanded replies now appear nested beneath their parent in text output, while JSON remains flat and timestamp-sorted with `thread_ts` links.
+- Attachment and unfurl preview titles, authors, text, and image labels now decode HTML entities like message bodies.
 - `slk search --all` now searches every workspace and tags each result. Search paginates past Slack's 100-result page size when `-n` requests more, and warns when the requested limit cuts off matches.
 
 ## [0.10.0] - 2026-09-18

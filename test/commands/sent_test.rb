@@ -222,9 +222,72 @@ class SentCommandTest < Minitest::Test
     assert_equal 1, reply_calls
   end
 
+  def test_expanded_replies_render_under_root_without_changing_flat_json_or_last_word
+    stub_matches('acme' => [match('100.0', 'my root', 'C1', 'project')])
+    @client.stub('conversations.history', lambda { |params|
+      { 'messages' => if params[:oldest]
+                        [raw('110.0', 'U2', 'unrelated post'), raw('100.0', 'U1', 'my root', reply_count: 2)]
+                      else
+                        []
+                      end }
+    })
+    @client.stub('conversations.replies', {
+                   'messages' => [raw('100.0', 'U1', 'my root'), raw('120.0', 'U2', 'first reply', thread_ts: '100.0'),
+                                  raw('121.0', 'U1', 'last reply', thread_ts: '100.0')]
+                 })
+    assert_equal 0, command(['-w', 'acme']).execute
+    text = @io.string
+    assert_operator text.index('my root'), :<, text.index('first reply')
+    assert_operator text.index('first reply'), :<, text.index('last reply')
+    assert_operator text.index('last reply'), :<, text.index('unrelated post')
+    assert_match(/^    ↳   \[.*\] .*: first reply$/, text)
+    assert_match(/^    ↳ ▶ \[.*\] .*: last reply$/, text)
+    assert_includes text, '• you had the last word'
+
+    @io.truncate(0)
+    @io.rewind
+    assert_equal 0, command(['-w', 'acme', '--json']).execute
+    conversation = JSON.parse(@io.string)['conversations'].first
+    assert_equal(%w[100.0 110.0 120.0 121.0], conversation['messages'].map { |row| row['ts'] })
+    assert_equal(%w[100.0 100.0], conversation['messages'].last(2).map { |row| row['thread_ts'] })
+    assert_equal true, conversation['last_speaker_is_me']
+  end
+
+  def test_dm_expanded_replies_also_render_under_root
+    today = Date.today.to_time.to_i
+    root = "#{today + 60}.0"
+    stub_matches('acme' => [match(root, 'my DM root', 'D2', 'U2', is_im: true)])
+    @client.stub('conversations.history', {
+                   'messages' => [raw(root, 'U1', 'my DM root', reply_count: 1),
+                                  raw("#{today + 61}.0", 'U2', 'unrelated DM')]
+                 })
+    @client.stub('conversations.replies', {
+                   'messages' => [raw(root, 'U1', 'my DM root'),
+                                  raw("#{today + 62}.0", 'U2', 'DM thread reply', thread_ts: root)]
+                 })
+    assert_equal 0, command(['-w', 'acme']).execute
+    assert_operator @io.string.index('DM thread reply'), :<, @io.string.index('unrelated DM')
+    assert_match(/^    ↳   \[.*\] .*: DM thread reply$/, @io.string)
+  end
+
+  def test_orphaned_reply_from_max_keeps_parent_reference
+    stub_matches('acme' => [match('100.0', 'my root', 'C1', 'project')])
+    @client.stub('conversations.history', {
+                   'messages' => [raw('100.0', 'U1', 'my root', reply_count: 1),
+                                  raw('110.0', 'U2', 'unrelated post')]
+                 })
+    @client.stub('conversations.replies', {
+                   'messages' => [raw('100.0', 'U1', 'my root'),
+                                  raw('120.0', 'U2', 'late reply', thread_ts: '100.0')]
+                 })
+    assert_equal 0, command(['-w', 'acme', '--max', '2']).execute
+    assert_match(/^    ↳   \(thread 100\.0\) \[.*\] .*: late reply$/, @io.string)
+    assert_operator @io.string.index('unrelated post'), :<, @io.string.index('late reply')
+  end
+
   def test_channel_merges_overlapping_windows_and_includes_replies_to_own_post
     stub_matches('acme' => [match('100.0', 'post A', 'C1', 'project').merge('reply_count' => 1),
-                               match('200.0', 'post B', 'C1', 'project')])
+                            match('200.0', 'post B', 'C1', 'project')])
     @client.stub('conversations.history', lambda { |params|
       if params[:oldest]
         { 'messages' => [raw('300.0', 'U2', 'someone else'), raw('200.0', 'U1', 'post B'),
@@ -245,6 +308,31 @@ class SentCommandTest < Minitest::Test
     assert_equal false, conversation['last_speaker_is_me']
     assert_equal(2, @client.calls.count { |call| call[:method] == 'conversations.history' })
     assert_equal(1, @client.calls.count { |call| call[:method] == 'conversations.replies' })
+  end
+
+  def test_context_decodes_unfurl_image_title_and_text
+    stub_matches('acme' => [match('100.0', 'my post', 'C1', 'project')])
+    attachment = { 'text' => 'Preview &amp; details &lt;here&gt;',
+                   'title' => 'Introducing System One Models &amp; Jev - TypeSafe AI Blog',
+                   'image_url' => 'https://example.com/image.png' }
+    @client.stub('conversations.history', {
+                   'messages' => [raw('100.0', 'U1', 'my post').merge('attachments' => [attachment])]
+                 })
+    assert_equal 0, command(['-w', 'acme']).execute
+    assert_includes @io.string, 'Preview & details <here>'
+    assert_includes @io.string, '[Image: Introducing System One Models & Jev - TypeSafe AI Blog]'
+    refute_includes @io.string, '&amp;'
+  end
+
+  def test_mine_decodes_unfurl_image_title
+    block = { 'type' => 'image', 'title' => { 'text' => 'One &amp; Two &lt;Three&gt;' } }
+    match_with_unfurl = match('100.0', 'my post', 'C1', 'project').merge(
+      'attachments' => [{ 'blocks' => [block] }]
+    )
+    stub_matches('acme' => [match_with_unfurl])
+    assert_equal 0, command(['-w', 'acme', '--mine']).execute
+    assert_includes @io.string, '[Image: One & Two <Three>]'
+    refute_includes @io.string, '&amp;'
   end
 
   def test_old_own_post_in_preceding_window_does_not_expand_its_thread

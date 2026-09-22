@@ -29,7 +29,7 @@ module Slk
 
         workspace_label = workspace_prefix(workspace, options)
         @output.puts "#{timestamp} #{workspace_label}#{channel} #{user} #{text}"
-        display_files(result.files) if result.files&.any?
+        display_files(result.files, workspace, options) if result.files&.any?
       end
 
       # Channel label used by search timelines and per-channel summaries.
@@ -70,9 +70,10 @@ module Slk
         @text_processor.process(text, workspace, options)
       end
 
-      def display_files(files)
+      def display_files(files, workspace, options)
         files.each do |file|
-          @output.puts @output.blue("[Image: #{file[:name]}]")
+          name = prepare_text(file[:name], workspace, options)
+          @output.puts @output.blue("[Image: #{name}]")
         end
       end
 
