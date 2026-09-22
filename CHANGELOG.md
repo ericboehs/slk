@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `slk search --all` now searches every workspace and tags each result. Search paginates past Slack's 100-result page size when `-n` requests more, and warns when the requested limit cuts off matches.
+
 ## [0.10.0] - 2026-09-18
 
 ### Added

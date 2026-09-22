@@ -27,11 +27,21 @@ module Slk
         user = @output.bold("#{resolve_user(result, workspace)}:")
         text = prepare_text(result.text, workspace, options)
 
-        @output.puts "#{timestamp} #{channel} #{user} #{text}"
+        workspace_label = workspace_prefix(workspace, options)
+        @output.puts "#{timestamp} #{workspace_label}#{channel} #{user} #{text}"
         display_files(result.files) if result.files&.any?
       end
 
+      # Channel label used by search timelines and per-channel summaries.
+      def channel_label(result, workspace)
+        resolve_channel(result, workspace)
+      end
+
       private
+
+      def workspace_prefix(workspace, options)
+        options[:workspace_label] ? "#{@output.cyan("[#{workspace.name}]")} " : ''
+      end
 
       def resolve_channel(result, workspace)
         if result.dm?

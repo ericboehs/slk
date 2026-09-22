@@ -113,6 +113,7 @@ module Slk
     autoload :DeactivationScanner, 'slk/services/deactivation_scanner'
     autoload :StartDateLookup, 'slk/services/start_date_lookup'
     autoload :StartDateField, 'slk/services/start_date_field'
+    autoload :SearchPages, 'slk/services/search_pages'
   end
 
   # Output formatters for messages, durations, and emoji

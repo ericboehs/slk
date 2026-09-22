@@ -118,6 +118,53 @@ class SearchCommandTest < Minitest::Test
     assert_equal 3, call[:params][:page]
   end
 
+  def test_searches_all_workspaces_with_labels_and_workspace_in_json
+    stub_search_response([{ 'text' => 'Shared result' }])
+    @workspaces = [mock_workspace('test'), mock_workspace('other')]
+
+    assert_equal 0, build_command(['query', '--all']).execute
+    assert_includes @io.string, '[test] #general'
+    assert_includes @io.string, '[other] #general'
+    assert_equal(%w[test other], @mock_client.calls.map { |call| call[:workspace] })
+
+    @io.truncate(0)
+    @io.rewind
+    assert_equal 0, build_command(['query', '--all', '--json']).execute
+    assert_equal(%w[test other], JSON.parse(@io.string)['results'].map { |row| row['workspace'] })
+  end
+
+  def test_search_paginates_up_to_requested_limit
+    @mock_client.stub('search.messages', lambda { |params|
+      page = params[:page]
+      { 'messages' => { 'matches' => Array.new(100) { build_match },
+                        'pagination' => { 'page' => page, 'page_count' => 3, 'total_count' => 250 } } }
+    })
+    # MockApiClient#get does not evaluate callable responses.
+    @mock_client.define_singleton_method(:get) do |workspace, method, params = {}|
+      @calls << { workspace: workspace.name, method: method, params: params }
+      @responses.fetch(method).call(params)
+    end
+
+    assert_equal 0, build_command(['query', '-n', '150', '--json']).execute
+    assert_equal 150, JSON.parse(@io.string)['results'].size
+    assert_equal([1, 2], @mock_client.calls.map { |call| call[:params][:page] })
+    assert_equal([100, 100], @mock_client.calls.map { |call| call[:params][:count] })
+  end
+
+  def test_warns_on_truncation
+    @mock_client.stub('search.messages', {
+                        'messages' => { 'matches' => [build_match],
+                                        'pagination' => { 'page' => 1, 'page_count' => 2, 'total_count' => 30 } }
+                      })
+    assert_equal 0, build_command(['query', '-n', '1']).execute
+    assert_includes @err.string, 'Showing 1 of 30'
+  end
+
+  def test_invalid_limit_does_not_search
+    assert_raises(ArgumentError) { build_command(['query', '-n', '0']) }
+    assert_empty @mock_client.calls
+  end
+
   def test_json_output_format
     stub_search_response([
                            { 'ts' => '1234.0001', 'user' => 'U123', 'username' => 'john', 'text' => 'Test message' }
@@ -318,7 +365,7 @@ class SearchCommandTest < Minitest::Test
 
   def build_runner
     token_store = Object.new
-    workspace_list = [mock_workspace('test')]
+    workspace_list = @workspaces || [mock_workspace('test')]
 
     token_store.define_singleton_method(:workspace) do |name|
       workspace_list.find { |w| w.name == name } || workspace_list.first
