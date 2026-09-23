@@ -13,31 +13,35 @@ module Slk
       EPOCH = /\A\d{9,12}(?:\.\d{1,6})?\z/
       ISO = /\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})?\z/
 
-      # rubocop:disable Metrics/MethodLength
       def self.parse(value, now: Time.now)
         time = case value
                when RELATIVE then relative(Regexp.last_match, now)
                when CLOCK then clock(Regexp.last_match, now)
-               when EPOCH then Time.at(BigDecimal(value).to_r)
+               when EPOCH then epoch_time(value)
                when ISO then iso_time(value)
                else raise UsageError, 'Invalid --changed-since time. Use H:MM or HH:MM, ISO, epoch, 90m, 2h, or 1d.'
                end
         raise UsageError, '--changed-since must not be in the future.' if time > now
 
         time
-      rescue ArgumentError
-        raise UsageError, "Invalid --changed-since time: #{value.inspect}."
       end
-      # rubocop:enable Metrics/MethodLength
 
       def self.timestamp(time)
         format('%<seconds>d.%<micros>06d', seconds: time.to_i, micros: time.usec)
+      end
+
+      def self.epoch_time(value)
+        Time.at(BigDecimal(value).to_r)
+      rescue ArgumentError
+        raise UsageError, "Invalid --changed-since time: #{value.inspect}."
       end
 
       def self.iso_time(value)
         Date.iso8601(value[0, 10])
         with_seconds = value.sub(/(T\d{2}:\d{2})(?=Z|[+-]\d{2}:\d{2}|\z)/, '\\1:00')
         Time.iso8601(with_seconds)
+      rescue ArgumentError
+        raise UsageError, "Invalid --changed-since time: #{value.inspect}."
       end
 
       def self.relative(match, now)
@@ -53,11 +57,16 @@ module Slk
         raise UsageError, 'Invalid --changed-since clock time.' unless hour < 24 && minute < 60
 
         day = now.to_date
-        time = Time.local(day.year, day.month, day.day, hour, minute)
+        time = local_clock(day, hour, minute)
         return time if time <= now
 
-        day -= 1
+        local_clock(day - 1, hour, minute)
+      end
+
+      def self.local_clock(day, hour, minute)
         Time.local(day.year, day.month, day.day, hour, minute)
+      rescue ArgumentError
+        raise UsageError, 'Invalid --changed-since clock time.'
       end
     end
   end

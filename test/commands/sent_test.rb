@@ -475,6 +475,18 @@ class SentCommandTest < Minitest::Test
     $stdout.stub(:tty?, false) { assert_nil command([]).options[:width] }
   end
 
+  def test_sent_falls_back_to_base_width_when_terminal_size_is_unavailable
+    $stdout.stub(:tty?, true) do
+      [nil, 0, -1].each do |columns|
+        console = Struct.new(:winsize).new([24, columns]) if columns
+        IO.stub(:console, console) { assert_equal 72, command([]).options[:width] }
+      end
+      [IOError, NotImplementedError].each do |error|
+        IO.stub(:console, -> { raise error }) { assert_equal 72, command([]).options[:width] }
+      end
+    end
+  end
+
   def test_changed_text_wraps_heading_context_and_reply_without_repeating_parent_reference
     root = "#{Time.local(2026, 9, 21, 15, 0).to_i}.0"
     reply = "#{Time.local(2026, 9, 22, 15, 1).to_i}.0"
@@ -892,16 +904,30 @@ class SentCommandTest < Minitest::Test
     root = "#{Time.local(2026, 9, 21, 15, 0).to_i}.0"
     stub_matches('acme' => [match(root, 'deleted root', 'C1', 'project')])
     @client.stub('conversations.history', { 'messages' => [] })
-    @client.stub('conversations.replies', Slk::ApiError.new('thread_not_found'))
+    @client.stub('conversations.replies', Slk::ApiError.new('root deleted', code: :thread_not_found))
     assert_equal 0, command(changed_args('--json')).execute
     assert_equal [], JSON.parse(@io.string)['conversations']
 
     @io.truncate(0)
     @io.rewind
-    @client.stub('conversations.replies', Slk::ApiError.new('not_in_channel'))
+    @client.stub('conversations.replies', Slk::ApiError.new('not_in_channel', code: :not_in_channel))
     assert_equal 1, command(changed_args('--json')).execute
     assert_empty @io.string
     assert_includes @err.string, 'not_in_channel'
+
+    @err.truncate(0)
+    @err.rewind
+    @client.stub('conversations.replies', Slk::ApiError.new('thread_not_found', code: :network_error))
+    assert_equal 1, command(changed_args('--json')).execute
+    assert_empty @io.string
+    assert_includes @err.string, 'thread_not_found'
+
+    @err.truncate(0)
+    @err.rewind
+    @client.stub('conversations.replies', Slk::ApiError.new('thread_not_found'))
+    assert_equal 1, command(changed_args('--json')).execute
+    assert_empty @io.string
+    assert_includes @err.string, 'thread_not_found'
   end
 
   def test_changed_since_subscriptions_skip_incomplete_roots_and_resolve_im_and_mpim

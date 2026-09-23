@@ -123,7 +123,7 @@ module Slk
         context = previous_messages(full, parent_ts: root)
         change(seed, 'thread', root, fresh, context)
       rescue ApiError => e
-        raise unless e.message.include?('thread_not_found')
+        raise unless e.code == :thread_not_found
       end
 
       # Slack's thread view exposes unread followed threads, not a complete

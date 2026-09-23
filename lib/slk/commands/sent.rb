@@ -29,7 +29,7 @@ module Slk
 
         columns = IO.console&.winsize&.last
         columns&.positive? ? columns : super
-      rescue SystemCallError, IOError
+      rescue SystemCallError, IOError, NotImplementedError
         super
       end
 

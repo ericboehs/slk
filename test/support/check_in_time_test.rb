@@ -54,8 +54,25 @@ class CheckInTimeTest < Minitest::Test
   end
 
   def test_rejects_invalid_and_future_times
-    %w[25:00 24:00 8:60 8:0 000:00 2026-09-22T17:00 0m 2026-02-30T15:00 nope].each do |value|
+    %w[25:00 24:00 8:60 8:0 000:00 2026-09-22T17:00 2026-09-22T25:00 0m 2026-02-30T15:00 nope].each do |value|
       assert_raises(Slk::UsageError) { parse(value) }
+    end
+  end
+
+  def test_time_conversion_errors_are_usage_errors
+    Time.stub(:at, ->(*) { raise ArgumentError, 'invalid epoch conversion' }) do
+      assert_raises(Slk::UsageError) { parse('1790000000') }
+    end
+    Time.stub(:local, ->(*) { raise ArgumentError, 'invalid local conversion' }) do
+      assert_raises(Slk::UsageError) { parse('8:00') }
+    end
+  end
+
+  def test_internal_argument_errors_are_not_reported_as_bad_input
+    buggy_helper = ->(*) { raise ArgumentError, 'internal bug' }
+    Slk::Support::CheckInTime.stub(:relative, buggy_helper) do
+      error = assert_raises(ArgumentError) { parse('1h') }
+      assert_equal 'internal bug', error.message
     end
   end
 
