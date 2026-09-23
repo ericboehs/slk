@@ -72,6 +72,7 @@ module Slk
         help.note('omit posts from the last few minutes. Conversations you never posted in remain out of scope.')
         help.note('Unread followed threads supplement the watch set when available; --lookback must include')
         help.note('the days you posted in any other threads you want to watch.')
+        help.note('Changed text marks earlier context with · and puts the most recently active conversation last.')
         help.note('A wide lookback checks many thread roots and can take minutes under Slack rate limits.')
         help.note('Changed JSON adds changed_since:{iso, ts}, lookback_days, new_count, new_from_others,')
         help.note('and per-message new. Its messages stay flat and timestamp-sorted with thread_ts links.')

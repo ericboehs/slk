@@ -567,7 +567,8 @@ class SentCommandTest < Minitest::Test
     assert_equal 0, command(['-w', 'acme', '--changed-since', '2026-09-22T07:00']).execute
     assert_includes @io.string, '1 new (1 from others)'
     assert_match(/· .*prior day post/, @io.string)
-    assert_includes @io.string, '── new since 07:00 ──'
+    refute_includes @io.string, '── new since'
+    assert_operator @io.string.index('prior day post'), :<, @io.string.index('new answer')
     assert_match(/^    ↳ \[.*\] .*: new answer$/, @io.string)
     refute_includes @io.string, "(thread #{root})"
   end
@@ -666,8 +667,9 @@ class SentCommandTest < Minitest::Test
     assert_equal 0, command(['-w', 'acme', '--changed-since', '2026-09-22T15:00']).execute
     assert_includes @io.string, '1 new (1 from others)'
     assert_includes @io.string, '· '
-    assert_includes @io.string, '── new since 15:00 ──'
+    refute_includes @io.string, '── new since'
     assert_includes @io.string, 'new DM'
+    assert_operator @io.string.index('old DM'), :<, @io.string.index('new DM')
   end
 
   def test_changed_since_dm_probe_avoids_full_history_when_quiet
@@ -720,8 +722,39 @@ class SentCommandTest < Minitest::Test
     assert_equal [], JSON.parse(@io.string)['conversations']
   end
 
+  def test_changed_since_places_most_recent_conversation_last_across_midnight
+    prior = "#{Time.local(2026, 9, 22, 16, 0).to_i}.0"
+    yesterday = "#{Time.local(2026, 9, 22, 22, 1).to_i}.0"
+    today = "#{Time.local(2026, 9, 23, 7, 45).to_i}.0"
+    stub_matches('acme' => [match(prior, 'earlier note', 'D2', 'U2', is_im: true),
+                            match(prior, 'earlier note', 'D3', 'U3', is_im: true)])
+    @client.stub('conversations.history', lambda { |params|
+      message = if params[:latest] || params[:oldest] == prior
+                  raw(prior, 'U1', 'earlier note')
+                elsif params[:channel] == 'D2'
+                  raw(today, 'U2', 'today response')
+                else
+                  raw(yesterday, 'U3', 'yesterday response')
+                end
+      { 'messages' => [message] }
+    })
+    Time.stub(:now, Time.local(2026, 9, 23, 8, 0)) do
+      Date.stub(:today, Date.new(2026, 9, 23)) do
+        args = ['-w', 'acme', '--changed-since', '2026-09-22T18:00']
+        assert_equal 0, command(args).execute
+        text = @io.string
+        assert_operator text.index('yesterday response'), :<, text.index('today response')
+        refute_includes text, '── new since'
+        @io.truncate(0)
+        @io.rewind
+        assert_equal 0, command(args + ['--json']).execute
+      end
+    end
+    assert_equal(%w[D3 D2], JSON.parse(@io.string)['conversations'].map { |row| row['channel_id'] })
+  end
+
   # rubocop:disable Metrics/PerceivedComplexity
-  def test_changed_since_uses_strict_cutoff_and_puts_awaiting_you_first
+  def test_changed_since_uses_strict_cutoff_and_sorts_by_latest_activity
     since = Time.local(2026, 9, 22, 15, 0)
     at_cutoff = "#{since.to_i}.000000"
     after = "#{since.to_i}.000001"
@@ -733,16 +766,16 @@ class SentCommandTest < Minitest::Test
       if params[:latest]
         { 'messages' => [] }
       elsif params[:channel] == 'D2'
-        { 'messages' => [raw(later, 'U1', 'own last'), raw(at_cutoff, 'U2', 'not new')] }
+        { 'messages' => [raw(after, 'U1', 'own first'), raw(at_cutoff, 'U2', 'not new')] }
       else
-        { 'messages' => [raw(after, 'U3', 'other last')] }
+        { 'messages' => [raw(later, 'U3', 'other last')] }
       end
     })
     assert_equal 0, command(['-w', 'acme', '--changed-since', '2026-09-22T15:00', '--json']).execute
     rows = JSON.parse(@io.string)['conversations']
-    assert_equal(%w[D3 D2], rows.map { |row| row['channel_id'] })
+    assert_equal(%w[D2 D3], rows.map { |row| row['channel_id'] })
     assert_equal([1, 1], rows.map { |row| row['new_count'] })
-    assert_equal([1, 0], rows.map { |row| row['new_from_others'] })
+    assert_equal([0, 1], rows.map { |row| row['new_from_others'] })
     assert(rows.flat_map { |row| row['messages'] }.all? { |message| message['new'] && message['ts'] != at_cutoff })
   end
   # rubocop:enable Metrics/PerceivedComplexity

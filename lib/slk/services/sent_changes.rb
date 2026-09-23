@@ -29,10 +29,10 @@ module Slk
         changes = workspaces.flat_map { |workspace| collect_workspace(workspace, groups) }
         changes.sort_by do |change|
           conversation = change.conversation
-          # Trailing identity keys make ties deterministic: sort_by is not
-          # stable, and platforms (e.g. Windows CI) order equal keys differently.
-          [conversation.last_speaker_is_me ? 1 : 0, -conversation.messages.last.ts.to_f,
-           conversation.workspace.name.to_s, conversation.channel_id.to_s, conversation.thread_ts.to_s]
+          # Put the most recently active conversation last. Trailing identity
+          # keys make ties deterministic across platforms (including Windows).
+          [BigDecimal(conversation.messages.last.ts), conversation.workspace.name.to_s,
+           conversation.channel_id.to_s, conversation.thread_ts.to_s]
         end
       end
 

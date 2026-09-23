@@ -23,7 +23,7 @@ module Slk
         if json
           @runner.output.puts(JSON.pretty_generate(changes_payload(changes, changed_since, lookback_days)))
         else
-          display_changed_text(changes, changed_since)
+          display_changed_text(changes)
         end
       end
 
@@ -87,21 +87,20 @@ module Slk
         display_messages(conversation.messages, conversation)
       end
 
-      def display_changed_text(changes, since)
+      def display_changed_text(changes)
         return @runner.output.puts 'No changed sent conversations found.' if changes.empty?
 
         changes.each do |change|
-          display_changed_conversation(change, since)
+          display_changed_conversation(change)
           @runner.output.puts
         end
       end
 
-      def display_changed_conversation(change, since)
+      def display_changed_conversation(change)
         conversation = change.conversation
         display_header(conversation, summary: "#{change.new_count} new (#{change.new_from_others} from others)")
         context, fresh = conversation.messages.partition { |message| !change.new_timestamps.include?(message.ts) }
         display_messages(context, conversation, context: true)
-        @runner.output.puts "── new since #{since.strftime('%H:%M')} ──"
         display_messages(fresh, conversation, parent_timestamps: context.map(&:ts))
       end
 
