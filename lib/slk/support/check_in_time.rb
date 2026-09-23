@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require 'bigdecimal'
 require 'date'
 require 'time'
 
@@ -31,7 +30,7 @@ module Slk
       end
 
       def self.epoch_time(value)
-        Time.at(BigDecimal(value).to_r)
+        Time.at(DecimalTimestamp.parse(value))
       rescue ArgumentError
         raise UsageError, "Invalid --changed-since time: #{value.inspect}."
       end

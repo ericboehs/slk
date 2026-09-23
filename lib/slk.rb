@@ -200,6 +200,7 @@ module Slk
     autoload :InteractivePrompt, 'slk/support/interactive_prompt'
     autoload :DateParser, 'slk/support/date_parser'
     autoload :CheckInTime, 'slk/support/check_in_time'
+    autoload :DecimalTimestamp, 'slk/support/decimal_timestamp'
     autoload :TimeParser, 'slk/support/time_parser'
     autoload :TimeRangeParser, 'slk/support/time_range_parser'
   end

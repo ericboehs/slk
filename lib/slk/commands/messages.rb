@@ -228,8 +228,7 @@ module Slk
 
       # Adjust a Slack timestamp by a small amount while preserving precision
       def adjust_timestamp(timestamp, delta)
-        require 'bigdecimal'
-        (BigDecimal(timestamp) + BigDecimal(delta.to_s)).to_s('F')
+        Support::DecimalTimestamp.add(timestamp, delta)
       end
 
       def fetch_all_thread_replies(api, channel_id, thread_ts)
