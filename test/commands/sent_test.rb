@@ -545,6 +545,16 @@ class SentCommandTest < Minitest::Test
     assert_equal 'from:me after:2026-09-15 before:2026-09-23', @client.calls.first[:params][:query]
   end
 
+  def test_changed_since_accepts_single_digit_hour_in_cli
+    @client.stub('auth.test', { 'user_id' => 'U1' })
+    Time.stub(:now, Time.local(2026, 9, 22, 9, 0)) do
+      Date.stub(:today, Date.new(2026, 9, 22)) do
+        assert_equal 0, command(['-w', 'acme', '--changed-since', '8:00', '--json']).execute
+      end
+    end
+    assert_equal Time.local(2026, 9, 22, 8, 0).iso8601, JSON.parse(@io.string)['changed_since']['iso']
+  end
+
   def test_changed_since_finds_prior_day_thread_reply_and_marks_only_new_messages
     root = '1790000000.123456'
     reply = "#{Time.local(2026, 9, 22, 7, 13).to_i}.000001"

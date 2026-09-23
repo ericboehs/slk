@@ -67,7 +67,7 @@ module Slk
         help.note('to the terminal width on a TTY. Use --width N to override or --no-wrap to disable.')
         help.note('Thread headings show the thread ID; channel and DM headings keep their readable names.')
         help.note('A thin divider separates conversations, not messages within a conversation.')
-        help.note('For --changed-since, HH:MM means the most recent local occurrence: if that time has not')
+        help.note('For --changed-since, H:MM or HH:MM means the most recent local occurrence: if that time has not')
         help.note('arrived today, it means yesterday. Dated timestamps in the future are rejected.')
         help.note('--changed-since is stateless: exact-ts history/replies detect new messages; search only finds')
         help.note('the watch set. Edits/reactions do not change ts and are invisible. Search index lag may')
@@ -80,7 +80,7 @@ module Slk
         help.note('and per-message new. Its messages stay flat and timestamp-sorted with thread_ts links.')
         help.section('OPTIONS') do |s|
           s.option('--since YYYY-MM-DD', 'From this date through today (inclusive)')
-          s.option('--changed-since TIME', 'Only changed conversations (HH:MM, ISO, epoch, 90m, 2h, 1d)')
+          s.option('--changed-since TIME', 'Only changed conversations (H:MM/HH:MM, ISO, epoch, 90m, 2h, 1d)')
           s.option('--lookback DAYS', 'Days of sent messages to watch (default: 7; changed mode)')
           s.option('--context N', 'Earlier messages per changed conversation (default: 2)')
           s.option('--mine', 'Only your messages, flat timeline with counts (previous behavior)')

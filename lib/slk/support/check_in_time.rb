@@ -9,7 +9,7 @@ module Slk
     # A stateless, exact timestamp for sent-conversation change detection.
     class CheckInTime
       RELATIVE = /\A(\d+)([mhd])\z/i
-      CLOCK = /\A(\d{2}):(\d{2})\z/
+      CLOCK = /\A(\d{1,2}):(\d{2})\z/
       EPOCH = /\A\d{9,12}(?:\.\d{1,6})?\z/
       ISO = /\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})?\z/
 
@@ -20,7 +20,7 @@ module Slk
                when CLOCK then clock(Regexp.last_match, now)
                when EPOCH then Time.at(BigDecimal(value).to_r)
                when ISO then iso_time(value)
-               else raise UsageError, 'Invalid --changed-since time. Use HH:MM, ISO datetime, epoch, 90m, 2h, or 1d.'
+               else raise UsageError, 'Invalid --changed-since time. Use H:MM or HH:MM, ISO, epoch, 90m, 2h, or 1d.'
                end
         raise UsageError, '--changed-since must not be in the future.' if time > now
 

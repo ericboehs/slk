@@ -8,6 +8,9 @@ class CheckInTimeTest < Minitest::Test
   end
 
   def test_local_clock_and_iso_without_offset
+    assert_equal Time.local(2026, 9, 22, 8, 0), parse('8:00')
+    assert_equal Time.local(2026, 9, 22, 8, 0), parse('08:00')
+    assert_equal Time.local(2026, 9, 22, 0, 0), parse('0:00')
     assert_equal Time.local(2026, 9, 22, 15, 17), parse('15:17')
     assert_equal Time.local(2026, 9, 22, 15, 17), parse('2026-09-22T15:17')
     assert_equal Time.local(2026, 9, 22, 15, 17, 4), parse('2026-09-22T15:17:04')
@@ -16,6 +19,7 @@ class CheckInTimeTest < Minitest::Test
   def test_future_clock_uses_previous_local_calendar_day
     now = Time.local(2026, 9, 23, 2, 0)
     assert_equal Time.local(2026, 9, 22, 16, 0), Slk::Support::CheckInTime.parse('16:00', now: now)
+    assert_equal Time.local(2026, 9, 22, 8, 0), Slk::Support::CheckInTime.parse('8:00', now: now)
     assert_equal Time.local(2025, 12, 31, 16, 0),
                  Slk::Support::CheckInTime.parse('16:00', now: Time.local(2026, 1, 1, 2, 0))
   end
@@ -50,7 +54,7 @@ class CheckInTimeTest < Minitest::Test
   end
 
   def test_rejects_invalid_and_future_times
-    %w[25:00 12:60 2026-09-22T17:00 0m 2026-02-30T15:00 nope].each do |value|
+    %w[25:00 24:00 8:60 8:0 000:00 2026-09-22T17:00 0m 2026-02-30T15:00 nope].each do |value|
       assert_raises(Slk::UsageError) { parse(value) }
     end
   end
