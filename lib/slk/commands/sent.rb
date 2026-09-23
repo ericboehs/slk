@@ -65,6 +65,8 @@ module Slk
         help.note('JSON messages stay flat and timestamp-sorted; thread_ts links replies to their parent.')
         help.note('Text output nests expanded replies under their parent, even when sent later, and wraps')
         help.note('to the terminal width on a TTY. Use --width N to override or --no-wrap to disable.')
+        help.note('For --changed-since, HH:MM means the most recent local occurrence: if that time has not')
+        help.note('arrived today, it means yesterday. Dated timestamps in the future are rejected.')
         help.note('--changed-since is stateless: exact-ts history/replies detect new messages; search only finds')
         help.note('the watch set. Edits/reactions do not change ts and are invisible. Search index lag may')
         help.note('omit posts from the last few minutes. Conversations you never posted in remain out of scope.')

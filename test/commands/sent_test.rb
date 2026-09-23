@@ -517,6 +517,21 @@ class SentCommandTest < Minitest::Test
     refute_includes @io.string, 'earlier parent'
   end
 
+  def test_changed_since_early_morning_clock_uses_yesterday_in_json
+    @client.stub('auth.test', { 'user_id' => 'U1' })
+    now = Time.local(2026, 9, 22, 2, 0)
+    Time.stub(:now, now) do
+      Date.stub(:today, Date.new(2026, 9, 22)) do
+        assert_equal 0, command(['-w', 'acme', '--changed-since', '16:00', '--json']).execute
+      end
+    end
+    data = JSON.parse(@io.string)
+    assert_equal Time.local(2026, 9, 21, 16, 0).iso8601, data['changed_since']['iso']
+    assert_equal Slk::Support::CheckInTime.timestamp(Time.local(2026, 9, 21, 16, 0)),
+                 data['changed_since']['ts']
+    assert_equal 'from:me after:2026-09-15 before:2026-09-23', @client.calls.first[:params][:query]
+  end
+
   def test_changed_since_finds_prior_day_thread_reply_and_marks_only_new_messages
     root = '1790000000.123456'
     reply = "#{Time.local(2026, 9, 22, 7, 13).to_i}.000001"

@@ -52,7 +52,12 @@ module Slk
         hour, minute = match.captures.map(&:to_i)
         raise UsageError, 'Invalid --changed-since clock time.' unless hour < 24 && minute < 60
 
-        Time.local(now.year, now.month, now.day, hour, minute)
+        day = now.to_date
+        time = Time.local(day.year, day.month, day.day, hour, minute)
+        return time if time <= now
+
+        day -= 1
+        Time.local(day.year, day.month, day.day, hour, minute)
       end
     end
   end
