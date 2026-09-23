@@ -34,10 +34,18 @@ module Slk
         conversations = groups.flat_map { |_key, group| collect_channel(group) }
         # A thread parent can also appear in a channel window / DM history.
         # Thread owns the message so the same (channel, ts) is never repeated.
-        deduplicate(conversations).sort_by { |conversation| conversation.first_sent_ts.to_f }
+        ordered_conversations(deduplicate(conversations))
       end
 
       private
+
+      def ordered_conversations(conversations)
+        conversations.sort_by do |conversation|
+          # Keep Slack's fractional timestamp precise; identity breaks ties regardless of input order or platform.
+          [BigDecimal(conversation.first_sent_ts), conversation.workspace.name.to_s,
+           conversation.channel_id.to_s, conversation.thread_ts.to_s]
+        end
+      end
 
       # Partitioning a channel needs both the reply roots and unthreaded hits.
       # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity

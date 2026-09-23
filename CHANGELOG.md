@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `slk sent` now orders conversations with exact Slack timestamps and workspace/channel/thread tie-breakers, so identical start times stay deterministic across platforms.
 - `slk sent --changed-since` no longer silently omits followed threads when their lookup fails due to network, rate-limit, authentication, or malformed-response errors. Unsupported or unauthorized-to-use subscription views still fall back to search-derived conversations. Sender lookup caches the authenticated user ID and reports a workspace-specific API error if Slack omits it. Deleted threads are recognized by Slack's error code, not message text, and invalid-time errors are limited to actual input conversions. Text wrapping falls back to 72 columns if a terminal cannot report its width.
 - `slk sent` now includes the first post of each channel window in Slack history (and expands its replies), displays DM names even for threads, resolves group-DM participants, and shows file-only thread parents through file labels. Expanded replies now appear nested beneath their parent in text output, while JSON remains flat and timestamp-sorted with `thread_ts` links.
 - Attachment and unfurl preview titles, authors, text, and image labels now decode HTML entities like message bodies.
