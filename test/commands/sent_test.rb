@@ -243,7 +243,7 @@ class SentCommandTest < Minitest::Test
     assert_match(/^    ↳ \[.*\] .*: first reply$/, text)
     assert_match(/^    ↳ \[.*\] .*: last reply$/, text)
     refute_includes text, '▶'
-    assert_includes text, '• you had the last word'
+    refute_includes text, '• you had the last word'
 
     @io.truncate(0)
     @io.rewind
@@ -420,14 +420,14 @@ class SentCommandTest < Minitest::Test
     assert_equal [], data['conversations']
   end
 
-  def test_context_text_shows_senders_without_own_message_markers
+  def test_context_text_shows_senders_without_status_markers
     stub_matches('acme' => [match('2.0', 'mine', 'C1', 'project')])
     @client.stub('conversations.history', { 'messages' => [raw('3.0', 'U2', 'their reply')] })
     assert_equal 0, command(['-w', 'acme', '--before', '0']).execute
     assert_includes @io.string, '[acme] #project'
     refute_includes @io.string, '▶'
     assert_includes @io.string, 'mine'
-    assert_includes @io.string, '↩ replied after you'
+    refute_includes @io.string, '↩ replied after you'
   end
 
   def test_context_text_wraps_messages_with_indented_reply_continuations
@@ -486,6 +486,8 @@ class SentCommandTest < Minitest::Test
     assert_match(/^    ↳ \[.*\] U2: amber/, @io.string)
     refute_includes @io.string, "(thread #{root})"
     refute_includes @io.string, '▶'
+    refute_includes @io.string, '↩ replied after you'
+    refute_includes @io.string, '• you had the last word'
   end
 
   def test_zero_window_skips_history_and_still_includes_search_hit
@@ -505,14 +507,14 @@ class SentCommandTest < Minitest::Test
     assert_equal(1, @client.calls.count { |call| call[:method] == 'auth.test' })
   end
 
-  def test_max_text_notes_dropped_messages_and_last_word
+  def test_max_text_notes_dropped_messages
     stub_matches('dsva' => [match('12.0', 'my DM', 'D2', 'U2', is_im: true)])
     @client.stub('conversations.history', {
                    'messages' => [raw('12.0', 'U1', 'my DM'), raw('11.0', 'U2', 'earlier reply'),
                                   raw('10.0', 'U2', 'earlier parent')]
                  })
     assert_equal 0, command(['-w', 'dsva', '--max', '2']).execute
-    assert_includes @io.string, '• you had the last word'
+    refute_includes @io.string, '• you had the last word'
     assert_includes @io.string, '(1 older messages omitted by --max)'
     refute_includes @io.string, 'earlier parent'
   end

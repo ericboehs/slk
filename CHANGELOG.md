@@ -9,10 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `slk sent` now expands your sent-message search hits into conversations: full paginated threads and DMs, merged channel windows (5 messages before and 30 minutes after your posts), and replies to your top-level posts. It groups by conversation, reports whether someone spoke after you, and caps displayed messages with `--max` (default 200, `0` for all). `--before` and `--after-minutes` tune channel windows. `--mine` keeps the previous flat timeline and JSON shape.
+- `slk sent` now expands your sent-message search hits into conversations: full paginated threads and DMs, merged channel windows (5 messages before and 30 minutes after your posts), and replies to your top-level posts. It groups by conversation and caps displayed messages with `--max` (default 200, `0` for all). `--before` and `--after-minutes` tune channel windows. `--mine` keeps the previous flat timeline and JSON shape.
 - `slk sent --json` now returns `{date, range, conversations}`. Each conversation includes its workspace, channel, type, thread timestamp, `last_speaker_is_me`, `dropped_messages`, and chronological messages with sender, name, text, and `mine`. `channel_name` remains Slack's raw value; `channel_label` is the resolved display label for DMs and channels. The sender-only format remains available through `--mine --json`, with `channel_label` added to counts.
 
-- `slk sent` text now wraps to the interactive terminal's width (or `--width N`), with indented reply and context continuations; `--no-wrap` disables wrapping. The redundant `▶` marker on your own messages is gone. Orphaned replies put their parent reference on a separate line so long thread IDs do not steal the message's wrap width.
+- `slk sent` text now wraps to the interactive terminal's width (or `--width N`), with indented reply and context continuations; `--no-wrap` disables wrapping. The redundant `▶` marker on your own messages and the last-speaker status lines are gone from text output; JSON still includes `last_speaker_is_me`. Orphaned replies put their parent reference on a separate line so long thread IDs do not steal the message's wrap width.
 
 ### Added
 

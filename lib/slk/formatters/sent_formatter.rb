@@ -125,8 +125,6 @@ module Slk
       # Header combines the resolved channel, optional thread root and signal.
       def display_header(conversation, summary: nil)
         @runner.output.puts wrap_heading(heading_for(conversation, summary))
-        signal = conversation.last_speaker_is_me ? '• you had the last word' : '↩ replied after you'
-        @runner.output.puts signal
         return unless conversation.dropped_messages.positive?
 
         @runner.output.puts "(#{conversation.dropped_messages} older messages omitted by --max)"
