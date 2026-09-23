@@ -10,7 +10,7 @@ module Slk
     class SentConversations
       Conversation = Data.define(:workspace, :channel_id, :channel_name, :channel_type, :type, :thread_ts,
                                  :first_sent_ts, :messages, :last_speaker_is_me, :dropped_messages,
-                                 :self_user_id, :self_username, :parent_text)
+                                 :self_user_id, :self_username)
       DEFAULT_BEFORE = 5
       DEFAULT_AFTER_MINUTES = 30
       DEFAULT_MAX = 200
@@ -147,7 +147,7 @@ module Slk
       # rubocop:enable Metrics/MethodLength
 
       # Keep the search hits as a fallback at Slack's exclusive history bounds.
-      # rubocop:disable Metrics/AbcSize, Metrics/ParameterLists
+      # rubocop:disable Metrics/ParameterLists
       def build(workspace, seed, type, root, hits, raw, expand_threads: false)
         # Search's own hits ensure an indexed sent message cannot disappear just
         # because history omits thread replies or returns a window boundary.
@@ -158,20 +158,9 @@ module Slk
         Conversation.new(workspace: workspace, channel_id: seed.channel_id, channel_name: seed.channel_name,
                          channel_type: seed.channel_type, type: type, thread_ts: root, first_sent_ts: hits.first.ts,
                          messages: messages, last_speaker_is_me: last_is_me, dropped_messages: 0,
-                         self_user_id: @self_id, self_username: hits.first.username,
-                         parent_text: parent_preview(messages, root))
+                         self_user_id: @self_id, self_username: hits.first.username)
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/ParameterLists
-
-      def parent_preview(messages, root)
-        return nil unless root
-
-        parent = messages.find { |message| message.ts == root }
-        return '[No text]' unless parent
-        return parent.text unless parent.text.strip.empty?
-
-        parent.files.any? ? '[file]' : '[No text]'
-      end
+      # rubocop:enable Metrics/ParameterLists
 
       def search_message(hit)
         { 'ts' => hit.ts, 'user' => @self_id, 'username' => hit.username, 'text' => hit.text,

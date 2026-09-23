@@ -227,24 +227,11 @@ module Slk
           channel_type: seed.channel_type, type: type, thread_ts: root, first_sent_ts: seed.ts,
           messages: kept, last_speaker_is_me: new_messages.last.user_id == @self_id,
           dropped_messages: messages.size - kept.size, self_user_id: @self_id,
-          self_username: seed.username, parent_text: parent_preview(messages, root)
+          self_username: seed.username
         )
         others = new_messages.count { |message| message.user_id != @self_id }
         Change.new(conversation: conversation, new_timestamps: new_ts,
                    new_count: new_messages.size, new_from_others: others)
-      end
-
-      def parent_preview(messages, root)
-        return unless root
-
-        parent = messages.find { |message| message.ts == root }
-        return '[No text]' unless parent
-
-        if parent.text.empty?
-          parent.files.any? ? '[file]' : '[No text]'
-        else
-          parent.text
-        end
       end
 
       def normalize(raw, channel_id)

@@ -121,7 +121,7 @@ module Slk
                 .group_by(&:thread_ts)
       end
 
-      # Header combines the resolved channel, optional thread root and signal.
+      # Header combines the resolved destination and optional thread ID.
       def display_header(conversation, summary: nil)
         @runner.output.puts wrap_heading(heading_for(conversation, summary))
         return unless conversation.dropped_messages.positive?
@@ -131,7 +131,7 @@ module Slk
 
       def heading_for(conversation, summary)
         heading = "[#{conversation.workspace.name}] #{channel_label(conversation)}"
-        heading += " (thread: #{thread_snippet(conversation)})" if conversation.type == 'thread'
+        heading += " (thread: #{conversation.thread_ts})" if conversation.type == 'thread'
         heading += " — #{summary}" if summary
         heading
       end
@@ -171,11 +171,6 @@ module Slk
           name: conversation.channel_name, channel_id: conversation.channel_id,
           self_user_id: conversation.self_user_id, self_username: conversation.self_username
         )
-      end
-
-      def thread_snippet(conversation)
-        text = conversation.parent_text.to_s.split("\n").first.to_s
-        %("#{text[0, 80]}")
       end
 
       def mine?(message, conversation)

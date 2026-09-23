@@ -108,7 +108,7 @@ class SentCommandTest < Minitest::Test
     assert_equal(2, @client.calls.count { |call| call[:method] == 'conversations.replies' })
   end
 
-  def test_dm_thread_uses_resolved_dm_label_and_file_preview
+  def test_dm_thread_uses_resolved_dm_label_and_thread_id
     sent = match('2.0', 'mine in thread', 'D2', 'U2', is_im: true).merge(
       'permalink' => 'https://slack.test/archives/D2/p2?thread_ts=1.0'
     )
@@ -119,8 +119,9 @@ class SentCommandTest < Minitest::Test
                                   raw('2.0', 'U1', 'mine in thread', thread_ts: '1.0')]
                  })
     assert_equal 0, command(['-w', 'acme']).execute
-    assert_includes @io.string, '[acme] @Katherine Johnson (thread: "[file]")'
+    assert_includes @io.string, '[acme] @Katherine Johnson (thread: 1.0)'
     assert_includes @io.string, '[File: photo.png]'
+    refute_includes @io.string, '(thread: "[file]")'
     refute_includes @io.string, '#U2'
 
     @io.truncate(0)
@@ -143,7 +144,7 @@ class SentCommandTest < Minitest::Test
     @client.stub('conversations.info', { 'channel' => { 'members' => %w[U2 U1 U3] } })
     @client.stub('conversations.history', { 'messages' => [raw('2.0', 'U1', 'hello')] })
     assert_equal 0, command(['-w', 'acme']).execute
-    assert_includes @io.string, '[acme] @Ada Lovelace, Grace Hopper'
+    assert_match(/^\[acme\] @Ada Lovelace, Grace Hopper$/, @io.string)
     refute_includes @io.string, 'mpdm-'
 
     @io.truncate(0)
@@ -424,7 +425,7 @@ class SentCommandTest < Minitest::Test
     stub_matches('acme' => [match('2.0', 'mine', 'C1', 'project')])
     @client.stub('conversations.history', { 'messages' => [raw('3.0', 'U2', 'their reply')] })
     assert_equal 0, command(['-w', 'acme', '--before', '0']).execute
-    assert_includes @io.string, '[acme] #project'
+    assert_match(/^\[acme\] #project$/, @io.string)
     refute_includes @io.string, '▶'
     assert_includes @io.string, 'mine'
     refute_includes @io.string, '↩ replied after you'
@@ -986,7 +987,7 @@ class SentCommandTest < Minitest::Test
     assert_equal([root, reply], rows.first['messages'].map { |message| message['ts'] })
   end
 
-  def test_changed_since_missing_thread_parent_still_shows_reply_with_preview_fallback
+  def test_changed_since_missing_thread_parent_still_shows_reply_with_thread_id
     root = "#{Time.local(2026, 9, 21, 15, 0).to_i}.0"
     own_reply = "#{Time.local(2026, 9, 21, 15, 1).to_i}.0"
     new_reply = "#{Time.local(2026, 9, 22, 15, 1).to_i}.0"
@@ -998,13 +999,14 @@ class SentCommandTest < Minitest::Test
                    'messages' => [raw(new_reply, 'U2', 'new answer', thread_ts: root)]
                  })
     assert_equal 0, command(changed_args('--max', '0')).execute
-    assert_includes @io.string, '(thread: "[No text]")'
+    assert_includes @io.string, "(thread: #{root})"
+    refute_includes @io.string, '(thread: "[No text]")'
     assert_includes @io.string, '1 new (1 from others)'
     assert_includes @io.string, 'new answer'
     refute_includes @io.string, 'older messages omitted'
   end
 
-  def test_changed_since_file_only_and_blank_thread_parents_have_distinct_previews
+  def test_changed_since_file_only_and_blank_thread_parents_show_same_thread_id
     root = "#{Time.local(2026, 9, 21, 15, 0).to_i}.0"
     own_reply = "#{Time.local(2026, 9, 21, 15, 1).to_i}.0"
     new_reply = "#{Time.local(2026, 9, 22, 15, 1).to_i}.0"
@@ -1021,8 +1023,9 @@ class SentCommandTest < Minitest::Test
       { 'messages' => params[:oldest] ? messages.last(1) : messages }
     })
     assert_equal 0, command(changed_args).execute
-    assert_includes @io.string, '(thread: "[file]")'
-    assert_includes @io.string, '(thread: "[No text]")'
+    assert_equal 2, @io.string.scan("(thread: #{root})").size
+    assert_includes @io.string, '[File: plan.pdf]'
+    refute_includes @io.string, '(thread: "[No text]")'
     assert_equal 2, @io.string.scan('1 new (1 from others)').size
   end
 
