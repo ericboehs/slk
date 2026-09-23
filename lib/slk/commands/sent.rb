@@ -66,6 +66,7 @@ module Slk
         help.note('Text output nests expanded replies under their parent, even when sent later, and wraps')
         help.note('to the terminal width on a TTY. Use --width N to override or --no-wrap to disable.')
         help.note('Thread headings show the thread ID; channel and DM headings keep their readable names.')
+        help.note('A thin divider separates conversations, not messages within a conversation.')
         help.note('For --changed-since, HH:MM means the most recent local occurrence: if that time has not')
         help.note('arrived today, it means yesterday. Dated timestamps in the future are rejected.')
         help.note('--changed-since is stateless: exact-ts history/replies detect new messages; search only finds')

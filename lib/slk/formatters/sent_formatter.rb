@@ -76,10 +76,7 @@ module Slk
       def display_text(conversations)
         return @runner.output.puts 'No sent conversations found.' if conversations.empty?
 
-        conversations.each do |conversation|
-          display_conversation(conversation)
-          @runner.output.puts
-        end
+        display_items(conversations) { |conversation| display_conversation(conversation) }
       end
 
       def display_conversation(conversation)
@@ -87,13 +84,24 @@ module Slk
         display_messages(conversation.messages, conversation)
       end
 
+      def display_items(items)
+        items.each_with_index do |item, index|
+          display_divider if index.positive?
+          yield item
+          @runner.output.puts
+        end
+      end
+
+      def display_divider
+        width = (@options[:width] || 32).clamp(1, 32)
+        @runner.output.puts @runner.output.gray('─' * width)
+        @runner.output.puts
+      end
+
       def display_changed_text(changes)
         return @runner.output.puts 'No changed sent conversations found.' if changes.empty?
 
-        changes.each do |change|
-          display_changed_conversation(change)
-          @runner.output.puts
-        end
+        display_items(changes) { |change| display_changed_conversation(change) }
       end
 
       def display_changed_conversation(change)

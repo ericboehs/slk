@@ -421,6 +421,15 @@ class SentCommandTest < Minitest::Test
     assert_equal [], data['conversations']
   end
 
+  def test_context_text_separates_conversations_with_width_aware_divider
+    stub_matches('acme' => [match('100.0', 'first note', 'C1', 'orchard'),
+                            match('200.0', 'second note', 'C2', 'harbor')])
+    assert_equal 0, command(['-w', 'acme', '--before', '0', '--after-minutes', '0', '--width', '20']).execute
+    text = @io.string
+    assert_equal(1, text.lines.count { |line| line.chomp == '─' * 20 })
+    assert_match(/first note\n\n─{20}\n\n\[acme\] #harbor/, text)
+  end
+
   def test_context_text_shows_senders_without_status_markers
     stub_matches('acme' => [match('2.0', 'mine', 'C1', 'project')])
     @client.stub('conversations.history', { 'messages' => [raw('3.0', 'U2', 'their reply')] })
@@ -429,6 +438,7 @@ class SentCommandTest < Minitest::Test
     refute_includes @io.string, '▶'
     assert_includes @io.string, 'mine'
     refute_includes @io.string, '↩ replied after you'
+    refute_match(/^─+$/, @io.string)
   end
 
   def test_context_text_wraps_messages_with_indented_reply_continuations
@@ -745,6 +755,9 @@ class SentCommandTest < Minitest::Test
         assert_equal 0, command(args).execute
         text = @io.string
         assert_operator text.index('yesterday response'), :<, text.index('today response')
+        assert_equal(1, text.lines.count { |line| line.chomp == '─' * 32 })
+        assert_operator text.index('yesterday response'), :<, text.index('─' * 32)
+        assert_operator text.index('─' * 32), :<, text.index('today response')
         refute_includes text, '── new since'
         @io.truncate(0)
         @io.rewind
