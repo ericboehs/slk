@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-23
+
 ### Changed
 
 - `slk sent` now expands your sent-message search hits into conversations: full paginated threads and DMs, merged channel windows (5 messages before and 30 minutes after your posts), and replies to your top-level posts. It groups by conversation and caps displayed messages with `--max` (default 200, `0` for all). `--before` and `--after-minutes` tune channel windows. `--mine` keeps the previous flat timeline and JSON shape.
