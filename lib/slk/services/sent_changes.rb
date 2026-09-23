@@ -11,6 +11,7 @@ module Slk
     class SentChanges
       Change = Data.define(:conversation, :new_timestamps, :new_count, :new_from_others)
       Conversation = SentConversations::Conversation
+      OPTIONAL_SUBSCRIPTION_ERRORS = %i[missing_scope not_allowed_token_type unknown_method].freeze
 
       # rubocop:disable Metrics/ParameterLists
       def initialize(runner:, since:, context: 2, max: 200, before: 5, after_minutes: 30)
@@ -58,8 +59,14 @@ module Slk
         hit = entries&.first&.last
         return hit.user_id if hit&.user_id.to_s.match?(/\A[UW][A-Z0-9]+\z/i)
 
-        @runner.cache_store.get_meta(workspace.name, 'self_user_id') ||
-          @runner.client_api(workspace.name).auth_test.fetch('user_id')
+        cached = @runner.cache_store.get_meta(workspace.name, 'self_user_id')
+        return cached if cached
+
+        id = @runner.client_api(workspace.name).auth_test['user_id']
+        raise ApiError, "Cannot identify sender in #{workspace.name}" unless id
+
+        @runner.cache_store.set_meta(workspace.name, 'self_user_id', id)
+        id
       end
 
       def thread_changes(hits)
@@ -122,7 +129,9 @@ module Slk
       # Slack's thread view exposes unread followed threads, not a complete
       # subscriptions cursor. Union the first page, and verify participation.
       def subscribed_changes(existing, local)
-        response = @runner.threads_api(@workspace.name).get_view(limit: 100)
+        response = subscribed_view
+        return [] unless response
+
         known = existing.map { |change| [change.conversation.channel_id, change.conversation.thread_ts] }
         known.concat(local.flat_map do |(_name, channel), entries|
           entries.map { |_workspace, hit| [channel, hit.thread_ts || hit.ts] }
@@ -138,8 +147,16 @@ module Slk
 
           thread_change(seed, timestamp, require_participation: true)
         end
-      rescue ApiError
-        [] # Optional endpoint: the search-derived watch set still works.
+      end
+
+      def subscribed_view
+        @runner.threads_api(@workspace.name).get_view(limit: 100)
+      rescue ApiError => e
+        # Only unsupported/unauthorized-to-use subscription views are optional.
+        # Network, rate-limit and other failures must not look like a clean check-in.
+        raise unless OPTIONAL_SUBSCRIPTION_ERRORS.include?(e.code)
+
+        nil
       end
 
       def subscription_seed(channel, timestamp, root)

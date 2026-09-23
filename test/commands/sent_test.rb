@@ -681,6 +681,7 @@ class SentCommandTest < Minitest::Test
     prior = "#{since.to_i - 86_400}.0"
     latest = "#{since.to_i + 1}.0"
     stub_matches('acme' => [match(prior, 'old DM', 'D2', 'U2', is_im: true)])
+    @client.stub('subscriptions.thread.getView', Slk::ApiError.new('missing_scope', code: :missing_scope))
     @client.stub('conversations.replies', { 'messages' => [] })
     @client.stub('conversations.history', lambda { |params|
       { 'messages' => params[:oldest] ? [raw(latest, 'U2', 'new DM')] : [raw(prior, 'U1', 'old DM')] }
@@ -941,10 +942,62 @@ class SentCommandTest < Minitest::Test
 
   def test_changed_since_unavailable_subscriptions_are_optional_and_empty_text_is_clear
     @client.stub('auth.test', { 'user_id' => 'U1' })
+    %i[missing_scope unknown_method not_allowed_token_type].each do |code|
+      @client.stub('subscriptions.thread.getView', Slk::ApiError.new(code.to_s, code: code))
+      assert_equal 0, command(changed_args).execute
+      assert_includes @io.string, 'No changed sent conversations found.'
+      refute_includes @err.string, code.to_s
+      @io.truncate(0)
+      @io.rewind
+    end
+  end
+
+  def test_changed_since_subscription_failure_does_not_emit_partial_json
+    @client.stub('auth.test', { 'user_id' => 'U1' })
+    %i[network_error ratelimited unauthorized invalid_json].each do |code|
+      @client.stub('subscriptions.thread.getView', Slk::ApiError.new(code.to_s, code: code))
+      assert_equal 1, command(changed_args('--json')).execute
+      assert_empty @io.string
+      assert_includes @err.string, code.to_s
+      @err.truncate(0)
+      @err.rewind
+    end
     @client.stub('subscriptions.thread.getView', Slk::ApiError.new('missing_scope'))
-    assert_equal 0, command(changed_args).execute
-    assert_includes @io.string, 'No changed sent conversations found.'
-    refute_includes @err.string, 'missing_scope'
+    assert_equal 1, command(changed_args('--json')).execute
+    assert_empty @io.string
+    assert_includes @err.string, 'missing_scope'
+  end
+
+  def test_changed_since_subscription_channel_lookup_failure_is_not_swallowed
+    @client.stub('auth.test', { 'user_id' => 'U1' })
+    @client.stub('subscriptions.thread.getView', {
+                   'threads' => [{ 'root_msg' => { 'channel' => 'C1', 'thread_ts' => '1790000000.123456' } }]
+                 })
+    @client.stub('conversations.info', Slk::ApiError.new('missing_scope', code: :missing_scope))
+    assert_equal 1, command(changed_args('--json')).execute
+    assert_empty @io.string
+    assert_includes @err.string, 'missing_scope'
+  end
+
+  def test_changed_since_sender_lookup_caches_authenticated_id
+    @client.stub('auth.test', { 'user_id' => 'U1' })
+    assert_equal 0, command(changed_args('--json')).execute
+    assert_equal 'U1', @cache_store.get_meta('acme', 'self_user_id')
+    @io.truncate(0)
+    @io.rewind
+    @client.stub('auth.test', Slk::ApiError.new('auth unavailable'))
+    assert_equal 0, command(changed_args('--json')).execute
+    assert_equal(1, @client.calls.count { |call| call[:method] == 'auth.test' })
+  end
+
+  def test_changed_since_missing_sender_id_reports_workspace_error
+    @client.stub('auth.test', { 'ok' => true })
+    assert_equal 1, command(changed_args('--json')).execute
+    assert_empty @io.string
+    assert_includes @err.string, 'Cannot identify sender in acme'
+    refute_includes @err.string, 'KeyError'
+    assert_nil @cache_store.get_meta('acme', 'self_user_id')
+    refute(@client.calls.any? { |call| call[:method] == 'subscriptions.thread.getView' })
   end
 
   def test_changed_since_pages_busy_dm_after_probe_and_keeps_prior_context
