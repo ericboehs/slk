@@ -3,6 +3,7 @@
 module Slk
   module Formatters
     # Renders expanded sent-message conversations for people and scripts.
+    # rubocop:disable Metrics/ClassLength
     class SentFormatter
       def initialize(runner:, options: {})
         @runner = runner
@@ -18,12 +19,37 @@ module Slk
         end
       end
 
+      def display_changes(changes, changed_since:, lookback_days:, json: false)
+        if json
+          @runner.output.puts(JSON.pretty_generate(changes_payload(changes, changed_since, lookback_days)))
+        else
+          display_changed_text(changes)
+        end
+      end
+
       private
 
       def payload(conversations, start_date, end_date)
         { date: start_date == end_date ? start_date.iso8601 : nil,
           range: start_date == end_date ? nil : { since: start_date.iso8601, through: end_date.iso8601 },
           conversations: conversations.map { |conversation| json_conversation(conversation) } }
+      end
+
+      def changes_payload(changes, since, days)
+        { date: nil, range: { since: (Date.today - days + 1).iso8601, through: Date.today.iso8601 },
+          changed_since: { iso: since.iso8601(since.usec.zero? ? 0 : 6),
+                           ts: Support::CheckInTime.timestamp(since) },
+          lookback_days: days, conversations: changes.map { |change| json_change(change) } }
+      end
+
+      def json_change(change)
+        conversation = change.conversation
+        json_conversation(conversation).merge(
+          new_count: change.new_count, new_from_others: change.new_from_others,
+          messages: conversation.messages.map do |message|
+            json_message(message, conversation).merge(new: change.new_timestamps.include?(message.ts))
+          end
+        )
       end
 
       def json_conversation(conversation)
@@ -50,20 +76,50 @@ module Slk
       def display_text(conversations)
         return @runner.output.puts 'No sent conversations found.' if conversations.empty?
 
-        conversations.each do |conversation|
-          display_conversation(conversation)
-          @runner.output.puts
-        end
+        display_items(conversations) { |conversation| display_conversation(conversation) }
       end
 
       def display_conversation(conversation)
         display_header(conversation)
-        replies = replies_by_parent(conversation.messages)
-        conversation.messages.each do |message|
+        display_messages(conversation.messages, conversation)
+      end
+
+      def display_items(items)
+        items.each_with_index do |item, index|
+          display_divider if index.positive?
+          yield item
+          @runner.output.puts
+        end
+      end
+
+      def display_divider
+        width = (@options[:width] || 32).clamp(1, 32)
+        @runner.output.puts @runner.output.gray('─' * width)
+        @runner.output.puts
+      end
+
+      def display_changed_text(changes)
+        return @runner.output.puts 'No changed sent conversations found.' if changes.empty?
+
+        display_items(changes) { |change| display_changed_conversation(change) }
+      end
+
+      def display_changed_conversation(change)
+        conversation = change.conversation
+        display_header(conversation, summary: "#{change.new_count} new (#{change.new_from_others} from others)")
+        context, fresh = conversation.messages.partition { |message| !change.new_timestamps.include?(message.ts) }
+        display_messages(context, conversation, context: true)
+        display_messages(fresh, conversation, parent_timestamps: context.map(&:ts))
+      end
+
+      def display_messages(messages, conversation, context: false, parent_timestamps: [])
+        replies = replies_by_parent(messages)
+        messages.each do |message|
           next if replies.key?(message.thread_ts) && message.reply?
 
-          display_message(message, conversation, orphan: message.reply?)
-          replies.fetch(message.ts, []).each { |reply| display_message(reply, conversation) }
+          display_message(message, conversation,
+                          orphan: message.reply? && !parent_timestamps.include?(message.thread_ts), context: context)
+          replies.fetch(message.ts, []).each { |reply| display_message(reply, conversation, context: context) }
         end
       end
 
@@ -73,27 +129,48 @@ module Slk
                 .group_by(&:thread_ts)
       end
 
-      # Header combines the resolved channel, optional thread root and signal.
-      def display_header(conversation)
-        heading = "[#{conversation.workspace.name}] #{channel_label(conversation)}"
-        heading += " (thread: #{thread_snippet(conversation)})" if conversation.type == 'thread'
-        @runner.output.puts heading
-        signal = conversation.last_speaker_is_me ? '• you had the last word' : '↩ replied after you'
-        @runner.output.puts signal
+      # Header combines the resolved destination and optional thread ID.
+      def display_header(conversation, summary: nil)
+        @runner.output.puts wrap_heading(heading_for(conversation, summary))
         return unless conversation.dropped_messages.positive?
 
         @runner.output.puts "(#{conversation.dropped_messages} older messages omitted by --max)"
       end
 
-      def display_message(message, conversation, orphan: false)
-        marker = mine?(message, conversation) ? '▶ ' : '  '
-        prefix = message.reply? ? "    ↳ #{marker}" : marker
-        prefix += "(thread #{message.thread_ts}) " if orphan
-        formatted = @runner.message_formatter.format(
-          message, workspace: conversation.workspace, options: @options
-        )
-        formatted = formatted.gsub("\n", "\n#{' ' * prefix.length}") if message.reply?
-        @runner.output.puts "#{prefix}#{formatted}"
+      def heading_for(conversation, summary)
+        heading = "[#{conversation.workspace.name}] #{channel_label(conversation)}"
+        heading += " (thread: #{conversation.thread_ts})" if conversation.type == 'thread'
+        heading += " — #{summary}" if summary
+        heading
+      end
+
+      def display_message(message, conversation, orphan: false, context: false)
+        display_orphan_reference(message, context) if orphan
+        prefix = message.reply? ? '    ↳ ' : ''
+        prefix = "· #{prefix}" if context
+        line = "#{prefix}#{formatted_message(message, conversation, prefix)}"
+        @runner.output.puts(context ? @runner.output.gray(line) : line)
+      end
+
+      def display_orphan_reference(message, context)
+        line = "    (thread #{message.thread_ts})"
+        line = "· #{line}" if context
+        @runner.output.puts(context ? @runner.output.gray(line) : line)
+      end
+
+      def formatted_message(message, conversation, prefix)
+        indent = ' ' * Support::TextWrapper.visible_length(prefix)
+        options = @options.dup
+        options[:width] -= indent.length if options[:width]
+        formatted = @runner.message_formatter.format(message, workspace: conversation.workspace, options: options)
+        indent.empty? ? formatted : formatted.gsub("\n", "\n#{indent}")
+      end
+
+      def wrap_heading(heading)
+        width = @options[:width]
+        return heading unless width && width > 2
+
+        Support::TextWrapper.wrap(heading, width, width - 2).gsub("\n", "\n  ")
       end
 
       def channel_label(conversation)
@@ -104,11 +181,6 @@ module Slk
         )
       end
 
-      def thread_snippet(conversation)
-        text = conversation.parent_text.to_s.split("\n").first.to_s
-        %("#{text[0, 80]}")
-      end
-
       def mine?(message, conversation)
         # The search result provides the authenticated sender's user ID. It
         # remains attached to each conversation even if the first message is
@@ -116,5 +188,6 @@ module Slk
         message.user_id == conversation.self_user_id
       end
     end
+    # rubocop:enable Metrics/ClassLength
   end
 end
