@@ -72,3 +72,26 @@ jobs:
 
       - name: Run rubocop
         run: bundle exec rubocop
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Ruby without development gems
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0'
+
+      - name: Smoke-test the packaged gem in isolation
+        run: |
+          gem build slk.gemspec --output "$RUNNER_TEMP/slk.gem"
+          gem install "$RUNNER_TEMP/slk.gem" --local --no-document \
+            --install-dir "$RUNNER_TEMP/gems" --bindir "$RUNNER_TEMP/bin"
+          expected=$(ruby -Ilib -rslk/version -e 'print "slk v#{Slk::VERSION}"')
+          actual=$(env GEM_HOME="$RUNNER_TEMP/gems" GEM_PATH="$RUNNER_TEMP/gems" \
+            "$RUNNER_TEMP/bin/slk" --version)
+          test "$actual" = "$expected"
+          help=$(env GEM_HOME="$RUNNER_TEMP/gems" GEM_PATH="$RUNNER_TEMP/gems" \
+            "$RUNNER_TEMP/bin/slk" sent --help)
+          grep -F -- '--changed-since' <<< "$help" > /dev/null

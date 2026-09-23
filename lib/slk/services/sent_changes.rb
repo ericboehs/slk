@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'bigdecimal'
-
 module Slk
   module Services
     # Stateless diff of watched sent conversations. Search discovers what to
@@ -32,7 +30,7 @@ module Slk
           conversation = change.conversation
           # Put the most recently active conversation last. Trailing identity
           # keys make ties deterministic across platforms (including Windows).
-          [BigDecimal(conversation.messages.last.ts), conversation.workspace.name.to_s,
+          [Support::DecimalTimestamp.parse(conversation.messages.last.ts), conversation.workspace.name.to_s,
            conversation.channel_id.to_s, conversation.thread_ts.to_s]
         end
       end
@@ -90,8 +88,8 @@ module Slk
         cursor = nil
         loop do
           response = @api.history(channel: hits.first.channel_id,
-                                  oldest: roots.min_by { |root| BigDecimal(root) }, inclusive: true,
-                                  limit: 200, cursor: cursor)
+                                  oldest: roots.min_by { |root| Support::DecimalTimestamp.parse(root) },
+                                  inclusive: true, limit: 200, cursor: cursor)
           response.fetch('messages', []).each do |message|
             found[message['ts']] = message if wanted[message['ts']]
           end
@@ -253,7 +251,7 @@ module Slk
 
       def normalize(raw, channel_id)
         raw.map { |row| row.is_a?(Models::Message) ? row : Models::Message.from_api(row, channel_id: channel_id) }
-           .uniq(&:ts).sort_by { |message| BigDecimal(message.ts) }
+           .uniq(&:ts).sort_by { |message| Support::DecimalTimestamp.parse(message.ts) }
       end
 
       def after_cutoff(raw)
@@ -265,7 +263,7 @@ module Slk
       end
 
       def newer?(timestamp)
-        BigDecimal(timestamp) > BigDecimal(@since_ts)
+        Support::DecimalTimestamp.parse(timestamp) > Support::DecimalTimestamp.parse(@since_ts)
       end
 
       def page_through(endpoint, **params)

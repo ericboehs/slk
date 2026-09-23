@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'bigdecimal'
-
 module Slk
   module Services
     # Expands indexed from:me hits into bounded channel windows, full DM
@@ -42,7 +40,7 @@ module Slk
       def ordered_conversations(conversations)
         conversations.sort_by do |conversation|
           # Keep Slack's fractional timestamp precise; identity breaks ties regardless of input order or platform.
-          [BigDecimal(conversation.first_sent_ts), conversation.workspace.name.to_s,
+          [Support::DecimalTimestamp.parse(conversation.first_sent_ts), conversation.workspace.name.to_s,
            conversation.channel_id.to_s, conversation.thread_ts.to_s]
         end
       end
@@ -115,7 +113,7 @@ module Slk
       def following_messages(channel_id, window)
         return [] if @after_seconds.zero?
 
-        end_at = (BigDecimal(window.last.ts) + @after_seconds).to_s('F')
+        end_at = Support::DecimalTimestamp.add(window.last.ts, @after_seconds)
         page_through(:history, channel: channel_id, oldest: window.first.ts, latest: end_at, inclusive: true)
       end
 

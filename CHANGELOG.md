@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-09-23
+
+### Fixed
+
+- `slk sent` and URL-based message history now use built-in rational arithmetic for exact Slack timestamps instead of requiring the optional `bigdecimal` gem. A standalone install on Ruby 3.4+ works without development dependencies; CI checks the packaged gem in an isolated gem home.
+
 ## [0.11.0] - 2026-09-23
 
 ### Changed
