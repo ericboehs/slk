@@ -76,7 +76,7 @@ class DndStateTest < Minitest::Test
   # An overnight schedule ends tomorrow morning; a bare "until 8:00am" would
   # name a time that has already passed today.
   def test_an_end_on_another_day_carries_its_day
-    tomorrow = Time.now + (20 * 3600)
+    tomorrow = (Date.today + 1).to_time + (8 * 3600)
 
     dnd = state('snooze_enabled' => true, 'snooze_endtime' => tomorrow.to_i)
 

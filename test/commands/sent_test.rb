@@ -240,8 +240,9 @@ class SentCommandTest < Minitest::Test
     assert_operator text.index('my root'), :<, text.index('first reply')
     assert_operator text.index('first reply'), :<, text.index('last reply')
     assert_operator text.index('last reply'), :<, text.index('unrelated post')
-    assert_match(/^    ↳   \[.*\] .*: first reply$/, text)
-    assert_match(/^    ↳ ▶ \[.*\] .*: last reply$/, text)
+    assert_match(/^    ↳ \[.*\] .*: first reply$/, text)
+    assert_match(/^    ↳ \[.*\] .*: last reply$/, text)
+    refute_includes text, '▶'
     assert_includes text, '• you had the last word'
 
     @io.truncate(0)
@@ -267,7 +268,7 @@ class SentCommandTest < Minitest::Test
                  })
     assert_equal 0, command(['-w', 'acme']).execute
     assert_operator @io.string.index('DM thread reply'), :<, @io.string.index('unrelated DM')
-    assert_match(/^    ↳   \[.*\] .*: DM thread reply$/, @io.string)
+    assert_match(/^    ↳ \[.*\] .*: DM thread reply$/, @io.string)
   end
 
   def test_orphaned_reply_from_max_keeps_parent_reference
@@ -281,8 +282,28 @@ class SentCommandTest < Minitest::Test
                                   raw('120.0', 'U2', 'late reply', thread_ts: '100.0')]
                  })
     assert_equal 0, command(['-w', 'acme', '--max', '2']).execute
-    assert_match(/^    ↳   \(thread 100\.0\) \[.*\] .*: late reply$/, @io.string)
+    assert_match(/^    \(thread 100\.0\)$/, @io.string)
+    assert_match(/^    ↳ \[.*\] .*: late reply$/, @io.string)
     assert_operator @io.string.index('unrelated post'), :<, @io.string.index('late reply')
+  end
+
+  def test_orphaned_reply_reference_does_not_consume_the_wrap_width
+    root = '1790000000.123456'
+    reply = '1790000001.123456'
+    words = 'amber cobalt dolphin ember forest garden harbor island jungle lantern meadow'
+    stub_matches('acme' => [match(root, 'my root', 'C1', 'project')])
+    @client.stub('conversations.history', {
+                   'messages' => [raw(root, 'U1', 'my root', reply_count: 1),
+                                  raw('1790000000.999999', 'U2', 'other post')]
+                 })
+    @client.stub('conversations.replies', {
+                   'messages' => [raw(root, 'U1', 'my root'), raw(reply, 'U2', words, thread_ts: root)]
+                 })
+    assert_equal 0, command(['-w', 'acme', '--max', '2', '--width', '52']).execute
+    assert_match(/^    \(thread #{root}\)$/, @io.string)
+    assert_match(/^    ↳ \[.*\] U2: amber/, @io.string)
+    lines = @io.string.lines.map(&:chomp)
+    assert(lines.all? { |line| Slk::Support::TextWrapper.visible_length(line) <= 52 }, lines.inspect)
   end
 
   def test_channel_merges_overlapping_windows_and_includes_replies_to_own_post
@@ -399,13 +420,72 @@ class SentCommandTest < Minitest::Test
     assert_equal [], data['conversations']
   end
 
-  def test_context_text_marks_own_messages_and_reply_signal
+  def test_context_text_shows_senders_without_own_message_markers
     stub_matches('acme' => [match('2.0', 'mine', 'C1', 'project')])
     @client.stub('conversations.history', { 'messages' => [raw('3.0', 'U2', 'their reply')] })
     assert_equal 0, command(['-w', 'acme', '--before', '0']).execute
     assert_includes @io.string, '[acme] #project'
-    assert_includes @io.string, '▶'
+    refute_includes @io.string, '▶'
+    assert_includes @io.string, 'mine'
     assert_includes @io.string, '↩ replied after you'
+  end
+
+  def test_context_text_wraps_messages_with_indented_reply_continuations
+    words = 'amber cobalt dolphin ember forest garden harbor island jungle lantern meadow'
+    stub_matches('acme' => [match('100.0', words, 'C1', 'project')])
+    @client.stub('conversations.history', {
+                   'messages' => [raw('100.0', 'U1', words, reply_count: 1)]
+                 })
+    @client.stub('conversations.replies', {
+                   'messages' => [raw('100.0', 'U1', words), raw('101.0', 'U2', words, thread_ts: '100.0')]
+                 })
+    assert_equal 0, command(['-w', 'acme', '--width', '48']).execute
+    lines = @io.string.lines.map(&:chomp)
+    assert(lines.all? { |line| Slk::Support::TextWrapper.visible_length(line) <= 48 })
+    reply_index = lines.index { |line| line.start_with?('    ↳ ') }
+    assert reply_index
+    assert_match(/^ {6}\w/, lines.fetch(reply_index + 1))
+    refute_includes @io.string, '▶'
+  end
+
+  def test_context_text_no_wrap_preserves_unbroken_message
+    words = 'amber cobalt dolphin ember forest garden harbor island jungle lantern meadow'
+    stub_matches('acme' => [match('100.0', words, 'C1', 'project')])
+    assert_equal 0, command(['-w', 'acme', '--width', '48', '--no-wrap', '--before', '0',
+                             '--after-minutes', '0']).execute
+    assert(@io.string.lines.any? { |line| line.include?(words) })
+  end
+
+  def test_sent_uses_terminal_columns_as_default_wrap_width
+    console = Struct.new(:winsize).new([24, 48])
+    $stdout.stub(:tty?, true) do
+      IO.stub(:console, console) { assert_equal 48, command([]).options[:width] }
+    end
+    $stdout.stub(:tty?, false) { assert_nil command([]).options[:width] }
+  end
+
+  def test_changed_text_wraps_heading_context_and_reply_without_repeating_parent_reference
+    root = "#{Time.local(2026, 9, 21, 15, 0).to_i}.0"
+    reply = "#{Time.local(2026, 9, 22, 15, 1).to_i}.0"
+    old_text = 'old parent has enough words to wrap the heading and context'
+    new_text = 'amber cobalt dolphin ember forest garden harbor island jungle lantern meadow'
+    stub_matches('acme' => [match(root, old_text, 'C1', 'project')])
+    @client.stub('conversations.replies', lambda { |params|
+      messages = if params[:oldest]
+                   [raw(reply, 'U2', new_text, thread_ts: root)]
+                 else
+                   [raw(root, 'U1', old_text), raw(reply, 'U2', new_text, thread_ts: root)]
+                 end
+      { 'messages' => messages }
+    })
+    assert_equal 0, command(changed_args('--width', '52')).execute
+    lines = @io.string.lines.map(&:chomp)
+    assert(lines.all? { |line| Slk::Support::TextWrapper.visible_length(line) <= 52 }, lines.inspect)
+    assert_match(/^· \[/, @io.string)
+    assert_match(/^  .*heading and context$/, @io.string)
+    assert_match(/^    ↳ \[.*\] U2: amber/, @io.string)
+    refute_includes @io.string, "(thread #{root})"
+    refute_includes @io.string, '▶'
   end
 
   def test_zero_window_skips_history_and_still_includes_search_hit
@@ -471,7 +551,8 @@ class SentCommandTest < Minitest::Test
     assert_includes @io.string, '1 new (1 from others)'
     assert_match(/· .*prior day post/, @io.string)
     assert_includes @io.string, '── new since 07:00 ──'
-    assert_match(/↳ \s*\(thread #{Regexp.escape(root)}\).*new answer/, @io.string)
+    assert_match(/^    ↳ \[.*\] .*: new answer$/, @io.string)
+    refute_includes @io.string, "(thread #{root})"
   end
 
   def test_changed_since_pages_new_thread_replies_before_counting

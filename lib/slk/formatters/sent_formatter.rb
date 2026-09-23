@@ -102,15 +102,16 @@ module Slk
         context, fresh = conversation.messages.partition { |message| !change.new_timestamps.include?(message.ts) }
         display_messages(context, conversation, context: true)
         @runner.output.puts "── new since #{since.strftime('%H:%M')} ──"
-        display_messages(fresh, conversation)
+        display_messages(fresh, conversation, parent_timestamps: context.map(&:ts))
       end
 
-      def display_messages(messages, conversation, context: false)
+      def display_messages(messages, conversation, context: false, parent_timestamps: [])
         replies = replies_by_parent(messages)
         messages.each do |message|
           next if replies.key?(message.thread_ts) && message.reply?
 
-          display_message(message, conversation, orphan: message.reply?, context: context)
+          display_message(message, conversation,
+                          orphan: message.reply? && !parent_timestamps.include?(message.thread_ts), context: context)
           replies.fetch(message.ts, []).each { |reply| display_message(reply, conversation, context: context) }
         end
       end
@@ -123,10 +124,7 @@ module Slk
 
       # Header combines the resolved channel, optional thread root and signal.
       def display_header(conversation, summary: nil)
-        heading = "[#{conversation.workspace.name}] #{channel_label(conversation)}"
-        heading += " (thread: #{thread_snippet(conversation)})" if conversation.type == 'thread'
-        heading += " — #{summary}" if summary
-        @runner.output.puts heading
+        @runner.output.puts wrap_heading(heading_for(conversation, summary))
         signal = conversation.last_speaker_is_me ? '• you had the last word' : '↩ replied after you'
         @runner.output.puts signal
         return unless conversation.dropped_messages.positive?
@@ -134,17 +132,40 @@ module Slk
         @runner.output.puts "(#{conversation.dropped_messages} older messages omitted by --max)"
       end
 
+      def heading_for(conversation, summary)
+        heading = "[#{conversation.workspace.name}] #{channel_label(conversation)}"
+        heading += " (thread: #{thread_snippet(conversation)})" if conversation.type == 'thread'
+        heading += " — #{summary}" if summary
+        heading
+      end
+
       def display_message(message, conversation, orphan: false, context: false)
-        marker = mine?(message, conversation) ? '▶ ' : '  '
-        prefix = message.reply? ? "    ↳ #{marker}" : marker
-        prefix += "(thread #{message.thread_ts}) " if orphan
+        display_orphan_reference(message, context) if orphan
+        prefix = message.reply? ? '    ↳ ' : ''
         prefix = "· #{prefix}" if context
-        formatted = @runner.message_formatter.format(
-          message, workspace: conversation.workspace, options: @options
-        )
-        formatted = formatted.gsub("\n", "\n#{' ' * prefix.length}") if message.reply?
-        line = "#{prefix}#{formatted}"
+        line = "#{prefix}#{formatted_message(message, conversation, prefix)}"
         @runner.output.puts(context ? @runner.output.gray(line) : line)
+      end
+
+      def display_orphan_reference(message, context)
+        line = "    (thread #{message.thread_ts})"
+        line = "· #{line}" if context
+        @runner.output.puts(context ? @runner.output.gray(line) : line)
+      end
+
+      def formatted_message(message, conversation, prefix)
+        indent = ' ' * Support::TextWrapper.visible_length(prefix)
+        options = @options.dup
+        options[:width] -= indent.length if options[:width]
+        formatted = @runner.message_formatter.format(message, workspace: conversation.workspace, options: options)
+        indent.empty? ? formatted : formatted.gsub("\n", "\n#{indent}")
+      end
+
+      def wrap_heading(heading)
+        width = @options[:width]
+        return heading unless width && width > 2
+
+        Support::TextWrapper.wrap(heading, width, width - 2).gsub("\n", "\n  ")
       end
 
       def channel_label(conversation)

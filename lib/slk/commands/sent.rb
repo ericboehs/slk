@@ -24,6 +24,15 @@ module Slk
                     max: Services::SentConversations::DEFAULT_MAX)
       end
 
+      def default_width
+        return nil unless $stdout.tty?
+
+        columns = IO.console&.winsize&.last
+        columns&.positive? ? columns : super
+      rescue SystemCallError, IOError
+        super
+      end
+
       # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
       def handle_option(arg, args, remaining)
         case arg
@@ -54,7 +63,8 @@ module Slk
         help.note('user_name, text, mine, thread_ts}]}]}; --mine keeps counts/results JSON,')
         help.note('with channel_label added to counts. channel_name remains the raw Slack name.')
         help.note('JSON messages stay flat and timestamp-sorted; thread_ts links replies to their parent.')
-        help.note('Text output nests expanded replies under their parent, even when sent later.')
+        help.note('Text output nests expanded replies under their parent, even when sent later, and wraps')
+        help.note('to the terminal width on a TTY. Use --width N to override or --no-wrap to disable.')
         help.note('--changed-since is stateless: exact-ts history/replies detect new messages; search only finds')
         help.note('the watch set. Edits/reactions do not change ts and are invisible. Search index lag may')
         help.note('omit posts from the last few minutes. Conversations you never posted in remain out of scope.')
@@ -75,6 +85,8 @@ module Slk
           s.option('-w, --workspace NAME', 'Search one workspace instead of all')
           s.option('--all', 'Search all workspaces (default)')
           s.option('--json', 'Output conversations as JSON (or counts/results with --mine)')
+          s.option('--width N', 'Wrap text at N columns (default: terminal width on TTY)')
+          s.option('--no-wrap', 'Disable text wrapping')
         end
         help.section('EXAMPLES') do |s|
           s.example('slk sent', 'Today in all workspaces')
