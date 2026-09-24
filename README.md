@@ -225,7 +225,8 @@ slk deactivations --json          # Machine-readable output
 ```
 
 ```
-acme: 16 deactivated since 30d (664 active members)
+acme: 16 deactivated since 30d (664 active accounts)
+  360 full members · 120 multi-channel guests · 184 single-channel guests
 
 2026-09-14  Dana Whitfield          Platform Support
 2026-09-11  Priya Raghunathan       UX Researcher
@@ -239,6 +240,12 @@ for that user. For a deactivated account that change is almost always the
 deactivation, but an admin editing a departed profile afterwards moves the date
 forward, so treat it as "last touched" rather than a payroll record.
 
+The active-account count excludes bots and deactivated accounts; full members and
+both types of Slack guests are shown separately. It is not an employee headcount.
+The same breakdown is available in `--json` as `active_full_members`,
+`active_multi_channel_guests`, and `active_single_channel_guests` (alongside the
+existing `active_members` total).
+
 The roster costs one API call per 1000 members, so the result is cached for six
 hours; `--refresh` re-fetches it.
 
@@ -248,7 +255,8 @@ hours; `--refresh` re-fetches it.
 "Start Date" profile field:
 
 ```
-acme: 3 deactivated since 30d (664 active members)
+acme: 3 deactivated since 30d (664 active accounts)
+  360 full members · 120 multi-channel guests · 184 single-channel guests
 
 2026-09-14  Dana Whitfield         1mo  Platform Support
 2026-09-11  Priya Raghunathan   2y 7mo  UX Researcher

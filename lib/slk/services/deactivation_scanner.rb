@@ -11,11 +11,17 @@ module Slk
     # (deactivated members plus headcounts, not the whole roster) is cached in
     # the workspace meta cache with a TTL.
     class DeactivationScanner
-      CACHE_KEY = 'deactivations_v1'
+      CACHE_KEY = 'deactivations_v2'
       DEFAULT_TTL = 21_600 # 6 hours
-      REQUIRED_KEYS = %w[fetched_at member_count human_count active_count records].freeze
+      REQUIRED_KEYS = %w[
+        fetched_at member_count human_count active_count full_member_count
+        multi_channel_guest_count single_channel_guest_count records
+      ].freeze
 
-      Report = Data.define(:records, :member_count, :human_count, :active_count, :fetched_at) do
+      Report = Data.define(
+        :records, :member_count, :human_count, :active_count, :full_member_count,
+        :multi_channel_guest_count, :single_channel_guest_count, :fetched_at
+      ) do
         def deactivated_count = records.size
 
         def bots = records.count(&:bot)
@@ -70,12 +76,29 @@ module Slk
 
       def counts(members)
         humans = members.reject { |m| Models::Deactivation.bot?(m) }
+        active = humans.reject { |m| m['deleted'] }
 
         {
           'member_count' => members.size,
           'human_count' => humans.size,
-          'active_count' => humans.count { |m| !m['deleted'] }
+          'active_count' => active.size
+        }.merge(guest_counts(active))
+      end
+
+      def guest_counts(active)
+        groups = active.group_by { |member| guest_type(member) }
+        {
+          'full_member_count' => groups.fetch(:full, []).size,
+          'multi_channel_guest_count' => groups.fetch(:multi, []).size,
+          'single_channel_guest_count' => groups.fetch(:single, []).size
         }
+      end
+
+      def guest_type(member)
+        return :single if member['is_ultra_restricted']
+        return :multi if member['is_restricted']
+
+        :full
       end
 
       def fetch_members
@@ -84,15 +107,23 @@ module Slk
         end
       end
 
+      # Keep the cache fields explicit: a missing headcount must not become a
+      # plausible-looking zero without usable? first checking the cache shape.
+      # rubocop:disable Metrics/AbcSize
       def build_report(data)
         Report.new(
           records: sorted_records(data['records'] || []),
           member_count: data['member_count'].to_i,
           human_count: data['human_count'].to_i,
           active_count: data['active_count'].to_i,
+          full_member_count: data['full_member_count'].to_i,
+          multi_channel_guest_count: data['multi_channel_guest_count'].to_i,
+          single_channel_guest_count: data['single_channel_guest_count'].to_i,
           fetched_at: data['fetched_at']&.to_i
         )
       end
+
+      # rubocop:enable Metrics/AbcSize
 
       # Newest first; accounts with no usable timestamp sort to the bottom
       # rather than pretending to be from 1970.
