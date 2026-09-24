@@ -13,7 +13,10 @@ class DeactivationsCommandTest < Minitest::Test
     days_ago = attrs.fetch(:days_ago, 1)
     {
       'id' => id, 'name' => name, 'deleted' => attrs.fetch(:deleted, false),
-      'is_bot' => attrs.fetch(:bot, false), 'updated' => (Time.now - (days_ago * 86_400)).to_i,
+      'is_bot' => attrs.fetch(:bot, false),
+      'is_restricted' => attrs.fetch(:restricted, false),
+      'is_ultra_restricted' => attrs.fetch(:ultra_restricted, false),
+      'updated' => (Time.now - (days_ago * 86_400)).to_i,
       'profile' => { 'real_name' => real_name, 'title' => attrs[:title], 'email' => "#{name}@example.com" }
     }
   end
@@ -50,7 +53,29 @@ class DeactivationsCommandTest < Minitest::Test
 
     assert_match(/Ann Archer.*Bob Barker/m, io_string)
     refute_includes io_string, 'Deploy Bot'
-    assert_includes io_string, 'test: 2 deactivated accounts (1 active members)'
+    assert_includes io_string, 'test: 2 deactivated accounts (1 active account)'
+    assert_includes io_string, '1 full member · 0 multi-channel guests · 0 single-channel guests'
+  end
+
+  def test_summary_breaks_down_full_members_and_guests
+    guests = [member('U4', name: 'multi', real_name: 'Multi Guest', restricted: true),
+              member('U5', name: 'single', real_name: 'Single Guest', ultra_restricted: true)]
+    @mock_client = Slk::TestHelpers::PagedUsersClient.new([roster + guests])
+
+    assert_equal 0, execute_with_args([])
+    assert_includes io_string, 'test: 2 deactivated accounts (3 active accounts)'
+    assert_includes io_string, '1 full member · 1 multi-channel guest · 1 single-channel guest'
+  end
+
+  def test_guest_breakdown_wraps_at_the_requested_width
+    guests = [member('U4', name: 'multi', real_name: 'Multi Guest', restricted: true),
+              member('U5', name: 'single', real_name: 'Single Guest', ultra_restricted: true)]
+    @mock_client = Slk::TestHelpers::PagedUsersClient.new([roster + guests])
+
+    assert_equal 0, execute_with_args(['--width', '50'])
+    assert(io_string.lines.all? { |line| line.chomp.length <= 50 })
+    assert_includes io_string, '1 multi-channel guest'
+    assert_includes io_string, '1 single-channel guest'
   end
 
   def test_bots_flag_includes_apps
@@ -153,6 +178,7 @@ class DeactivationsCommandTest < Minitest::Test
     Slk::Services::CacheStore.new(paths: temp_paths).set_meta(
       'test', Slk::Services::DeactivationScanner::CACHE_KEY,
       { 'fetched_at' => fetched_at, 'member_count' => 1, 'human_count' => 1, 'active_count' => 0,
+        'full_member_count' => 0, 'multi_channel_guest_count' => 0, 'single_channel_guest_count' => 0,
         'records' => [Slk::Models::Deactivation.from_api(roster.first).to_cache] }
     )
   end
@@ -163,11 +189,27 @@ class DeactivationsCommandTest < Minitest::Test
 
     assert_equal 'test', payload['workspace']
     assert_equal 1, payload['active_members']
+    assert_equal 1, payload['active_full_members']
+    assert_equal 0, payload['active_multi_channel_guests']
+    assert_equal 0, payload['active_single_channel_guests']
     assert_equal 2, payload['total_deactivated']
     ids = payload['deactivations'].map { |d| d['user_id'] }
     assert_equal %w[U1 U2], ids
     assert_equal 'Ann Archer', payload['deactivations'].first['real_name']
     refute payload['includes_bots']
+  end
+
+  def test_json_includes_guest_breakdown
+    guests = [member('U4', name: 'multi', real_name: 'Multi Guest', restricted: true),
+              member('U5', name: 'single', real_name: 'Single Guest', ultra_restricted: true)]
+    @mock_client = Slk::TestHelpers::PagedUsersClient.new([roster + guests])
+
+    assert_equal 0, execute_with_args(['--json'])
+    payload = JSON.parse(io_string)
+    assert_equal 3, payload['active_members']
+    assert_equal 1, payload['active_full_members']
+    assert_equal 1, payload['active_multi_channel_guests']
+    assert_equal 1, payload['active_single_channel_guests']
   end
 
   def test_invalid_since_is_a_usage_error

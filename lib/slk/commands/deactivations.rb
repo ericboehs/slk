@@ -309,6 +309,7 @@ module Slk
       def render(workspace, report, records)
         formatter = Formatters::DeactivationFormatter.new(output: output, width: @options[:width])
         formatter.summary(summary_line(workspace, report, records))
+        render_account_breakdown(formatter, report)
         render_body(formatter, workspace, records)
         footer = footer(report, records)
         return if footer.empty?
@@ -340,7 +341,36 @@ module Slk
 
       def summary_line(workspace, report, records)
         "#{workspace.name}: #{records.size} #{scope_phrase} " \
-          "(#{report.active_count} active members)"
+          "(#{count_label(report.active_count, 'active account')})"
+      end
+
+      # Keep each guest type visible without overflowing a narrow terminal.
+      # rubocop:disable Metrics/MethodLength
+      def render_account_breakdown(formatter, report)
+        line = '  '
+        account_parts(report).each do |part|
+          combined = line == '  ' ? "#{line}#{part}" : "#{line} · #{part}"
+          if @options[:width] && combined.length > @options[:width] && line != '  '
+            formatter.note(line)
+            line = "  #{part}"
+          else
+            line = combined
+          end
+        end
+        formatter.note(line)
+      end
+      # rubocop:enable Metrics/MethodLength
+
+      def account_parts(report)
+        [
+          count_label(report.full_member_count, 'full member'),
+          count_label(report.multi_channel_guest_count, 'multi-channel guest'),
+          count_label(report.single_channel_guest_count, 'single-channel guest')
+        ]
+      end
+
+      def count_label(count, singular)
+        "#{count} #{singular}#{'s' unless count == 1}"
       end
 
       def scope_phrase
@@ -390,12 +420,21 @@ module Slk
         {
           workspace: workspace.name,
           fetched_at: report.fetched_at,
-          active_members: report.active_count,
+          **active_counts_json(report),
           accounts_ever: report.human_count,
           total_deactivated: total_deactivated(report),
           includes_bots: @options[:bots] ? true : false,
           matched: records.size,
           deactivations: records.map { |r| json_entry(r, tenures) }
+        }
+      end
+
+      def active_counts_json(report)
+        {
+          active_members: report.active_count,
+          active_full_members: report.full_member_count,
+          active_multi_channel_guests: report.multi_channel_guest_count,
+          active_single_channel_guests: report.single_channel_guest_count
         }
       end
 

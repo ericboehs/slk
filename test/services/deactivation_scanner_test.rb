@@ -9,9 +9,12 @@ class DeactivationScannerTest < Minitest::Test
     Slk::Api::Users.new(client, mock_workspace('test'))
   end
 
-  def member(id, name:, deleted: false, updated: 1_700_000_000, bot: false)
+  def member(id, name:, **attrs)
     {
-      'id' => id, 'name' => name, 'deleted' => deleted, 'updated' => updated, 'is_bot' => bot,
+      'id' => id, 'name' => name, 'deleted' => attrs.fetch(:deleted, false),
+      'updated' => attrs.fetch(:updated, 1_700_000_000), 'is_bot' => attrs.fetch(:bot, false),
+      'is_restricted' => attrs.fetch(:restricted, false),
+      'is_ultra_restricted' => attrs.fetch(:ultra_restricted, false),
       'profile' => { 'real_name' => name.capitalize, 'title' => 'Engineer' }
     }
   end
@@ -48,8 +51,29 @@ class DeactivationScannerTest < Minitest::Test
     assert_equal 5, report.member_count
     assert_equal 4, report.human_count
     assert_equal 2, report.active_count
+    assert_equal 2, report.full_member_count
+    assert_equal 0, report.multi_channel_guest_count
+    assert_equal 0, report.single_channel_guest_count
     assert_equal 3, report.deactivated_count
     assert_equal 1, report.bots
+  end
+
+  def test_scan_breaks_down_active_accounts_by_guest_type
+    pages = [[member('U1', name: 'full'),
+              member('U2', name: 'multi', restricted: true),
+              member('U3', name: 'single', restricted: true, ultra_restricted: true),
+              member('U4', name: 'single2', ultra_restricted: true),
+              member('U5', name: 'departed', deleted: true, restricted: true),
+              member('B1', name: 'bot', bot: true, restricted: true)]]
+    api = Slk::TestHelpers::PagedUsersClient.new(pages)
+    scanner(api, cache_store: cache_store).scan
+    report = scanner(api, cache_store: cache_store).scan
+
+    assert_equal 1, api.calls.size, 'expected the breakdown to survive the cache round-trip'
+    assert_equal 4, report.active_count
+    assert_equal 1, report.full_member_count
+    assert_equal 1, report.multi_channel_guest_count
+    assert_equal 2, report.single_channel_guest_count
   end
 
   def test_records_without_timestamps_sort_last
@@ -94,7 +118,7 @@ class DeactivationScannerTest < Minitest::Test
   end
 
   # Reading a truncated entry field by field would produce a confident "0
-  # active members, 0 departures" rather than an admission that the cache is
+  # active accounts, 0 departures" rather than an admission that the cache is
   # unusable, so anything missing a required key is refetched.
   def test_malformed_cache_entry_is_refetched_not_coerced_to_zero
     cache_store.set_meta('test', Slk::Services::DeactivationScanner::CACHE_KEY, { 'records' => [] })
@@ -106,10 +130,23 @@ class DeactivationScannerTest < Minitest::Test
     assert_equal 3, report.deactivated_count
   end
 
+  def test_cache_entry_missing_guest_counts_is_refetched
+    cache_store.set_meta('test', Slk::Services::DeactivationScanner::CACHE_KEY,
+                         { 'fetched_at' => 1, 'member_count' => 1, 'human_count' => 1,
+                           'active_count' => 1, 'records' => [] })
+    api = Slk::TestHelpers::PagedUsersClient.new(roster)
+    report = scanner(api, cache_store: cache_store).scan
+
+    assert_equal 2, api.calls.size
+    assert_equal 2, report.full_member_count
+  end
+
   def test_cache_entry_with_a_non_array_records_field_is_refetched
     cache_store.set_meta('test', Slk::Services::DeactivationScanner::CACHE_KEY,
                          { 'fetched_at' => 1, 'member_count' => 1, 'human_count' => 1,
-                           'active_count' => 1, 'records' => 'nope' })
+                           'active_count' => 1, 'full_member_count' => 1,
+                           'multi_channel_guest_count' => 0, 'single_channel_guest_count' => 0,
+                           'records' => 'nope' })
     api = Slk::TestHelpers::PagedUsersClient.new(roster)
     scanner(api, cache_store: cache_store).scan
 
