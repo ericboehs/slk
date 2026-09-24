@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-09-24
+
 ### Changed
 
 - `slk deactivations` now breaks the active-account total into full members, multi-channel guests, and single-channel guests, excluding bots and deactivated accounts. The summary labels the total as Slack accounts rather than company members, and `--json` adds the same breakdown while retaining `active_members`. An older roster cache is re-fetched so the new counts cannot appear as zeros.
