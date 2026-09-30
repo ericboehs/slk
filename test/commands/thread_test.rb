@@ -128,7 +128,7 @@ class ThreadCommandTest < Minitest::Test
     result = command.execute
 
     assert_equal 0, result
-    assert_includes @io.string, 'slk thread <url>'
+    assert_includes @io.string, 'slk thread [subscribe|unsubscribe] <url>'
     assert_includes @io.string, 'View a message thread'
   end
 
@@ -171,7 +171,133 @@ class ThreadCommandTest < Minitest::Test
     assert options[:no_names]
   end
 
+  def test_subscribe_follows_thread_without_posting
+    stub_parent_lookup
+
+    command = build_command(['subscribe', 'https://test.slack.com/archives/C123/p1234000001000000'])
+    stub_target_resolver(command, msg_ts: '1234.0001')
+
+    result = command.execute
+
+    assert_equal 0, result
+    assert_equal({ channel: 'C123', thread_ts: '1234.0001', last_read: '1234.0003' },
+                 call_for('subscriptions.thread.add')[:params])
+    refute(@mock_client.calls.any? { |c| c[:method] == 'chat.postMessage' })
+    assert_includes @io.string, 'Subscribed to thread 1234.0001 in C123'
+  end
+
+  def test_subscribe_uses_thread_ts_from_reply_url
+    stub_parent_lookup
+
+    command = build_command(['subscribe',
+                             'https://test.slack.com/archives/C123/p1234000002000000?thread_ts=1234.0001'])
+    stub_target_resolver(command, msg_ts: '1234.0002', thread_ts: '1234.0001')
+
+    command.execute
+
+    assert_equal '1234.0001', call_for('conversations.replies')[:params][:ts]
+    assert_equal '1234.0001', call_for('subscriptions.thread.add')[:params][:thread_ts]
+  end
+
+  def test_unsubscribe_unfollows_thread
+    stub_parent_lookup
+
+    command = build_command(['unsubscribe', 'https://test.slack.com/archives/C123/p1234000001000000'])
+    stub_target_resolver(command, msg_ts: '1234.0001')
+
+    result = command.execute
+
+    assert_equal 0, result
+    assert_equal '1234.0001', call_for('subscriptions.thread.remove')[:params][:thread_ts]
+    assert_includes @io.string, 'Unsubscribed from thread 1234.0001'
+  end
+
+  def test_subscribe_json_output
+    stub_parent_lookup
+
+    command = build_command(['subscribe', 'https://test.slack.com/archives/C123/p1234000001000000', '--json'])
+    stub_target_resolver(command, msg_ts: '1234.0001')
+
+    command.execute
+
+    assert_equal({ 'subscribed' => true, 'workspace' => 'test', 'channel_id' => 'C123',
+                   'thread_ts' => '1234.0001', 'last_read' => '1234.0003' }, JSON.parse(@io.string))
+  end
+
+  def test_subscribe_quiet_suppresses_confirmation
+    stub_parent_lookup
+
+    command = build_command(['subscribe', 'https://test.slack.com/archives/C123/p1234000001000000', '-q'])
+    stub_target_resolver(command, msg_ts: '1234.0001')
+
+    assert_equal 0, command.execute
+    assert_empty @io.string
+  end
+
+  def test_subscribe_without_url_shows_usage
+    result = build_command(['subscribe']).execute
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Usage: slk thread subscribe <url>'
+  end
+
+  def test_subscribe_requires_message_url
+    result = build_command(['subscribe', '#general']).execute
+
+    assert_equal 1, result
+    assert_includes @err.string, 'thread command requires a Slack message URL'
+    assert_nil call_for('subscriptions.thread.add')
+  end
+
+  def test_subscribe_api_error_hints_at_session_token
+    stub_parent_lookup
+    @mock_client.stub('subscriptions.thread.add',
+                      Slk::ApiError.new('not_allowed_token_type', code: :not_allowed_token_type))
+
+    command = build_command(['subscribe', 'https://test.slack.com/archives/C123/p1234000001000000'])
+    stub_target_resolver(command, msg_ts: '1234.0001')
+
+    result = command.execute
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Failed to subscribe to thread: not_allowed_token_type'
+    assert_includes @err.string, 'session (xoxc) token'
+  end
+
+  def test_unsubscribe_api_error_without_token_hint
+    stub_parent_lookup
+    @mock_client.stub('subscriptions.thread.remove', Slk::ApiError.new('channel_not_found', code: :channel_not_found))
+
+    command = build_command(['unsubscribe', 'https://test.slack.com/archives/C123/p1234000001000000'])
+    stub_target_resolver(command, msg_ts: '1234.0001')
+
+    result = command.execute
+
+    assert_equal 1, result
+    assert_includes @err.string, 'Failed to unsubscribe from thread: channel_not_found'
+    refute_includes @err.string, 'xoxc'
+  end
+
+  def test_help_lists_subscription_actions
+    build_command(['--help']).execute
+
+    assert_includes @io.string, 'subscribe <url>'
+    assert_includes @io.string, 'unsubscribe <url>'
+  end
+
   private
+
+  def stub_parent_lookup
+    @mock_client.stub('conversations.replies', {
+                        'ok' => true,
+                        'messages' => [{ 'ts' => '1234.0001', 'thread_ts' => '1234.0001',
+                                         'latest_reply' => '1234.0003', 'text' => 'Parent' }]
+                      })
+  end
+
+  def call_for(method)
+    @mock_client.calls.find { |c| c[:method] == method }
+  end
 
   def stub_replies_response
     @mock_client.stub('conversations.replies', {

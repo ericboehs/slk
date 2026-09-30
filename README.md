@@ -149,6 +149,16 @@ slk messages general -n 50      # Show 50 messages
 slk messages general --json     # Output as JSON
 ```
 
+### Threads
+
+```bash
+slk thread <url>                # View a thread
+slk thread subscribe <url>      # Follow a thread without replying
+slk thread unsubscribe <url>    # Stop following it
+```
+
+Subscribing treats existing replies as read, so only new replies show up under Threads in `slk unread` (and in Slack's own Threads view). Requires a session (`xoxc`) token.
+
 ### Activity
 
 ```bash

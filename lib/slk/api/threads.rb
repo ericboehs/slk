@@ -28,6 +28,30 @@ module Slk
                        })
       end
 
+      # Subscribe to (follow) a thread so new replies land in the Threads view
+      # Requires a session (xoxc) token; this is an undocumented client endpoint.
+      # @param channel [String] Channel ID
+      # @param thread_ts [String] Thread parent timestamp
+      # @param last_read [String] Latest reply timestamp to treat as already read
+      def subscribe(channel:, thread_ts:, last_read:)
+        @api.post_form(@workspace, 'subscriptions.thread.add', subscription_params(channel, thread_ts, last_read))
+      end
+
+      # Unsubscribe from (unfollow) a thread
+      # @param channel [String] Channel ID
+      # @param thread_ts [String] Thread parent timestamp
+      # @param last_read [String] Latest reply timestamp to treat as already read
+      def unsubscribe(channel:, thread_ts:, last_read:)
+        @api.post_form(@workspace, 'subscriptions.thread.remove', subscription_params(channel, thread_ts, last_read))
+      end
+
+      # Check whether you are subscribed to a thread
+      # @param channel [String] Channel ID
+      # @param thread_ts [String] Thread parent timestamp
+      def get(channel:, thread_ts:)
+        @api.post_form(@workspace, 'subscriptions.thread.get', { channel: channel, thread_ts: thread_ts })
+      end
+
       # Get unread thread count
       # @return [Integer] Number of unread thread replies
       def unread_count
@@ -39,6 +63,12 @@ module Slk
       # @return [Boolean]
       def unreads?
         unread_count.positive?
+      end
+
+      private
+
+      def subscription_params(channel, thread_ts, last_read)
+        { channel: channel, thread_ts: thread_ts, last_read: last_read }
       end
     end
   end

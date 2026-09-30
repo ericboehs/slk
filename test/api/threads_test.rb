@@ -37,6 +37,30 @@ class ThreadsApiTest < Minitest::Test
     assert_equal '2.0', call[:params][:ts]
   end
 
+  def test_subscribe_calls_thread_add
+    @api.subscribe(channel: 'C1', thread_ts: '1.0', last_read: '3.0')
+
+    call = @mock_client.calls.last
+    assert_equal 'subscriptions.thread.add', call[:method]
+    assert_equal({ channel: 'C1', thread_ts: '1.0', last_read: '3.0' }, call[:params])
+  end
+
+  def test_unsubscribe_calls_thread_remove
+    @api.unsubscribe(channel: 'C1', thread_ts: '1.0', last_read: '3.0')
+
+    call = @mock_client.calls.last
+    assert_equal 'subscriptions.thread.remove', call[:method]
+    assert_equal({ channel: 'C1', thread_ts: '1.0', last_read: '3.0' }, call[:params])
+  end
+
+  def test_get_calls_thread_get
+    @api.get(channel: 'C1', thread_ts: '1.0')
+
+    call = @mock_client.calls.last
+    assert_equal 'subscriptions.thread.get', call[:method]
+    assert_equal({ channel: 'C1', thread_ts: '1.0' }, call[:params])
+  end
+
   def test_unread_count_returns_count
     @mock_client.stub('subscriptions.thread.getView',
                       { 'ok' => true, 'total_unread_replies' => 7 })

@@ -117,6 +117,7 @@ module Slk
     autoload :SentConversations, 'slk/services/sent_conversations'
     autoload :SentChanges, 'slk/services/sent_changes'
     autoload :SentChannelLabel, 'slk/services/sent_channel_label'
+    autoload :ThreadSubscription, 'slk/services/thread_subscription'
   end
 
   # Output formatters for messages, durations, and emoji

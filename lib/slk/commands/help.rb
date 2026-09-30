@@ -11,6 +11,7 @@ module Slk
         ['presence', 'Get or set your presence (away/active)'],
         ['dnd', 'Manage Do Not Disturb'],
         ['messages', 'Read channel or DM messages'],
+        ['thread', 'View a thread, or subscribe to it without replying'],
         ['search', 'Search messages across channels'],
         ['sent', 'Show your sent messages across workspaces'],
         ['unread', 'View and clear unread messages'],

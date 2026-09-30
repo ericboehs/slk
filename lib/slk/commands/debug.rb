@@ -7,6 +7,7 @@ module Slk
     # and field shapes before building higher-level features.
     #
     # Not registered in `slk help`.
+    # rubocop:disable Metrics/ClassLength
     class Debug < Base
       def execute
         result = validate_options
@@ -24,6 +25,7 @@ module Slk
         in ['profile'] then dump_profile(nil)
         in ['team'] then dump_team
         in ['schema'] then dump_schema
+        in ['thread', url] then dump_thread(url)
         else unknown_action
         end
       end
@@ -55,6 +57,40 @@ module Slk
         0
       end
 
+      # Raw shapes behind thread subscriptions: the parent message (does it
+      # carry `subscribed`/`last_read`?) and subscriptions.thread.get. Each call
+      # is captured separately so one failing does not hide the other.
+      def dump_thread(url)
+        resolved = resolve_thread(url)
+        ts = resolved.thread_ts || resolved.msg_ts
+        raise UsageError, 'URL must point to a specific message' unless ts
+
+        output.puts(JSON.pretty_generate(thread_calls(resolved.workspace.name, resolved.channel_id, ts)))
+        0
+      end
+
+      def resolve_thread(url)
+        Services::TargetResolver.new(runner: runner, cache_store: cache_store)
+                                .resolve(url, default_workspace: runner.workspace(@options[:workspace]))
+      end
+
+      def thread_calls(workspace_name, channel, thread_ts)
+        {
+          'conversations.replies' => capture do
+            runner.conversations_api(workspace_name).replies(channel: channel, timestamp: thread_ts, limit: 1)
+          end,
+          'subscriptions.thread.get' => capture do
+            runner.threads_api(workspace_name).get(channel: channel, thread_ts: thread_ts)
+          end
+        }
+      end
+
+      def capture
+        yield
+      rescue ApiError => e
+        { 'ok' => false, 'error' => e.message }
+      end
+
       def resolve_user_id(workspace, user_input)
         return self_user_id(workspace) if user_input.nil? || user_input == 'me'
         return user_input if user_input.match?(/\A[UW][A-Z0-9]+\z/)
@@ -82,7 +118,7 @@ module Slk
 
       def unknown_action
         error("Unknown debug action: #{positional_args.first.inspect}")
-        error('Valid actions: profile [user], team, schema')
+        error('Valid actions: profile [user], team, schema, thread <url>')
         1
       end
 
@@ -98,6 +134,7 @@ module Slk
             profile [user]   Dump users.profile.get + users.info + team.profile.get
             team             Dump team.info
             schema           Dump team.profile.get
+            thread <url>     Dump thread parent + subscriptions.thread.get
 
           USER
             (none) | me      Self
@@ -106,5 +143,6 @@ module Slk
         HELP
       end
     end
+    # rubocop:enable Metrics/ClassLength
   end
 end

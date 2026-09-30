@@ -101,4 +101,29 @@ class DebugCommandTest < Minitest::Test
     assert_equal 1, execute_with_args(['team'])
     assert_includes err_string, 'API error'
   end
+
+  def test_dump_thread_shows_parent_and_subscription
+    @mock_client.stub('conversations.replies',
+                      { 'ok' => true, 'messages' => [{ 'ts' => '1.0', 'subscribed' => true }] })
+    @mock_client.stub('subscriptions.thread.get', { 'ok' => true, 'subscriptions' => ['1.0'] })
+
+    assert_equal 0, execute_with_args(['thread', 'https://test.slack.com/archives/C123/p1000000000000000'])
+
+    parsed = JSON.parse(io_string)
+    assert parsed.dig('conversations.replies', 'messages', 0, 'subscribed')
+    assert_equal ['1.0'], parsed.dig('subscriptions.thread.get', 'subscriptions')
+    get_call = @mock_client.calls.find { |c| c[:method] == 'subscriptions.thread.get' }
+    assert_equal({ channel: 'C123', thread_ts: '1000000000.000000' }, get_call[:params])
+  end
+
+  def test_dump_thread_captures_a_failing_call
+    @mock_client.stub('conversations.replies', { 'ok' => true, 'messages' => [{ 'ts' => '1.0' }] })
+    @mock_client.stub('subscriptions.thread.get', Slk::ApiError.new('unknown_method'))
+
+    assert_equal 0, execute_with_args(['thread', 'https://test.slack.com/archives/C123/p1000000000000000'])
+
+    parsed = JSON.parse(io_string)
+    assert_equal 'unknown_method', parsed.dig('subscriptions.thread.get', 'error')
+    assert_equal '1.0', parsed.dig('conversations.replies', 'messages', 0, 'ts')
+  end
 end
