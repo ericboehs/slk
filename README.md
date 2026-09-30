@@ -354,10 +354,30 @@ rake test
 ### Releasing
 
 1. Update version in `lib/slk/version.rb`
-2. Update `CHANGELOG.md` (move Unreleased to new version, add date)
-3. Commit: `git commit -am "Release vX.Y.Z"`
-4. Release to RubyGems: `rake release`
-5. Create GitHub Release: `gh release create vX.Y.Z --generate-notes`
+2. Update `CHANGELOG.md`: add a `## [X.Y.Z] - YYYY-MM-DD` heading under `## [Unreleased]` so the pending entries move into the release
+3. Run `bundle install` so `Gemfile.lock` picks up the new version
+4. Verify: `bundle exec rake test && bundle exec rubocop`
+5. Commit version, changelog, and lockfile together, then push and wait for CI:
+   ```bash
+   git commit -am "chore(release): prepare vX.Y.Z"
+   git push origin master
+   gh run watch --exit-status
+   ```
+6. Build, tag, and push the tag:
+   ```bash
+   bundle exec rake build
+   git tag -a vX.Y.Z -m "Version X.Y.Z"
+   git push origin vX.Y.Z
+   ```
+7. Publish to RubyGems. `fnox exec` supplies `GEM_HOST_API_KEY` from `fnox.toml` (a stale key in `~/.gem/credentials` gets "Access Denied"); MFA is required, and `GEM_HOST_OTP_CODE` skips the prompt:
+   ```bash
+   fnox exec -- sh -c 'GEM_HOST_OTP_CODE="$(op item get Rubygems --otp)" gem push pkg/slk-X.Y.Z.gem'
+   ```
+8. Create the GitHub Release with the changelog entry as notes:
+   ```bash
+   awk '/^## \[X.Y.Z\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md | sed '/./,$!d' > /tmp/notes.md
+   gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes.md
+   ```
 
 ## License
 
