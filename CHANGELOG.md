@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-30
+
 ### Added
 
 - `slk thread subscribe <url>` follows a thread without posting in it, and `slk thread unsubscribe <url>` stops following it. The URL can point at the parent or any reply. Existing replies are marked read, so only new replies surface under Threads in `slk unread` and Slack's Threads view. `--json` reports the channel, thread, and last-read timestamps. Requires a session (`xoxc`) token; other token types get a hint instead of a bare API error.
