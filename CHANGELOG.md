@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-06
+
 ### Fixed
 
 - `slk unread --json` now prints exactly one valid JSON document, with no workspace name lines mixed in. With one workspace (or `-w`), it prints `{"channels": [...], "dms": [...]}` alone. With several, it prints an object keyed by workspace name: `{"oddball": {...}, "dsva": {...}}`. This changes the output shape for multi-workspace callers.
