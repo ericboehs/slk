@@ -77,6 +77,18 @@ class CatchupCommandTest < Minitest::Test
     assert_includes io_string, 'Marked'
   end
 
+  def test_batch_workspace_flag_limits_to_that_workspace
+    first = @workspace
+    second = mock_workspace('other')
+    by_name = { 'test' => first, 'other' => second }
+    runner.define_singleton_method(:workspace) { |name = nil| by_name.fetch(name || 'test') }
+    runner.define_singleton_method(:all_workspaces) { [first, second] }
+
+    assert_equal 0, execute_with_args(['--batch', '-w', 'other'])
+    assert_includes io_string, 'on other'
+    refute_includes io_string, 'on test'
+  end
+
   def test_batch_with_muted_option
     assert_equal 0, execute_with_args(['--batch', '--muted'])
     assert_includes io_string, 'Marked'
