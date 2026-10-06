@@ -91,7 +91,7 @@ class UnreadCommandTest < Minitest::Test
   def test_json_output
     stub_unread_channel
     assert_equal 0, execute_with_args(['--json'])
-    parsed = JSON.parse(extract_json(io_string))
+    parsed = JSON.parse(io_string)
     assert parsed.key?('channels')
     assert parsed.key?('dms')
   end
@@ -99,12 +99,56 @@ class UnreadCommandTest < Minitest::Test
   def test_json_output_with_dm
     stub_unread_dm
     assert_equal 0, execute_with_args(['--json'])
-    parsed = JSON.parse(extract_json(io_string))
+    parsed = JSON.parse(io_string)
     assert_equal 1, parsed['dms'].length
   end
 
-  def extract_json(str)
-    str[str.index('{')..]
+  # Two workspaces; runner.workspace(name) returns the named one.
+  def use_two_workspaces
+    first = @workspace
+    second = mock_workspace('other')
+    by_name = { 'test' => first, 'other' => second }
+    runner.define_singleton_method(:workspace) { |name = nil| by_name.fetch(name || 'test') }
+    runner.define_singleton_method(:all_workspaces) { [first, second] }
+  end
+
+  def test_json_single_workspace_is_one_bare_document
+    stub_unread_channel
+    assert_equal 0, execute_with_args(['--json'])
+    parsed = JSON.parse(io_string)
+    assert_equal %w[channels dms], parsed.keys.sort
+    refute_includes io_string, 'test'
+  end
+
+  def test_json_multiple_workspaces_keyed_by_name
+    use_two_workspaces
+    assert_equal 0, execute_with_args(['--json'])
+    parsed = JSON.parse(io_string)
+    assert_equal %w[other test], parsed.keys.sort
+    assert_equal %w[channels dms], parsed['test'].keys.sort
+    assert_equal %w[channels dms], parsed['other'].keys.sort
+  end
+
+  def test_json_with_workspace_flag_prints_only_that_workspace
+    use_two_workspaces
+    assert_equal 0, execute_with_args(['--json', '-w', 'other'])
+    parsed = JSON.parse(io_string)
+    assert_equal %w[channels dms], parsed.keys.sort
+  end
+
+  def test_text_headers_only_with_multiple_workspaces
+    assert_equal 0, execute_with_args([])
+    refute_match(/^test$/, io_string)
+
+    use_two_workspaces
+    assert_equal 0, execute_with_args([])
+    assert_match(/^other$/, io_string)
+  end
+
+  def test_workspace_flag_limits_text_output
+    use_two_workspaces
+    assert_equal 0, execute_with_args(['-w', 'other'])
+    refute_match(/^(test|other)$/, io_string)
   end
 
   def test_limit_option
@@ -195,7 +239,7 @@ class UnreadCommandTest < Minitest::Test
                                     'user' => 'U2' }]
                       })
     assert_equal 0, execute_with_args(['--json'])
-    parsed = JSON.parse(extract_json(io_string))
+    parsed = JSON.parse(io_string)
     assert_equal 'Ashley', parsed['dms'].first['user_name']
     assert_equal 'general', parsed['channels'].first['name']
   end

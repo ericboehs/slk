@@ -95,19 +95,35 @@ module Slk
 
       private
 
+      # Unread defaults to every workspace, but -w names one: let it win, or
+      # `slk unread -w oddball` quietly reports on all of them.
+      def target_workspaces
+        return [runner.workspace(@options[:workspace])] if @options[:workspace]
+
+        super
+      end
+
       def show_unread
-        target_workspaces.each do |workspace|
-          puts output.bold(workspace.name) if @options[:all] || target_workspaces.size > 1
+        return show_unread_json if @options[:json]
 
-          unread_data = fetch_unread_data(workspace)
-
-          if @options[:json]
-            output_unread_json(workspace, unread_data)
-          else
-            display_unread(workspace, unread_data)
-          end
+        workspaces = target_workspaces
+        workspaces.each do |workspace|
+          puts output.bold(workspace.name) if workspaces.size > 1
+          display_unread(workspace, fetch_unread_data(workspace))
         end
 
+        0
+      end
+
+      # Exactly one JSON document: one workspace prints its {channels, dms}
+      # alone; several are keyed by workspace name. No name headers, so the
+      # output pipes straight into jq.
+      def show_unread_json
+        workspaces = target_workspaces
+        documents = workspaces.to_h do |workspace|
+          [workspace.name, unread_json(workspace, fetch_unread_data(workspace))]
+        end
+        output_json(workspaces.size == 1 ? documents.values.first : documents)
         0
       end
 
@@ -135,11 +151,11 @@ module Slk
           .reject { |c| muted_ids.include?(c['id']) }
       end
 
-      def output_unread_json(workspace, data)
-        output_json({
-                      channels: data[:unread_channels].map { |c| format_channel_json(workspace, c) },
-                      dms: data[:unread_ims].map { |i| format_dm_json(workspace, i) }
-                    })
+      def unread_json(workspace, data)
+        {
+          channels: data[:unread_channels].map { |c| format_channel_json(workspace, c) },
+          dms: data[:unread_ims].map { |i| format_dm_json(workspace, i) }
+        }
       end
 
       def format_channel_json(workspace, channel)

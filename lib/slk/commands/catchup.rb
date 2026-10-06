@@ -90,6 +90,14 @@ module Slk
 
       private
 
+      # Catchup defaults to every workspace, but -w names one: let it win, or
+      # `slk catchup -w oddball` quietly walks (or batch-clears) all of them.
+      def target_workspaces
+        return [runner.workspace(@options[:workspace])] if @options[:workspace]
+
+        super
+      end
+
       def batch_catchup
         target_workspaces.each { |ws| batch_mark_workspace(ws) }
         0
