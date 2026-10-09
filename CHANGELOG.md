@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-09
+
 ### Added
 
 - `slk huddles` lists active huddles. Slack has no huddle list, so it reads `huddle_state` from `users.list` and groups people who share a `huddle_state_call_id`. Channel names are filled in when Slack sends a channel id. Primary workspace by default; `--all` scans every workspace at the same time, each on its own connection, and drops people who are not in a huddle as each page arrives. `--json` prints the call id, channel, and participants.
