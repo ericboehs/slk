@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-09
+
 ### Added
 
 - `slk later` now lists each saved message's files (`[File: name]`) and attachment images (`[Image: name]`), and prints an "N files not downloaded" hint like `slk messages`. Pass `--fetch-attachments` to download them to `~/.cache/slk/files/` and show the local paths. With `--json`, it also adds a `file_paths` map (file ID to local path).
