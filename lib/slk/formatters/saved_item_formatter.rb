@@ -3,6 +3,7 @@
 module Slk
   module Formatters
     # Formats saved/later items for terminal display
+    # rubocop:disable Metrics/ClassLength
     class SavedItemFormatter
       def initialize(output:, mention_replacer:, text_processor:, on_debug: nil)
         @output = output
@@ -13,7 +14,9 @@ module Slk
 
       # Display a single saved item
       # @param truncate [Boolean] if true, truncate to single line at width instead of wrapping
-      def display_item(item, workspace, message: nil, width: nil, truncate: false)
+      # @param file_paths [Hash] file_id / "att_<ts>_<idx>" => local path for downloaded attachments
+      # rubocop:disable Metrics/ParameterLists
+      def display_item(item, workspace, message: nil, width: nil, truncate: false, file_paths: {})
         status_badge = format_status_badge(item)
         due_info = format_due_info(item)
 
@@ -22,9 +25,13 @@ module Slk
         @output.puts header_parts.join(' | ') unless header_parts.empty?
 
         # Message content
-        display_message(message, workspace, width: width, truncate: truncate) if message
+        if message
+          display_message(message, workspace, width: width, truncate: truncate)
+          display_attachments(message, file_paths || {})
+        end
         @output.puts # blank line between items
       end
+      # rubocop:enable Metrics/ParameterLists
 
       private
 
@@ -113,6 +120,34 @@ module Slk
         lines[1..].each { |line| @output.puts "  #{line.rstrip}" } if lines.length > 1
       end
 
+      def display_attachments(message, file_paths)
+        display_files(message['files'] || [], file_paths)
+        display_attachment_images(message['attachments'] || [], message['ts'], file_paths)
+      end
+
+      def display_files(files, file_paths)
+        files.each do |file|
+          label = file_paths[file['id']] || file['name'] || file['title'] || 'file'
+          @output.puts "  #{@output.blue("[File: #{label}]")}"
+        end
+      end
+
+      def display_attachment_images(attachments, message_ts, file_paths)
+        attachments.each_with_index do |att, idx|
+          url = att['image_url'] || att['thumb_url']
+          next unless url
+
+          label = file_paths["att_#{message_ts}_#{idx}"] || att['title'] || image_filename(url)
+          @output.puts "  #{@output.blue("[Image: #{label}]")}"
+        end
+      end
+
+      def image_filename(url)
+        File.basename(URI.parse(url).path)
+      rescue URI::InvalidURIError
+        'image'
+      end
+
       def resolve_message_author(message, workspace)
         if message['user']
           @mentions.lookup_user_name(workspace, message['user']) || message['user']
@@ -140,5 +175,6 @@ module Slk
         text.length > max_length ? "#{text[0...max_length]}..." : text
       end
     end
+    # rubocop:enable Metrics/ClassLength
   end
 end

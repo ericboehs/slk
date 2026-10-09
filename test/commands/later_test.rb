@@ -403,6 +403,146 @@ class LaterCommandTest < Minitest::Test
     assert output[0].key?('message')
   end
 
+  def stub_item_with_file
+    @saved_api.expect_list({
+                             'ok' => true,
+                             'saved_items' => [
+                               { 'item_id' => 'C123', 'item_type' => 'message',
+                                 'ts' => '1234567890.123456', 'state' => 'saved' }
+                             ]
+                           })
+    @conversations_api.stub_history('C123', {
+                                      'ok' => true,
+                                      'messages' => [{ 'ts' => '1234567890.123456', 'text' => 'Hi', 'user' => 'U1',
+                                                       'files' => [{ 'id' => 'F1', 'name' => 'a.pdf' }] }]
+                                    })
+  end
+
+  def fake_downloader(paths, calls)
+    dl = Object.new
+    dl.define_singleton_method(:download_message_files) do |messages, _workspace|
+      calls << messages
+      paths
+    end
+    dl
+  end
+
+  def test_shows_files_and_summary_without_fetch_attachments
+    stub_item_with_file
+    Slk::Commands::Later.new([], runner: build_runner_with_cache).execute
+
+    assert_includes @io.string, '[File: a.pdf]'
+    assert_includes @io.string, '1 file not downloaded. Use --fetch-attachments to download.'
+  end
+
+  def test_fetch_attachments_downloads_and_shows_local_path
+    stub_item_with_file
+    calls = []
+    Slk::Services::FileDownloader.stub(:new, fake_downloader({ 'F1' => '/cache/F1_a.pdf' }, calls)) do
+      assert_equal 0, Slk::Commands::Later.new(['--fetch-attachments'], runner: build_runner_with_cache).execute
+    end
+
+    assert_equal 1, calls.size
+    assert_equal 'F1', calls.first.first.files.first['id']
+    assert_includes @io.string, '[File: /cache/F1_a.pdf]'
+    refute_includes @io.string, 'not downloaded'
+  end
+
+  def test_fetch_attachments_json_includes_file_paths
+    stub_item_with_file
+    Slk::Services::FileDownloader.stub(:new, fake_downloader({ 'F1' => '/cache/F1_a.pdf' }, [])) do
+      Slk::Commands::Later.new(['--json', '--fetch-attachments'], runner: build_runner_with_cache).execute
+    end
+
+    output = JSON.parse(@io.string)
+    assert_equal({ 'F1' => '/cache/F1_a.pdf' }, output[0]['file_paths'])
+  end
+
+  def stub_previews(command, previews)
+    command.define_singleton_method(:image_previews_supported?) { true }
+    command.define_singleton_method(:print_image_preview) do |path, indent: 2|
+      previews << [path, indent]
+      true
+    end
+  end
+
+  def test_fetch_attachments_previews_downloaded_images_under_their_line
+    stub_item_with_file
+    previews = []
+    command = Slk::Commands::Later.new(['--fetch-attachments'], runner: build_runner_with_cache)
+    stub_previews(command, previews)
+    Slk::Services::FileDownloader.stub(:new, fake_downloader({ 'F1' => '/cache/F1_a.png' }, [])) do
+      assert_equal 0, command.execute
+    end
+
+    assert_equal [['/cache/F1_a.png', 2]], previews
+    assert_includes @io.string, '[File: /cache/F1_a.png]'
+  end
+
+  def test_fetch_attachments_skips_preview_for_non_images
+    stub_item_with_file
+    previews = []
+    command = Slk::Commands::Later.new(['--fetch-attachments'], runner: build_runner_with_cache)
+    stub_previews(command, previews)
+    Slk::Services::FileDownloader.stub(:new, fake_downloader({ 'F1' => '/cache/F1_a.pdf' }, [])) do
+      command.execute
+    end
+
+    assert_empty previews
+    assert_includes @io.string, '[File: /cache/F1_a.pdf]'
+  end
+
+  def test_no_previews_without_fetch_attachments
+    stub_item_with_file
+    previews = []
+    command = Slk::Commands::Later.new([], runner: build_runner_with_cache)
+    stub_previews(command, previews)
+    command.execute
+
+    assert_empty previews
+  end
+
+  def test_no_previews_in_markdown_mode
+    stub_item_with_file
+    previews = []
+    command = Slk::Commands::Later.new(['--fetch-attachments', '--markdown'], runner: build_runner_with_cache)
+    stub_previews(command, previews)
+    Slk::Services::FileDownloader.stub(:new, fake_downloader({ 'F1' => '/cache/F1_a.png' }, [])) do
+      command.execute
+    end
+
+    assert_empty previews
+  end
+
+  def test_no_image_preview_downloads_but_skips_previews
+    stub_item_with_file
+    previews = []
+    calls = []
+    command = Slk::Commands::Later.new(%w[--fetch-attachments --no-image-preview], runner: build_runner_with_cache)
+    stub_previews(command, previews)
+    Slk::Services::FileDownloader.stub(:new, fake_downloader({ 'F1' => '/cache/F1_a.png' }, calls)) do
+      assert_equal 0, command.execute
+    end
+
+    assert_equal 1, calls.size
+    assert_empty previews
+    assert_includes @io.string, '[File: /cache/F1_a.png]'
+  end
+
+  def test_help_mentions_image_preview_controls
+    Slk::Commands::Later.new(['--help'], runner: build_runner).execute
+
+    assert_includes @io.string, '--no-image-preview'
+    assert_includes @io.string, 'SLK_IMAGE_PREVIEW=0'
+  end
+
+  def test_json_without_fetch_attachments_omits_file_paths
+    stub_item_with_file
+    Slk::Commands::Later.new(['--json'], runner: build_runner_with_cache).execute
+
+    refute JSON.parse(@io.string)[0].key?('file_paths')
+  end
+
   def test_create_buffer_output_markdown
     runner = build_runner
     command = Slk::Commands::Later.new(['--markdown'], runner: runner)

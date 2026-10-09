@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `slk later` now lists each saved message's files (`[File: name]`) and attachment images (`[Image: name]`), and prints an "N files not downloaded" hint like `slk messages`. Pass `--fetch-attachments` to download them to `~/.cache/slk/files/` and show the local paths. With `--json`, it also adds a `file_paths` map (file ID to local path).
+- With `--fetch-attachments`, `slk later` draws downloaded images inline under their `[File:]` line in Ghostty, Kitty, iTerm2 and WezTerm, including inside tmux. This uses [chafa](https://hpjansson.org/chafa/) when it's installed. In other terminals, without chafa, or when output is piped, only the local path is shown. Pass `--no-image-preview` or set `SLK_IMAGE_PREVIEW=0` to download without drawing images.
+
 ## [0.12.1] - 2026-10-06
 
 ### Fixed

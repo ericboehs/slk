@@ -233,6 +233,46 @@ class SavedItemFormatterTest < Minitest::Test
     assert_equal '', wrapped
   end
 
+  # Attachment display tests
+  def test_display_item_lists_files_by_name
+    message = { 'ts' => '1.0', 'user' => 'U1', 'text' => 'see attached',
+                'files' => [{ 'id' => 'F1', 'name' => 'report.pdf' }] }
+    @formatter.display_item(build_item, @workspace, message: message)
+
+    assert_includes @io.string, '[File: report.pdf]'
+  end
+
+  def test_display_item_uses_local_path_for_downloaded_file
+    message = { 'ts' => '1.0', 'user' => 'U1', 'text' => '',
+                'files' => [{ 'id' => 'F1', 'name' => 'report.pdf' }] }
+    @formatter.display_item(build_item, @workspace, message: message,
+                                                    file_paths: { 'F1' => '/tmp/F1_report.pdf' })
+
+    assert_includes @io.string, '[File: /tmp/F1_report.pdf]'
+  end
+
+  def test_display_item_lists_attachment_images
+    message = { 'ts' => '1.0', 'user' => 'U1', 'text' => 'link',
+                'attachments' => [{ 'image_url' => 'https://example.com/pic.png' }, { 'text' => 'no image' }] }
+    @formatter.display_item(build_item, @workspace, message: message)
+
+    assert_includes @io.string, '[Image: pic.png]'
+    assert_equal 1, @io.string.scan('[Image:').size
+  end
+
+  def test_display_item_uses_local_path_for_downloaded_attachment_image
+    message = { 'ts' => '1.0', 'user' => 'U1', 'text' => 'link',
+                'attachments' => [{ 'image_url' => 'https://example.com/pic.png' }] }
+    @formatter.display_item(build_item, @workspace, message: message,
+                                                    file_paths: { 'att_1.0_0' => '/tmp/att_1.0_0.png' })
+
+    assert_includes @io.string, '[Image: /tmp/att_1.0_0.png]'
+  end
+
+  def test_image_filename_handles_invalid_url
+    assert_equal 'image', @formatter.send(:image_filename, 'ht tp://bad url')
+  end
+
   private
 
   def build_item(overrides = {})

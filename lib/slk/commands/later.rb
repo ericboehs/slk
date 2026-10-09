@@ -9,6 +9,17 @@ module Slk
     # rubocop:disable Metrics/ClassLength
     class Later < Base
       include Support::InlineImages
+      include Support::AttachmentFetching
+      include Support::ImagePreview
+
+      BOOLEAN_FLAGS = {
+        '--completed' => :completed,
+        '--in-progress' => :in_progress,
+        '--counts' => :counts,
+        '--no-content' => :no_content,
+        '--no-image-preview' => :no_image_preview,
+        '--workspace-emoji' => :workspace_emoji
+      }.freeze
 
       def execute
         result = validate_options
@@ -86,6 +97,7 @@ module Slk
           unless @options[:no_content]
             message = fetch_message_content(workspace, item)
             json_item[:message] = message if message
+            add_json_file_paths(json_item, workspace, item, message)
           end
 
           json_item
@@ -93,7 +105,13 @@ module Slk
       end
       # rubocop:enable Metrics/MethodLength
 
-      # rubocop:disable Metrics/MethodLength
+      def add_json_file_paths(json_item, workspace, item, message)
+        return unless @options[:fetch_attachments]
+
+        paths = attachment_paths_for(workspace, item, message)
+        json_item[:file_paths] = paths unless paths.empty?
+      end
+
       def display_formatted(workspace, items)
         if items.empty?
           puts 'No saved items found.'
@@ -101,37 +119,93 @@ module Slk
         end
 
         @fetch_failures = 0
-        # Skip workspace emoji inline images in markdown mode (they're terminal escape sequences)
-        if @options[:workspace_emoji] && inline_images_supported? && !@options[:markdown]
-          display_with_workspace_emoji(workspace, items)
-        else
-          display_without_workspace_emoji(workspace, items)
-        end
+        @displayed_messages = []
+        display_each_item(workspace, items)
         show_fetch_failure_summary
+        print_file_summary(@displayed_messages) unless @options[:fetch_attachments]
       end
-      # rubocop:enable Metrics/MethodLength
 
-      def display_without_workspace_emoji(workspace, items)
-        formatter = build_formatter(output)
+      def display_each_item(workspace, items)
+        printer = buffered_display? ? method(:display_item_buffered) : method(:display_item_direct)
         items.each do |item|
           message = @options[:no_content] ? nil : fetch_message_content(workspace, item)
-          formatter.display_item(item, workspace, message: message, width: display_width, truncate: @options[:truncate])
+          printer.call(item, workspace, message, attachment_paths_for(workspace, item, message))
         end
       end
 
-      def display_with_workspace_emoji(workspace, items)
-        # Capture output to StringIO, then reprint with workspace emoji
+      def display_item_direct(item, workspace, message, file_paths)
+        @direct_formatter ||= build_formatter(output)
+        format_item(@direct_formatter, item, workspace, message, file_paths)
+      end
+
+      # Capture one item's output, then reprint it line by line so workspace
+      # emoji and downloaded images can be drawn inline as each item arrives.
+      def display_item_buffered(item, workspace, message, file_paths)
         buffer = StringIO.new
-        buffer_output = create_buffer_output(buffer)
-        formatter = build_formatter(buffer_output)
-
-        items.each do |item|
-          message = @options[:no_content] ? nil : fetch_message_content(workspace, item)
-          formatter.display_item(item, workspace, message: message, width: display_width, truncate: @options[:truncate])
+        format_item(build_formatter(create_buffer_output(buffer)), item, workspace, message, file_paths)
+        previews = preview_paths(file_paths)
+        buffer.string.each_line do |line|
+          print_buffered_line(line.chomp, workspace)
+          print_line_previews(line, previews)
         end
+      end
 
-        # Reprint each line with workspace emoji replacement
-        buffer.string.each_line { |line| print_with_workspace_emoji(line.chomp, workspace) }
+      def format_item(formatter, item, workspace, message, file_paths)
+        formatter.display_item(item, workspace, message: message, width: display_width,
+                                                truncate: @options[:truncate], file_paths: file_paths)
+      end
+
+      def print_buffered_line(line, workspace)
+        if workspace_emoji_images?
+          print_with_workspace_emoji(line, workspace)
+        else
+          puts line
+        end
+      end
+
+      # Draw a preview under the [File: ...] / [Image: ...] line that names it
+      def print_line_previews(line, previews)
+        previews.each do |path|
+          next unless line.include?("[File: #{path}]") || line.include?("[Image: #{path}]")
+
+          previews.delete(path)
+          print_image_preview(path)
+        end
+      end
+
+      def preview_paths(file_paths)
+        return [] unless attachment_previews?
+
+        file_paths.values.uniq.select { |path| previewable_image?(path) }
+      end
+
+      # Workspace emoji are terminal escape sequences, so skip them in markdown mode
+      def workspace_emoji_images?
+        @options[:workspace_emoji] && !@options[:markdown] && inline_images_supported?
+      end
+
+      def attachment_previews?
+        return false unless @options[:fetch_attachments]
+        return false if @options[:markdown] || @options[:quiet] || @options[:no_image_preview]
+
+        image_previews_supported?
+      end
+
+      def buffered_display?
+        workspace_emoji_images? || attachment_previews?
+      end
+
+      # Track the message for the "N files not downloaded" summary and, with
+      # --fetch-attachments, download its files/images to the local cache.
+      # @return [Hash] file_id / "att_<ts>_<idx>" => local path
+      def attachment_paths_for(workspace, item, message)
+        return {} unless message
+
+        model = Models::Message.from_api(message, channel_id: item.channel_id)
+        @displayed_messages&.push(model)
+        return {} unless @options[:fetch_attachments]
+
+        fetch_attachment_files([model], workspace)
       end
 
       def show_fetch_failure_summary
@@ -187,20 +261,19 @@ module Slk
           in_progress: false,
           counts: false,
           no_content: false,
+          no_image_preview: false,
           truncate: false,
           workspace_emoji: false
         )
       end
 
       def handle_option(arg, args, remaining)
-        case arg
-        when '-n', '--limit' then @options[:limit] = args.shift.to_i
-        when '--completed' then @options[:completed] = true
-        when '--in-progress' then @options[:in_progress] = true
-        when '--counts' then @options[:counts] = true
-        when '--no-content' then @options[:no_content] = true
-        when '--workspace-emoji' then @options[:workspace_emoji] = true
-        else super
+        if %w[-n --limit].include?(arg)
+          @options[:limit] = args.shift.to_i
+        elsif BOOLEAN_FLAGS.key?(arg)
+          @options[BOOLEAN_FLAGS[arg]] = true
+        else
+          super
         end
       end
 
@@ -221,6 +294,7 @@ module Slk
       def help_text
         help = Support::HelpFormatter.new('slk later [options]')
         help.description('Show saved "Later" items from Slack.')
+        help.note('Set SLK_IMAGE_PREVIEW=0 to always skip inline image previews.')
         add_options_section(help)
         help.render
       end
@@ -233,6 +307,8 @@ module Slk
           s.option('--in-progress', 'Show in-progress items')
           s.option('--counts', 'Show summary counts only')
           s.option('--no-content', 'Skip fetching message text')
+          s.option('--fetch-attachments', 'Download files to ~/.cache/slk/files/ (inline image previews need chafa)')
+          s.option('--no-image-preview', 'Download attachments but skip inline image previews')
           s.option('--workspace-emoji', 'Show workspace emoji as inline images')
           s.option('--no-emoji', 'Show :emoji: codes instead of unicode')
           s.option('--width N', 'Wrap text at N columns')
