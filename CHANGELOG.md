@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `slk huddles` lists active huddles. Slack has no huddle list, so it reads `huddle_state` from `users.list` and groups people who share a `huddle_state_call_id`. Channel names are filled in when Slack sends a channel id. Primary workspace by default; `--all` scans every workspace at the same time, each on its own connection, and drops people who are not in a huddle as each page arrives. `--json` prints the call id, channel, and participants.
+- Slack API responses are requested gzip-compressed. A `users.list` page is the bulk of a huddle scan, and compression is the difference between a large JSON document and a fraction of that on the wire.
+- `slk who` shows huddle state. The profile cache is an hour old, so the state is read live from `users.info` and the cached copy is ignored. `default_unset` is omitted. A channel name is added when Slack sends a channel id.
+
 ## [0.13.0] - 2026-10-09
 
 ### Added

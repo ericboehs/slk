@@ -71,6 +71,20 @@ class ProfileBuilderTest < Minitest::Test
     assert_equal 'date', types['Start Date']
   end
 
+  def test_copies_huddle_fields_from_profile
+    @profile['profile']['huddle_state'] = 'in_a_huddle'
+    @profile['profile']['huddle_state_call_id'] = 'R1'
+    @profile['profile']['huddle_state_channel_id'] = 'C1'
+    profile = Slk::Services::ProfileBuilder.build(
+      profile_response: @profile, info_response: @info, schema_response: @schema,
+      workspace_team_id: 'T_HOME'
+    )
+    assert_equal 'in_a_huddle', profile.huddle_state
+    assert_equal 'R1', profile.huddle_call_id
+    assert_equal 'C1', profile.huddle_channel_id
+    assert_nil profile.huddle_channel
+  end
+
   def test_handles_missing_info_response
     profile = Slk::Services::ProfileBuilder.build(
       profile_response: @profile, info_response: nil, schema_response: @schema,

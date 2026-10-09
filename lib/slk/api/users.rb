@@ -68,13 +68,25 @@ module Slk
       # total after each page, for progress and debug output.
       def list_all(limit: 1000, &progress)
         members = []
+        list_each(limit: limit) do |page, total|
+          members.concat(page)
+          progress&.call(total)
+        end
+        members
+      end
+
+      # Yields each page and the running total, then drops the page. A caller
+      # that only wants a few members should not have to retain the roster.
+      def list_each(limit: 1000)
         cursor = nil
+        total = 0
         loop do
           response = list(cursor: cursor, limit: limit)
-          members.concat(response['members'] || [])
-          progress&.call(members.size)
+          page = response['members'] || []
+          total += page.size
+          yield page, total
           cursor = next_cursor(response, cursor)
-          break members unless cursor
+          break unless cursor
         end
       end
 

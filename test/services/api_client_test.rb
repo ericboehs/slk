@@ -280,6 +280,32 @@ class ApiClientIntegrationTest < Minitest::Test
     assert_equal 1, @client.call_count
   end
 
+  def test_requests_gzip_and_inflates_the_body
+    captured = []
+    stub_http(success(gzip('{"ok":true,"value":"v"}'), 'Content-Encoding' => 'gzip'), capture: captured) do
+      result = @client.post(@workspace, 'm', { x: 1 })
+      assert_equal 'v', result['value']
+    end
+    assert_equal 'gzip', captured.first['Accept-Encoding']
+  end
+
+  def test_invalid_gzip_is_an_api_error
+    stub_http(success('not-gzip', 'Content-Encoding' => 'gzip')) do
+      error = assert_raises(Slk::ApiError) { @client.post(@workspace, 'm') }
+      assert_equal :invalid_response, error.code
+    end
+  end
+
+  def test_isolated_client_counts_on_the_parent_and_keeps_its_own_connection
+    parent = @client
+    child = parent.isolated
+    stub_http(success('{"ok":true}')) { child.post(@workspace, 'm', { x: 1 }) }
+
+    assert_equal 1, parent.call_count
+    assert_equal 0, child.call_count
+    refute_same parent.instance_variable_get(:@http_cache), child.instance_variable_get(:@http_cache)
+  end
+
   def test_get_with_params_appends_query
     captured = []
     stub_http(success('{"ok":true}'), capture: captured) do
@@ -504,6 +530,14 @@ class ApiClientIntegrationTest < Minitest::Test
   end
 
   private
+
+  def gzip(text)
+    io = StringIO.new
+    writer = Zlib::GzipWriter.new(io)
+    writer.write(text)
+    writer.close
+    io.string
+  end
 
   def success(body, extra_headers = {})
     response = Net::HTTPOK.new('1.1', '200', 'OK')

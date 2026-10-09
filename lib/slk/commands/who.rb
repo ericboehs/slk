@@ -44,6 +44,8 @@ module Slk
             @handle | name   Resolved via user cache
             Uxxx             Raw user ID
 
+          Huddle state is read live and shown when Slack has one set.
+
           OPTIONS
             --full           Section-grouped layout (Contact, People, About me)
             --json           Raw JSON output
@@ -79,8 +81,26 @@ module Slk
       end
 
       def load_profile(workspace, user_id)
-        runner.profile_resolver(workspace.name, refresh: @options[:refresh])
-              .resolve_with_people(user_id)
+        profile = runner.profile_resolver(workspace.name, refresh: @options[:refresh])
+                        .resolve_with_people(user_id)
+        attach_huddle_channel(workspace, profile)
+      end
+
+      # Channel ids are useless on a card. A failed lookup still leaves the
+      # state, which is the part Slack always sends.
+      def attach_huddle_channel(workspace, profile)
+        return profile if profile.huddle_channel_id.to_s.empty?
+
+        label = huddle_channels.label(workspace, profile.huddle_channel_id)
+        return profile unless label
+
+        Models::Profile.new(**profile.to_h, huddle_channel: label)
+      end
+
+      def huddle_channels
+        @huddle_channels ||= Services::HuddleChannelLabel.new(
+          runner: runner, cache_store: cache_store, on_debug: ->(message) { debug(message) }
+        )
       end
 
       def render_profiles(profiles)

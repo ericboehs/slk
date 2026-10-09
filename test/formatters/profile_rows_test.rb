@@ -47,12 +47,23 @@ class ProfileRowsTest < Minitest::Test
     )
     rows = @rows.base(profile)
     labels = rows.map(&:first)
-    assert_equal %w[Presence Status Local], labels
+    assert_equal %w[Presence Huddle Status Local], labels
     status_value = rows.find { |r| r.first == 'Status' }.last
     assert_includes status_value, 'In a meeting'
     local = rows.find { |r| r.first == 'Local' }.last
     refute_nil local
     assert_includes local, 'CDT'
+  end
+
+  def test_huddle_row_names_channel_when_present
+    profile = base_profile(huddle_state: 'in_a_huddle', huddle_channel: '#eert')
+    value = @rows.base(profile).find { |row| row.first == 'Huddle' }.last
+    assert_equal 'In a huddle · #eert', value
+  end
+
+  def test_huddle_row_blank_when_unset
+    value = @rows.base(base_profile(huddle_state: 'default_unset')).find { |row| row.first == 'Huddle' }.last
+    assert_nil value
   end
 
   def test_base_status_nil_when_empty

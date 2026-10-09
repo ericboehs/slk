@@ -15,12 +15,27 @@ module Slk
       :tz, :tz_label, :tz_offset, :start_date,
       :is_admin, :is_owner, :is_bot, :is_external, :deleted,
       :team_id, :home_team_name,
-      :presence, :sections, :custom_fields, :resolved_users
+      :presence, :huddle_state, :huddle_channel_id, :huddle_call_id, :huddle_channel,
+      :sections, :custom_fields, :resolved_users
     ) do
+      # Existing constructors predate huddle fields. Default them so a card
+      # without a live read still builds, and so the row stays blank.
+      def initialize(huddle_state: nil, huddle_channel_id: nil, huddle_call_id: nil, huddle_channel: nil, **rest)
+        super
+      end
+
       def presence_label
         case presence
         when 'active' then 'Active'
         when 'away' then 'Away'
+        end
+      end
+
+      # `default_unset` is Slack's empty value, not a state worth printing.
+      def huddle_label
+        case huddle_state
+        when 'in_a_huddle' then 'In a huddle'
+        when 'available_for_huddle' then 'Available for a huddle'
         end
       end
 

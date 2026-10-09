@@ -21,9 +21,14 @@ module Slk
       def base(profile)
         [
           ['Presence', profile.presence_label],
+          ['Huddle', huddle_text(profile)],
           ['Status', status_text(profile)],
           ['Local', local_time(profile)]
         ]
+      end
+
+      def huddle(profile)
+        [['Huddle', huddle_text(profile)]]
       end
 
       def people(profile)
@@ -39,13 +44,21 @@ module Slk
       end
 
       def external(profile)
-        contact(profile) + [['Workspace', profile.home_team_name]]
+        contact(profile) + [['Workspace', profile.home_team_name]] + huddle(profile)
       end
 
       private
 
       def duplicate_title?(field, profile)
         field.label.casecmp('Title').zero? && field.value.to_s == profile.title.to_s
+      end
+
+      def huddle_text(profile)
+        label = profile.huddle_label
+        return nil unless label
+        return label if profile.huddle_channel.to_s.empty?
+
+        "#{label} · #{profile.huddle_channel}"
       end
 
       def status_text(profile)
