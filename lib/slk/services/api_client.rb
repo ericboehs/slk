@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require 'stringio'
+require 'zlib'
+
 module Slk
   module Services
     # HTTP client for Slack API with connection pooling
@@ -24,12 +27,30 @@ module Slk
 
       def initialize
         @call_count = 0
+        @count_mutex = Mutex.new
         @on_request = nil
         @on_response = nil
         @on_request_body = nil
         @on_response_body = nil
         @http_cache = {}
         @rate_resets = {}
+      end
+
+      # A second client with its own connection. Net::HTTP is not safe to
+      # share across threads, and one connection can only fetch one roster
+      # at a time. Callbacks are copied now, so set them before isolating.
+      def isolated
+        child = self.class.new
+        child.on_request = @on_request
+        child.on_response = @on_response
+        child.on_request_body = @on_request_body
+        child.on_response_body = @on_response_body
+        child.share_counter(self)
+        child
+      end
+
+      def share_counter(parent)
+        @counter = parent
       end
 
       # Close all cached HTTP connections
@@ -43,6 +64,7 @@ module Slk
         execute_request(method, body: body) do |uri, http|
           request = Net::HTTP::Post.new(uri)
           workspace.headers.each { |k, v| request[k] = v }
+          accept_gzip(request)
           request.body = body
           http.request(request)
         end
@@ -52,6 +74,7 @@ module Slk
         execute_request(method, params) do |uri, http|
           request = Net::HTTP::Get.new(uri)
           apply_auth_headers(request, workspace)
+          accept_gzip(request)
           http.request(request)
         end
       end
@@ -62,6 +85,7 @@ module Slk
         execute_request(method, body: body) do |uri, http|
           request = Net::HTTP::Post.new(uri)
           apply_auth_headers(request, workspace)
+          accept_gzip(request)
           request.set_form_data(params) unless params.empty?
           http.request(request)
         end
@@ -98,6 +122,7 @@ module Slk
         log_request_body(method, body)
         uri = build_uri(method, query_params)
         response, elapsed_ms = timed_request(uri, &)
+        decode_body!(response)
         track_rate_limit(method, response)
         log_response(method, response, elapsed_ms)
         log_response_body(method, response.body)
@@ -157,8 +182,39 @@ module Slk
       end
 
       def log_request(method)
-        @call_count += 1
-        @on_request&.call(method, @call_count)
+        count = tally
+        @on_request&.call(method, count)
+      end
+
+      def tally
+        (@counter || self).bump_call_count
+      end
+
+      def bump_call_count
+        @count_mutex.synchronize { @call_count += 1 }
+      end
+      public :bump_call_count
+
+      def accept_gzip(request)
+        request['Accept-Encoding'] = 'gzip'
+      end
+
+      # A users.list page is a large JSON document. Slack compresses it when
+      # asked, which is most of the time a roster scan spends on the wire.
+      def decode_body!(response)
+        return unless gzip_encoded?(response)
+
+        response.body = inflate_gzip(response.body.to_s)
+      end
+
+      def gzip_encoded?(response)
+        response['Content-Encoding'].to_s.downcase.split(',').map(&:strip).include?('gzip')
+      end
+
+      def inflate_gzip(body)
+        Zlib::GzipReader.new(StringIO.new(body)).read
+      rescue Zlib::Error
+        raise ApiError.new('Invalid gzip response from Slack API', code: :invalid_response)
       end
 
       def log_request_body(method, body)

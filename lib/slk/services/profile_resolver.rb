@@ -93,7 +93,7 @@ module Slk
       end
 
       def attach_extras(profile, user_id)
-        profile = attach_home_team_name(profile)
+        profile = HuddleState.apply(attach_home_team_name(profile), @users_api, user_id, on_debug: @on_debug)
         presence = fetch_presence(user_id)
         presence ? Models::Profile.new(**profile.to_h, presence: presence) : profile
       end

@@ -25,6 +25,7 @@ module Slk
         render_header(profile)
         return emit_rows(@rows.external(profile)) if profile.external?
 
+        emit_huddle(profile)
         render_section('Contact information', @rows.contact(profile))
         render_section('People', @rows.people(profile))
         render_section('About me', @rows.about(profile))
@@ -68,6 +69,14 @@ module Slk
 
       def external_tag(profile)
         @output.gray("external — #{profile.home_team_name || 'external workspace'}")
+      end
+
+      def emit_huddle(profile)
+        rows = @rows.huddle(profile)
+        return if rows.reject { |_, value| value.nil? || value.to_s.empty? }.empty?
+
+        emit_rows(rows)
+        @output.puts
       end
 
       def render_section(title, rows)

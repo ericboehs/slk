@@ -18,6 +18,7 @@ module Slk
         ['activity', 'Show activity feed (reactions, mentions, threads)'],
         ['later', 'Show saved "Later" items'],
         ['who', 'Show a user profile'],
+        ['huddles', 'List active huddles'],
         ['deactivations', 'Show who left the workspace, and when'],
         ['preset', 'Manage and apply status presets'],
         ['workspaces', 'Manage Slack workspaces'],

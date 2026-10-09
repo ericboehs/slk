@@ -35,6 +35,33 @@ class ProfileResolverTest < Minitest::Test
     assert_nil profile.presence
   end
 
+  def test_huddle_state_comes_from_live_users_info
+    @users.add('U001', real_name: 'Alice', team_id: 'T_HOME')
+    @users.info_huddle('U001', state: 'in_a_huddle', channel_id: 'C1', call_id: 'R1')
+    profile = @resolver.resolve('U001')
+    assert_equal 'in_a_huddle', profile.huddle_state
+    assert_equal 'C1', profile.huddle_channel_id
+    assert_equal 'R1', profile.huddle_call_id
+    assert_equal 'In a huddle', profile.huddle_label
+  end
+
+  def test_live_users_info_replaces_profile_huddle_state
+    @users.add('U001', real_name: 'Alice', team_id: 'T_HOME')
+    @users.profile_huddle('U001', 'in_a_huddle')
+    @users.info_huddle('U001', state: 'default_unset')
+    profile = @resolver.resolve('U001')
+    assert_equal 'default_unset', profile.huddle_state
+    assert_nil profile.huddle_label
+  end
+
+  def test_huddle_lookup_failure_omits_state
+    @users.add('U001', real_name: 'Alice', team_id: 'T_HOME')
+    @users.profile_huddle('U001', 'in_a_huddle')
+    @users.fail_info!
+    profile = @resolver.resolve('U001')
+    assert_nil profile.huddle_state
+  end
+
   class TempPaths
     def initialize
       @dir = Dir.mktmpdir('slk-resolver-test')
@@ -208,10 +235,26 @@ class ProfileResolverTest < Minitest::Test
       @users[user_id] = {
         info: {
           'ok' => true,
-          'user' => { 'id' => user_id, 'team_id' => team_id, 'real_name' => real_name }
+          'user' => { 'id' => user_id, 'team_id' => team_id, 'real_name' => real_name, 'profile' => {} }
         },
         profile: build_profile(real_name, display_name, supervisor)
       }
+    end
+
+    def profile_huddle(user_id, state)
+      @users.fetch(user_id)[:profile]['profile']['huddle_state'] = state
+    end
+
+    def info_huddle(user_id, state:, channel_id: nil, call_id: nil)
+      @users.fetch(user_id)[:info]['user']['profile'] = {
+        'huddle_state' => state,
+        'huddle_state_channel_id' => channel_id,
+        'huddle_state_call_id' => call_id
+      }
+    end
+
+    def fail_info!
+      @fail_info = true
     end
 
     def fail_profile_with(user_id, code)
@@ -234,6 +277,8 @@ class ProfileResolverTest < Minitest::Test
 
     def info(user_id)
       @calls['users.info'] << user_id
+      raise Slk::ApiError, 'info failed' if @fail_info
+
       @users.fetch(user_id) { raise Slk::ApiError, "user_not_found: #{user_id}" }[:info]
     end
 

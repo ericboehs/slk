@@ -24,6 +24,7 @@ module Slk
       'help' => Commands::Help,
       'debug' => Commands::Debug,
       'who' => Commands::Who,
+      'huddles' => Commands::Huddles,
       'org' => Commands::Org,
       'deactivations' => Commands::Deactivations
     }.freeze

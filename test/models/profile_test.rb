@@ -89,6 +89,21 @@ class ProfileTest < Minitest::Test
     assert_nil profile.presence_label
   end
 
+  def test_huddle_label_in_a_huddle
+    profile = Slk::Models::Profile.new(**base_args, huddle_state: 'in_a_huddle')
+    assert_equal 'In a huddle', profile.huddle_label
+  end
+
+  def test_huddle_label_available
+    profile = Slk::Models::Profile.new(**base_args, huddle_state: 'available_for_huddle')
+    assert_equal 'Available for a huddle', profile.huddle_label
+  end
+
+  def test_huddle_label_omits_unset
+    profile = Slk::Models::Profile.new(**base_args, huddle_state: 'default_unset')
+    assert_nil profile.huddle_label
+  end
+
   def test_people_fields_filters_user_type
     fields = [field, field(label: 'Bio', type: 'text', value: 'about me')]
     profile = Slk::Models::Profile.new(**base_args, custom_fields: fields)

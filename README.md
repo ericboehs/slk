@@ -220,6 +220,24 @@ slk cache populate        # Pre-populate user cache
 slk cache clear           # Clear all caches
 ```
 
+### Huddles
+
+```bash
+slk huddles            # Active huddles on the primary workspace
+slk huddles --all      # Every workspace
+slk huddles --json     # Call id, channel, and participants
+```
+
+Slack has no huddle list. `slk huddles` reads `huddle_state` from `users.list`
+and groups people who share a call id. A huddle with no channel is one Slack
+did not attach to a conversation. People outside the workspace, including some
+Slack Connect guests, are not in the roster and will not appear. The roster is
+fetched live and is not cached. `--all` scans every workspace at the same time.
+One connection can only read one roster, so each workspace gets its own.
+People who are not in a huddle are dropped as each page arrives. `slk who`
+shows the same state on the profile card, read live so the hour-long profile
+cache cannot leave someone in a huddle they have already left.
+
 ### Deactivations
 
 ```bash

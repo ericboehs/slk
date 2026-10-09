@@ -79,6 +79,9 @@ module Slk
     autoload :Tenure, 'slk/models/tenure'
     autoload :SearchResult, 'slk/models/search_result'
     autoload :SavedItem, 'slk/models/saved_item'
+    autoload :Huddle, 'slk/models/huddle'
+    autoload :HuddleParticipant, 'slk/models/huddle'
+    autoload :WorkspaceHuddles, 'slk/models/huddle'
     autoload :Profile, 'slk/models/profile'
     autoload :ProfileField, 'slk/models/profile_field'
   end
@@ -117,6 +120,11 @@ module Slk
     autoload :SentConversations, 'slk/services/sent_conversations'
     autoload :SentChanges, 'slk/services/sent_changes'
     autoload :SentChannelLabel, 'slk/services/sent_channel_label'
+    autoload :HuddleScanner, 'slk/services/huddle_scanner'
+    autoload :HuddleFetch, 'slk/services/huddle_fetch'
+    autoload :HuddleState, 'slk/services/huddle_state'
+    autoload :WorkspaceFanout, 'slk/services/workspace_fanout'
+    autoload :HuddleChannelLabel, 'slk/services/huddle_channel_label'
     autoload :ThreadSubscription, 'slk/services/thread_subscription'
   end
 
@@ -141,6 +149,7 @@ module Slk
     autoload :ProfileFormatter, 'slk/formatters/profile_formatter'
     autoload :ProfileFieldRenderer, 'slk/formatters/profile_field_renderer'
     autoload :ProfileRows, 'slk/formatters/profile_rows'
+    autoload :HuddleFormatter, 'slk/formatters/huddle_formatter'
     autoload :DeactivationFormatter, 'slk/formatters/deactivation_formatter'
     autoload :DeactivationCsv, 'slk/formatters/deactivation_csv'
     autoload :CsvWriter, 'slk/formatters/csv_writer'
@@ -168,6 +177,7 @@ module Slk
     autoload :Later, 'slk/commands/later'
     autoload :Debug, 'slk/commands/debug'
     autoload :Who, 'slk/commands/who'
+    autoload :Huddles, 'slk/commands/huddles'
     autoload :Org, 'slk/commands/org'
     autoload :Deactivations, 'slk/commands/deactivations'
   end

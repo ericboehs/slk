@@ -113,4 +113,19 @@ class ProfileFormatterTest < Minitest::Test
     @formatter.compact(make_profile(deleted: true))
     assert_includes @io.string, 'deactivated account'
   end
+
+  def test_compact_shows_huddle_state
+    @formatter.compact(make_profile(huddle_state: 'in_a_huddle', huddle_channel: 'DM'))
+    assert_includes @io.string, 'Huddle   In a huddle · DM'
+  end
+
+  def test_full_shows_huddle_state
+    @formatter.full(make_profile(huddle_state: 'available_for_huddle'))
+    assert_includes @io.string, 'Huddle   Available for a huddle'
+  end
+
+  def test_compact_omits_unset_huddle
+    @formatter.compact(make_profile(huddle_state: 'default_unset'))
+    refute_includes @io.string, 'Huddle'
+  end
 end

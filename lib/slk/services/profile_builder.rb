@@ -17,6 +17,7 @@ module Slk
         Models::Profile.new(
           **identity(profile_data, info_data),
           **status(profile_data),
+          **HuddleState.from(profile_data),
           **tz(info_data),
           **flags(info_data, team_id, workspace_team_id),
           team_id: team_id,

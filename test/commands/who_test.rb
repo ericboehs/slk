@@ -80,6 +80,16 @@ class WhoCommandTest < Minitest::Test
     Slk::Commands::Who.new(args, runner: runner).execute
   end
 
+  def stub_huddle(state:, channel_id: nil)
+    info = self_info.merge(
+      'profile' => {
+        'huddle_state' => state,
+        'huddle_state_channel_id' => channel_id
+      }
+    )
+    @mock_client.stub('users.info', { 'ok' => true, 'user' => info })
+  end
+
   def io_string
     @output.instance_variable_get(:@io).string
   end
@@ -91,6 +101,22 @@ class WhoCommandTest < Minitest::Test
     assert_includes io_string, 'Senior Engineer'
     assert_includes io_string, 'eric@example.com'
     assert_includes io_string, 'Jan 15, 2020'
+    refute_includes io_string, 'Huddle'
+  end
+
+  def test_shows_live_huddle_and_channel
+    stub_huddle(state: 'in_a_huddle', channel_id: 'C1')
+    @mock_client.stub('conversations.info', { 'ok' => true, 'channel' => { 'name' => 'eert' } })
+    execute_with_args([])
+    assert_includes io_string, 'In a huddle · #eert'
+  end
+
+  def test_huddle_state_survives_a_failed_channel_lookup
+    stub_huddle(state: 'in_a_huddle', channel_id: 'C1')
+    @mock_client.stub('conversations.info', Slk::ApiError.new('missing', code: :channel_not_found))
+    execute_with_args([])
+    assert_includes io_string, 'In a huddle'
+    refute_includes io_string, 'C1'
   end
 
   def test_full_layout
