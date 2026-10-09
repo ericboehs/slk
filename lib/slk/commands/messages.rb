@@ -9,6 +9,7 @@ module Slk
     # rubocop:disable Metrics/ClassLength
     class Messages < Base
       include Support::InlineImages
+      include Support::AttachmentFetching
 
       # rubocop:disable Metrics/MethodLength
       def execute
@@ -344,28 +345,6 @@ module Slk
         else
           print ":#{emoji_name}:"
         end
-      end
-
-      def print_file_summary(messages)
-        file_count = messages.sum { |m| m.files.size + downloadable_attachment_count(m) }
-        return if file_count.zero?
-
-        label = file_count == 1 ? '1 file' : "#{file_count} files"
-        puts
-        info("#{label} not downloaded. Use --fetch-attachments to download.")
-      end
-
-      def downloadable_attachment_count(message)
-        message.attachments.count { |a| a['image_url'] || a['thumb_url'] }
-      end
-
-      def fetch_attachment_files(messages, workspace)
-        paths = Support::XdgPaths.new
-        downloader = Services::FileDownloader.new(
-          cache_dir: paths.cache_dir,
-          on_debug: ->(msg) { debug(msg) }
-        )
-        downloader.download_message_files(messages, workspace)
       end
 
       def find_workspace_emoji(workspace_name, emoji_name)

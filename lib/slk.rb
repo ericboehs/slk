@@ -194,6 +194,8 @@ module Slk
     autoload :XdgPaths, 'slk/support/xdg_paths'
     autoload :SlackUrlParser, 'slk/support/slack_url_parser'
     autoload :InlineImages, 'slk/support/inline_images'
+    autoload :AttachmentFetching, 'slk/support/attachment_fetching'
+    autoload :ImagePreview, 'slk/support/image_preview'
     autoload :HelpFormatter, 'slk/support/help_formatter'
     autoload :ErrorLogger, 'slk/support/error_logger'
     autoload :UserResolver, 'slk/support/user_resolver'
