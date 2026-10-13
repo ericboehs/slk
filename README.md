@@ -184,7 +184,10 @@ Use `--show-messages` (or `-m`) to preview the actual message content for each a
 slk unread                # Show unread counts
 slk unread clear          # Mark all as read
 slk unread clear general  # Mark channel as read
+slk unread clear "#ifams review"  # Named group DMs work by name too
 ```
+
+Unread DMs, group DMs, channels, and threads are all listed. A named group DM shows under its name (`#ifams review`); others show the people in them.
 
 ### Catchup (Interactive Triage)
 

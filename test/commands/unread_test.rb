@@ -242,6 +242,17 @@ class UnreadCommandTest < Minitest::Test
     assert_equal 0, execute_with_args(%w[clear #random])
   end
 
+  def test_clear_named_group_dm_by_name
+    @mock_client.stub('users.conversations', {
+                        'ok' => true,
+                        'channels' => [{ 'id' => 'C0C8TMPUV3P', 'name' => 'ifams review', 'is_mpim' => true }]
+                      })
+    assert_equal 0, execute_with_args(['clear', '#ifams review'])
+    assert_includes io_string, 'Marked #ifams review as read on test'
+    mark = @mock_client.calls.find { |c| c[:method] == 'conversations.mark' }
+    assert_equal 'C0C8TMPUV3P', mark[:params][:channel]
+  end
+
   def test_clear_channel_not_found
     @mock_client.stub('conversations.list', { 'ok' => true, 'channels' => [] })
     assert_raises(Slk::ConfigError) { execute_with_args(%w[clear #nonexistent]) }

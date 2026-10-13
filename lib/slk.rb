@@ -126,6 +126,7 @@ module Slk
     autoload :WorkspaceFanout, 'slk/services/workspace_fanout'
     autoload :HuddleChannelLabel, 'slk/services/huddle_channel_label'
     autoload :GroupDmLabel, 'slk/services/group_dm_label'
+    autoload :ChannelLookup, 'slk/services/channel_lookup'
     autoload :ThreadSubscription, 'slk/services/thread_subscription'
   end
 

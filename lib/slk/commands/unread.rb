@@ -308,7 +308,7 @@ module Slk
         channel_id = resolve_channel_id(workspace, channel_name)
         return unless unread_marker(workspace).mark_single_channel(channel_id)
 
-        success("Marked ##{channel_name} as read on #{workspace.name}")
+        success("Marked ##{channel_name.delete_prefix('#')} as read on #{workspace.name}")
       end
 
       def clear_all_channels(workspace)
@@ -331,15 +331,8 @@ module Slk
         return channel_name if channel_name.match?(/^[CDG][A-Z0-9]+$/)
 
         name = channel_name.delete_prefix('#')
-        cache_store.get_channel_id(workspace.name, name) || resolve_channel(workspace, name)
-      end
-
-      def resolve_channel(workspace, name)
-        api = runner.conversations_api(workspace.name)
-        response = api.list
-        channels = response['channels'] || []
-        channel = channels.find { |c| c['name'] == name }
-        channel&.dig('id') || raise(ConfigError, "Channel not found: ##{name}")
+        Services::ChannelLookup.new(runner: runner, cache_store: cache_store).find_id(workspace, name) ||
+          raise(ConfigError, "Channel not found: ##{name}")
       end
     end
     # rubocop:enable Metrics/ClassLength

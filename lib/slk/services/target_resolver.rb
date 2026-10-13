@@ -66,19 +66,8 @@ module Slk
       end
 
       def resolve_channel(workspace, name)
-        cached = @cache.get_channel_id(workspace.name, name)
-        return cached if cached
-
-        fetch_and_cache_channel(workspace, name)
-      end
-
-      def fetch_and_cache_channel(workspace, name)
-        channels = @runner.conversations_api(workspace.name).list['channels'] || []
-        channel = channels.find { |c| c['name'] == name }
-        raise ConfigError, "Channel not found: ##{name}" unless channel
-
-        @cache.set_channel(workspace.name, name, channel['id'])
-        channel['id']
+        ChannelLookup.new(runner: @runner, cache_store: @cache).find_id(workspace, name) ||
+          raise(ConfigError, "Channel not found: ##{name}")
       end
 
       def resolve_dm(workspace, username)

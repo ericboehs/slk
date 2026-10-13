@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `slk unread` and `slk catchup` now show group DMs. Slack lists them under `mpims` in `client.counts`, and both commands only read `ims` and `channels`, so a group DM's unreads never appeared. A named group DM is headed by its name (`#ifams review`); any other by the people in it besides you (`@Ada Lovelace, Grace Hopper`). A muted group DM is skipped like a muted channel unless `--muted` is passed. `slk unread --json` adds a `group_dms` array of `{id, mentions, label}`.
 - `slk unread clear` and `slk catchup --batch` now mark group DMs read, and their summaries count them ("Cleared 2 DMs, 1 group DMs, 5 channels and 3 threads"). `unread clear` also reports DMs, which it marked but did not count.
 - `slk unread` no longer prints "No unread messages" after listing unread DMs when no channel is unread.
+- `slk messages "#name"`, `slk unread clear "#name"`, and `slk debug channel "#name"` now find named group DMs (`slk messages "#ifams review"`) and any channel you belong to. Lookup pages through `users.conversations` (channels, private channels, and group DMs; archived excluded) and matches names without regard to case. Before, it read one page of `conversations.list`, which Slack caps at 100 channels and which leaves out group DMs. A channel wins over a named group DM with the same name. Public channels you have not joined still fall back to that one page.
+- `slk unread clear "#general"` printed "Marked ##general"; it now prints one `#`.
 
 ## [0.14.0] - 2026-10-09
 

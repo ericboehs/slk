@@ -16,7 +16,7 @@ class TargetResolverTest < Minitest::Test
     end
 
     def users_api(_name)
-      @users
+      @users || FakeUsers.new
     end
 
     def workspace(name)
@@ -43,12 +43,17 @@ class TargetResolverTest < Minitest::Test
   end
 
   class FakeUsers
-    def initialize(list_response: nil)
+    def initialize(list_response: nil, conversations_response: nil)
       @list_response = list_response
+      @conversations_response = conversations_response
     end
 
     def list
       @list_response || { 'members' => [] }
+    end
+
+    def conversations(**)
+      @conversations_response || { 'channels' => [] }
     end
   end
 
@@ -195,6 +200,18 @@ class TargetResolverTest < Minitest::Test
     end
 
     assert_match(/Channel not found: #nonexistent/, error.message)
+  end
+
+  def test_resolve_named_group_dm_from_your_conversations
+    users = FakeUsers.new(conversations_response: {
+                            'channels' => [{ 'id' => 'C0C8TMPUV3P', 'name' => 'ifams review', 'is_mpim' => true }]
+                          })
+    runner = FakeRunner.new(conversations: FakeConversations.new, users: users)
+    resolver = Slk::Services::TargetResolver.new(runner: runner, cache_store: @cache)
+
+    result = resolver.resolve('#ifams review', default_workspace: @workspace)
+
+    assert_equal 'C0C8TMPUV3P', result.channel_id
   end
 
   def test_resolve_channel_handles_nil_channels_list
