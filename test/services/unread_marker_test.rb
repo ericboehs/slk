@@ -16,7 +16,7 @@ class UnreadMarkerTest < Minitest::Test
 
     result = build_marker.mark_all
 
-    assert_equal({ dms: 0, channels: 0, threads: 0 }, result)
+    assert_equal({ dms: 0, group_dms: 0, channels: 0, threads: 0 }, result)
   end
 
   def test_mark_all_marks_dms_with_unreads
@@ -47,6 +47,37 @@ class UnreadMarkerTest < Minitest::Test
     @conversations.history_response = { 'messages' => [{ 'ts' => '5.0' }] }
 
     assert_equal 1, build_marker.mark_all(options: { muted: true })[:channels]
+  end
+
+  def test_mark_all_marks_group_dms_with_unreads
+    @client.counts_response = build_counts(mpims: [{ 'id' => 'C0C8TMPUV3P', 'has_unreads' => true },
+                                                   { 'id' => 'G2', 'has_unreads' => false }])
+    @conversations.history_response = { 'messages' => [{ 'ts' => '7.0' }] }
+
+    result = build_marker.mark_all
+
+    assert_equal 1, result[:group_dms]
+    assert_equal 0, result[:channels]
+    assert_equal({ channel: 'C0C8TMPUV3P', timestamp: '7.0' }, @conversations.last_mark)
+  end
+
+  def test_mark_all_skips_muted_group_dms_unless_option_true
+    @users.muted_channels_list = %w[G1]
+    @client.counts_response = build_counts(mpims: [{ 'id' => 'G1', 'has_unreads' => true }])
+    @conversations.history_response = { 'messages' => [{ 'ts' => '7.0' }] }
+
+    assert_equal 0, build_marker.mark_all[:group_dms]
+    assert_equal 1, build_marker.mark_all(options: { muted: true })[:group_dms]
+  end
+
+  def test_mark_all_reads_muted_prefs_once
+    @client.counts_response = build_counts(mpims: [{ 'id' => 'G1', 'has_unreads' => true }],
+                                           channels: [{ 'id' => 'C1', 'has_unreads' => true }])
+    @conversations.history_response = { 'messages' => [{ 'ts' => '7.0' }] }
+
+    build_marker.mark_all
+
+    assert_equal 1, @users.muted_calls
   end
 
   def test_mark_conversation_returns_false_with_no_messages
@@ -147,8 +178,8 @@ class UnreadMarkerTest < Minitest::Test
     )
   end
 
-  def build_counts(ims: [], channels: [])
-    { 'ims' => ims, 'channels' => channels }
+  def build_counts(ims: [], channels: [], mpims: [])
+    { 'ims' => ims, 'channels' => channels, 'mpims' => mpims }
   end
 
   def thread_with_unread
@@ -196,8 +227,10 @@ class UnreadMarkerTest < Minitest::Test
 
   class FakeUsersApi
     attr_accessor :muted_channels_list
+    attr_reader :muted_calls
 
     def muted_channels
+      @muted_calls = (@muted_calls || 0) + 1
       @muted_channels_list || []
     end
   end

@@ -14,13 +14,15 @@ module Slk
 
       # Mark all unreads in a workspace, return counts
       # @param options [Hash] :muted - include muted channels
-      # @return [Hash] { dms: count, channels: count, threads: count }
+      # @return [Hash] { dms: count, group_dms: count, channels: count, threads: count }
       def mark_all(options: {})
         counts = @client.counts
+        muted_ids = options[:muted] ? [] : @users.muted_channels
 
         {
           dms: mark_dms(counts['ims'] || []),
-          channels: mark_channels(counts['channels'] || [], muted: options[:muted]),
+          group_dms: mark_channels(counts['mpims'] || [], muted_ids),
+          channels: mark_channels(counts['channels'] || [], muted_ids),
           threads: mark_threads
         }
       end
@@ -44,13 +46,14 @@ module Slk
         count
       end
 
-      def mark_channels(channels, muted: false)
-        muted_ids = muted ? [] : @users.muted_channels
+      # Channels and group DMs (client.counts `mpims`): a muted group DM is
+      # skipped the same way a muted channel is.
+      def mark_channels(channels, muted_ids)
         count = 0
 
         channels.each do |channel|
           next unless channel['has_unreads']
-          next if !muted && muted_ids.include?(channel['id'])
+          next if muted_ids.include?(channel['id'])
 
           count += 1 if mark_conversation(channel['id'])
         end

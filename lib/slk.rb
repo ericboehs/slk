@@ -125,6 +125,7 @@ module Slk
     autoload :HuddleState, 'slk/services/huddle_state'
     autoload :WorkspaceFanout, 'slk/services/workspace_fanout'
     autoload :HuddleChannelLabel, 'slk/services/huddle_channel_label'
+    autoload :GroupDmLabel, 'slk/services/group_dm_label'
     autoload :ThreadSubscription, 'slk/services/thread_subscription'
   end
 

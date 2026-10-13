@@ -89,6 +89,43 @@ class CatchupCommandTest < Minitest::Test
     refute_includes io_string, 'on test'
   end
 
+  def test_batch_marks_group_dms
+    stub_unread_group_dm
+    assert_equal 0, execute_with_args(['--batch'])
+    assert_includes io_string, 'Marked 0 DMs, 1 group DMs, 0 channels, and 0 threads as read on test'
+    mark = @mock_client.calls.find { |c| c[:method] == 'conversations.mark' }
+    assert_equal 'C0C8TMPUV3P', mark[:params][:channel]
+  end
+
+  def test_interactive_shows_named_group_dm_and_marks_it_read
+    stub_unread_group_dm
+    $stdin = StringIO.new("r\n")
+    assert_equal 0, execute_with_args([])
+    assert_includes io_string, '1 items with unreads'
+    assert_includes io_string, '[1/1] #ifams review'
+    assert_includes io_string, '2 mentions'
+    mark = @mock_client.calls.find { |c| c[:method] == 'conversations.mark' }
+    assert_equal({ channel: 'C0C8TMPUV3P', ts: '1.0' }, mark[:params])
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_interactive_quit_on_group_dm_stops
+    stub_unread_group_dm
+    $stdin = StringIO.new("q\n")
+    assert_equal 0, execute_with_args([])
+    refute_includes io_string, 'Catchup complete!'
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_muted_group_dm_is_skipped
+    stub_unread_group_dm
+    @mock_client.stub('users.prefs.get', { 'prefs' => { 'muted_channels' => 'C0C8TMPUV3P' } })
+    assert_equal 0, execute_with_args([])
+    assert_includes io_string, 'No unread messages'
+  end
+
   def test_batch_with_muted_option
     assert_equal 0, execute_with_args(['--batch', '--muted'])
     assert_includes io_string, 'Marked'
@@ -287,6 +324,19 @@ class CatchupCommandTest < Minitest::Test
                       })
     @mock_client.stub('users.info', {
                         'ok' => true, 'user' => { 'id' => 'U2', 'profile' => { 'real_name' => 'Friend' } }
+                      })
+  end
+
+  def stub_unread_group_dm
+    @mock_client.stub('client.counts', {
+                        'ok' => true, 'channels' => [], 'ims' => [],
+                        'mpims' => [{ 'id' => 'C0C8TMPUV3P', 'has_unreads' => true, 'mention_count' => 2,
+                                      'last_read' => '0', 'latest' => '1.0' }]
+                      })
+    @mock_client.stub('conversations.info', {
+                        'ok' => true,
+                        'channel' => { 'id' => 'C0C8TMPUV3P', 'is_mpim' => true, 'name' => 'ifams review',
+                                       'members' => %w[U1 U2], 'properties' => { 'has_custom_mpdm_name' => true } }
                       })
   end
 

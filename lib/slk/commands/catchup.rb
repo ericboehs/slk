@@ -106,7 +106,7 @@ module Slk
       def batch_mark_workspace(workspace)
         marker = build_unread_marker(workspace)
         counts = marker.mark_all(options: { muted: @options[:muted] })
-        success("Marked #{counts[:dms]} DMs, #{counts[:channels]} channels, " \
+        success("Marked #{counts[:dms]} DMs, #{counts[:group_dms]} group DMs, #{counts[:channels]} channels, " \
                 "and #{counts[:threads]} threads as read on #{workspace.name}")
       end
 
@@ -145,18 +145,25 @@ module Slk
 
       def gather_unread_items(workspace)
         counts = runner.client_api(workspace.name).counts
-        ims = filter_unread_ims(counts['ims'] || [])
-        channels = filter_unread_channels(workspace, counts['channels'] || [])
-        threads_response = fetch_unread_threads(workspace)
-
-        build_items_result(ims, channels, threads_response)
+        muted_ids = muted_channel_ids(workspace)
+        build_items_result(
+          filter_unread_ims(counts['ims'] || []),
+          filter_unread_channels(counts['mpims'] || [], muted_ids),
+          filter_unread_channels(counts['channels'] || [], muted_ids),
+          fetch_unread_threads(workspace)
+        )
       end
 
-      def build_items_result(ims, channels, threads_response)
+      def muted_channel_ids(workspace)
+        @options[:muted] ? [] : runner.users_api(workspace.name).muted_channels
+      end
+
+      def build_items_result(ims, group_dms, channels, threads_response)
+        conversations = ims.size + group_dms.size + channels.size
         {
-          ims: ims, channels: channels, threads_response: threads_response,
-          total: ims.size + channels.size + (threads_response ? 1 : 0),
-          empty: ims.empty? && channels.empty? && !threads_response
+          ims: ims, group_dms: group_dms, channels: channels, threads_response: threads_response,
+          total: conversations + (threads_response ? 1 : 0),
+          empty: conversations.zero? && !threads_response
         }
       end
 
@@ -164,8 +171,8 @@ module Slk
         ims.select { |i| i['has_unreads'] }
       end
 
-      def filter_unread_channels(workspace, channels)
-        muted_ids = @options[:muted] ? [] : runner.users_api(workspace.name).muted_channels
+      # Channels and group DMs; a muted group DM is skipped like a muted channel.
+      def filter_unread_channels(channels, muted_ids)
         channels
           .select { |c| c['has_unreads'] || (c['mention_count'] || 0).positive? }
           .reject { |c| muted_ids.include?(c['id']) }
@@ -180,6 +187,7 @@ module Slk
         index = { current: 0, total: items[:total] }
 
         return :quit if process_dms(workspace, items[:ims], index)
+        return :quit if process_group_dms(workspace, items[:group_dms], index)
         return :quit if items[:threads_response] && process_threads_item(workspace, items[:threads_response], index)
         return :quit if process_channels(workspace, items[:channels], index)
 
@@ -190,6 +198,16 @@ module Slk
       def process_dms(workspace, ims, index)
         ims.each do |im|
           return true if process_dm(workspace, im, index[:current], index[:total]) == :quit
+
+          index[:current] += 1
+        end
+        false
+      end
+
+      def process_group_dms(workspace, group_dms, index)
+        group_dms.each do |group_dm|
+          label = group_dm_label.label(workspace, group_dm['id'])
+          return true if process_conversation(workspace, group_dm, index[:current], index[:total], label) == :quit
 
           index[:current] += 1
         end
@@ -227,6 +245,10 @@ module Slk
         label = "@#{user_name}"
 
         process_conversation(workspace, dm_item, index, total, label)
+      end
+
+      def group_dm_label
+        @group_dm_label ||= Services::GroupDmLabel.new(runner: runner, on_debug: ->(msg) { debug(msg) })
       end
 
       def process_conversation(workspace, item, index, total, label)

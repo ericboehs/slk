@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Named group DMs ("named chats") show under their name, such as `#ifams review`, in `slk search`, `slk sent` (header and JSON `channel_label`), and `slk huddles`. Before, search showed `<@ifams review>`, sent listed the members, and huddles showed `group DM`. Slack reports these as `is_mpim` with `properties.has_custom_mpdm_name`. Search results carry no `properties`, so a group DM whose name is not an `mpdm-*` slug also counts as named. Named group DMs are kept out of the channel name cache, because a chat can be renamed or share a name with a real channel.
 - `slk debug channel <id|url>` (hidden command) prints the raw `conversations.info` response.
 
+### Fixed
+
+- `slk unread` and `slk catchup` now show group DMs. Slack lists them under `mpims` in `client.counts`, and both commands only read `ims` and `channels`, so a group DM's unreads never appeared. A named group DM is headed by its name (`#ifams review`); any other by the people in it besides you (`@Ada Lovelace, Grace Hopper`). A muted group DM is skipped like a muted channel unless `--muted` is passed. `slk unread --json` adds a `group_dms` array of `{id, mentions, label}`.
+- `slk unread clear` and `slk catchup --batch` now mark group DMs read, and their summaries count them ("Cleared 2 DMs, 1 group DMs, 5 channels and 3 threads"). `unread clear` also reports DMs, which it marked but did not count.
+- `slk unread` no longer prints "No unread messages" after listing unread DMs when no channel is unread.
+
 ## [0.14.0] - 2026-10-09
 
 ### Added
