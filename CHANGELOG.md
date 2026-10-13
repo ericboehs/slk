@@ -7,22 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-13
+
 ### Added
 
-- Named group DMs ("named chats") show under their name, such as `#ifams review`, in `slk search`, `slk sent` (header and JSON `channel_label`), and `slk huddles`. Before, search showed `<@ifams review>`, sent listed the members, and huddles showed `group DM`. Slack reports these as `is_mpim` with `properties.has_custom_mpdm_name`. Search results carry no `properties`, so a group DM whose name is not an `mpdm-*` slug also counts as named. Named group DMs are kept out of the channel name cache, because a chat can be renamed or share a name with a real channel.
-- `slk debug channel <id|url>` (hidden command) prints the raw `conversations.info` response.
+- Named group DMs ("named chats") show under their name, such as `#ifams review`, in `slk search`, `slk sent` (header and JSON `channel_label`), and `slk huddles`. Before, search showed `<@ifams review>`, sent listed the members, and huddles showed `group DM`. Slack reports these as `is_mpim` with `properties.has_custom_mpdm_name`. Search results carry no `properties`, so a group DM whose name is not an `mpdm-*` slug also counts as named. These commands don't cache a named group DM by name, because a chat can be renamed or share a name with a real channel.
+- `slk debug channel <id|url|#name>` (hidden command) prints the raw `conversations.info` response.
 
 ### Fixed
 
 - `slk unread` and `slk catchup` now show group DMs. Slack lists them under `mpims` in `client.counts`, and both commands only read `ims` and `channels`, so a group DM's unreads never appeared. A named group DM is headed by its name (`#ifams review`); any other by the people in it besides you (`@Ada Lovelace, Grace Hopper`). A muted group DM is skipped like a muted channel unless `--muted` is passed. `slk unread --json` adds a `group_dms` array of `{id, mentions, label}`.
 - `slk unread clear` and `slk catchup --batch` now mark group DMs read, and their summaries count them ("Cleared 2 DMs, 1 group DMs, 5 channels and 3 threads"). `unread clear` also reports DMs, which it marked but did not count.
-- `slk messages --json` and `slk thread --json` fill `channel_name` from one `conversations.info` lookup when the name isn't cached: `ifams review` for a named group DM, `@Ada Lovelace, Grace Hopper` for others, never the `mpdm-…` slug. DMs and `--no-names` still use the cache only. `slk thread subscribe` and `unsubscribe` name the conversation the same way.
+- Thread headers in `slk unread` and `slk catchup` show a group DM the same way: `#ifams review` for a named one, `@Ada Lovelace, Grace Hopper` for others. Before, they showed the raw `#mpdm-ada--eric--grace-1` slug, and cached it. A slug that other commands already cached is ignored.
 - `slk activity` shows a group DM as `#ifams review` when it is named and `@Ada Lovelace, Grace Hopper` otherwise, in text and in `--json` `channel_name`. Before, it showed and cached the raw `#mpdm-…` slug. Legacy `G…` conversations now show their real name too; they read "Group DM" only when Slack won't say what they are.
+- `slk messages --json` and `slk thread --json` fill `channel_name` from one `conversations.info` lookup when the name isn't cached: `ifams review` for a named group DM, `@Ada Lovelace, Grace Hopper` for others, never the `mpdm-…` slug. DMs and `--no-names` still use the cache only. `slk thread subscribe` and `unsubscribe` name the conversation the same way.
+- `slk messages "#name"`, `slk unread clear "#name"`, and `slk debug channel "#name"` now find named group DMs (`slk messages "#ifams review"`) and any channel you belong to. Lookup pages through `users.conversations` (channels, private channels, and group DMs; archived excluded) and matches names without regard to case. Before, it read one page of `conversations.list`, which Slack caps at 100 channels and which leaves out group DMs. A channel wins over a named group DM with the same name. Public channels you have not joined still fall back to that one page.
 - The channel cache no longer stores group DM `mpdm-*` slugs. These are Slack's internal names, not names anyone types. Slugs cached by older versions are ignored when names are read, and dropped the next time the cache is written. `slk activity` and channel mentions in messages also stop caching named group DMs by name, the same as `slk huddles`.
 - Writing to the channel cache before reading from it no longer replaces the file with just the new entry.
-- Thread headers in `slk unread` and `slk catchup` show a group DM the same way: `#ifams review` for a named one, `@Ada Lovelace, Grace Hopper` for others. Before, they showed the raw `#mpdm-ada--eric--grace-1` slug, and cached it. A slug that other commands already cached is ignored.
 - `slk unread` no longer prints "No unread messages" after listing unread DMs when no channel is unread.
-- `slk messages "#name"`, `slk unread clear "#name"`, and `slk debug channel "#name"` now find named group DMs (`slk messages "#ifams review"`) and any channel you belong to. Lookup pages through `users.conversations` (channels, private channels, and group DMs; archived excluded) and matches names without regard to case. Before, it read one page of `conversations.list`, which Slack caps at 100 channels and which leaves out group DMs. A channel wins over a named group DM with the same name. Public channels you have not joined still fall back to that one page.
 - `slk unread clear "#general"` printed "Marked ##general"; it now prints one `#`.
 
 ## [0.14.0] - 2026-10-09
