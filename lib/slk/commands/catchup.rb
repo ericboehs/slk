@@ -247,10 +247,6 @@ module Slk
         process_conversation(workspace, dm_item, index, total, label)
       end
 
-      def group_dm_label
-        @group_dm_label ||= Services::GroupDmLabel.new(runner: runner, on_debug: ->(msg) { debug(msg) })
-      end
-
       def process_conversation(workspace, item, index, total, label)
         channel_id = item['id']
         last_read = item['last_read']

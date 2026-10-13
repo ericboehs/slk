@@ -335,6 +335,25 @@ class UnreadCommandTest < Minitest::Test
     assert_includes io_string, 'Threads'
   end
 
+  def test_thread_header_in_group_dm_shows_members_not_slug
+    @mock_client.stub('subscriptions.thread.getView', {
+                        'ok' => true, 'total_unread_replies' => 1,
+                        'threads' => [{ 'unread_replies' => [{ 'ts' => '1.1', 'text' => 't', 'user' => 'U2' }],
+                                        'root_msg' => { 'channel' => 'C7', 'thread_ts' => '1.0',
+                                                        'user' => 'U1', 'text' => 'parent' } }]
+                      })
+    @mock_client.stub('conversations.info', {
+                        'ok' => true, 'channel' => { 'id' => 'C7', 'is_mpim' => true, 'name' => 'mpdm-a--b-1',
+                                                     'members' => %w[U1 U2] }
+                      })
+    @mock_client.stub('auth.test', { 'ok' => true, 'user_id' => 'U1' })
+    runner.cache_store.set_channel('test', 'mpdm-a--b-1', 'C7')
+    runner.cache_store.set_user('test', 'U2', 'Ada Lovelace')
+    assert_equal 0, execute_with_args([])
+    assert_includes io_string, '@Ada Lovelace - thread by'
+    refute_includes io_string, 'mpdm-'
+  end
+
   private
 
   def stub_unread_channel

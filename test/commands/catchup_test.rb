@@ -202,6 +202,19 @@ class CatchupCommandTest < Minitest::Test
     $stdin = STDIN
   end
 
+  def test_thread_header_in_named_group_dm_shows_its_name
+    stub_unread_threads
+    @mock_client.stub('conversations.info', {
+                        'ok' => true, 'channel' => { 'id' => 'C1', 'is_mpim' => true, 'name' => 'ifams review',
+                                                     'properties' => { 'has_custom_mpdm_name' => true } }
+                      })
+    $stdin = StringIO.new("s\n")
+    assert_equal 0, execute_with_args([])
+    assert_includes io_string, '#ifams review - thread by'
+  ensure
+    $stdin = STDIN
+  end
+
   def test_threads_display_skip
     stub_unread_threads
     fake_input = StringIO.new("s\n")

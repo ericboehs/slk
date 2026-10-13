@@ -165,10 +165,6 @@ module Slk
           label: group_dm_label.label(workspace, group_dm['id']) }
       end
 
-      def group_dm_label
-        @group_dm_label ||= Services::GroupDmLabel.new(runner: runner, on_debug: ->(msg) { debug(msg) })
-      end
-
       def format_channel_json(workspace, channel)
         channel_hash = { id: channel['id'], mentions: channel['mention_count'] }
         channel_name = cache_store.get_channel_name(workspace.name, channel['id'])

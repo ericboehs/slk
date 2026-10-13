@@ -2,7 +2,8 @@
 
 module Slk
   module Services
-    # Header label for a group DM in unread and catchup. A named group DM
+    # Header label for a group DM in unread and catchup (conversation and
+    # thread headers). A named group DM
     # shows its name ("#ifams review"); any other shows the people in it
     # besides you ("@Ada Lovelace, Grace Hopper") rather than the opaque
     # mpdm-* slug. One conversations.info per chat, remembered for the run.
@@ -17,6 +18,16 @@ module Slk
       # @return [String] "#name", "@names", or "#<channel id>" if Slack refuses
       def label(workspace, channel_id)
         @labels[[workspace.name, channel_id]] ||= fetch_label(workspace, channel_id)
+      end
+
+      # @return [String, nil] a label already worked out this run, if any
+      def known(workspace, channel_id)
+        @labels[[workspace.name, channel_id]]
+      end
+
+      # Same label when the caller already holds conversations.info's channel.
+      def label_from(workspace, channel_id, channel)
+        @labels[[workspace.name, channel_id]] ||= label_for(workspace, channel) || "##{channel_id}"
       end
 
       private

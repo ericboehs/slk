@@ -68,6 +68,8 @@ module Slk
       public
 
       # Resolves a channel ID to a formatted label (@username or #channel)
+      # Group DMs get "#name" when named, else "@other, members", never the
+      # mpdm-* slug that other lookups may have put in the channel cache.
       # @param workspace [Models::Workspace] The workspace to look up in
       # @param channel_id [String] The channel ID
       # @return [String] Formatted label like "@username" or "#channel"
@@ -97,8 +99,11 @@ module Slk
       end
 
       def resolve_channel_label(workspace, channel_id)
+        known = group_dm_label.known(workspace, channel_id)
+        return known if known
+
         cached_name = cache_store.get_channel_name(workspace.name, channel_id)
-        return "##{cached_name}" if cached_name
+        return "##{cached_name}" if cached_name && !cached_name.match?(Support::GroupDmName::SLUG)
 
         fetch_channel_label(workspace, channel_id)
       end
@@ -108,14 +113,25 @@ module Slk
         response = conversations.info(channel: channel_id)
         return "##{channel_id}" unless response['ok'] && response['channel']
 
-        name = response['channel']['name']
+        channel = response['channel']
+        return group_dm_label.label_from(workspace, channel_id, channel) if channel['is_mpim']
+
+        named_channel_label(workspace, channel_id, channel['name'])
+      rescue ApiError => e
+        debug("Channel info lookup failed for #{channel_id}: #{e.message}")
+        "##{channel_id}"
+      end
+
+      def named_channel_label(workspace, channel_id, name)
         return "##{channel_id}" unless name
 
         cache_store.set_channel(workspace.name, name, channel_id)
         "##{name}"
-      rescue ApiError => e
-        debug("Channel info lookup failed for #{channel_id}: #{e.message}")
-        "##{channel_id}"
+      end
+
+      # One per command run, so a group DM is looked up once for all headers.
+      def group_dm_label
+        @group_dm_label ||= Services::GroupDmLabel.new(runner: runner, on_debug: ->(msg) { debug(msg) })
       end
 
       def name_from_user_profile(msg)

@@ -76,6 +76,22 @@ class GroupDmLabelTest < Minitest::Test
     assert_equal(1, @client.calls.count { |c| c[:method] == 'conversations.info' })
   end
 
+  def test_known_returns_only_labels_already_worked_out
+    stub_info('name' => 'ifams review')
+    label = labeler
+
+    assert_nil label.known(@workspace, 'C0C8TMPUV3P')
+    label.label(@workspace, 'C0C8TMPUV3P')
+    assert_equal '#ifams review', label.known(@workspace, 'C0C8TMPUV3P')
+  end
+
+  def test_label_from_uses_the_given_channel
+    label = labeler.label_from(@workspace, 'C7', { 'is_mpim' => true, 'name' => 'ifams review' })
+
+    assert_equal '#ifams review', label
+    refute(@client.calls.any? { |c| c[:method] == 'conversations.info' })
+  end
+
   private
 
   def stub_info(channel)
