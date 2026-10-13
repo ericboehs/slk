@@ -38,9 +38,17 @@ module Slk
 
       def label_from(workspace, channel_id, channel)
         return 'DM' if channel['is_im']
-        return 'group DM' if channel['is_mpim']
+        return group_label(channel) if channel['is_mpim']
 
         named_label(workspace, channel_id, channel['name'])
+      end
+
+      # A named group DM shows its name but stays out of the channel cache:
+      # the name can be changed at any time and can match a real channel's
+      # name, and the cache maps names to ids, so `#name` would go to the chat.
+      def group_label(channel)
+        name = Support::GroupDmName.custom(channel)
+        name ? "##{name}" : 'group DM'
       end
 
       def named_label(workspace, channel_id, name)

@@ -209,6 +209,7 @@ module Slk
     autoload :HelpFormatter, 'slk/support/help_formatter'
     autoload :ErrorLogger, 'slk/support/error_logger'
     autoload :UserResolver, 'slk/support/user_resolver'
+    autoload :GroupDmName, 'slk/support/group_dm_name'
     autoload :TextWrapper, 'slk/support/text_wrapper'
     autoload :InteractivePrompt, 'slk/support/interactive_prompt'
     autoload :DateParser, 'slk/support/date_parser'

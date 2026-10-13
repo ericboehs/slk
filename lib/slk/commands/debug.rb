@@ -26,6 +26,7 @@ module Slk
         in ['team'] then dump_team
         in ['schema'] then dump_schema
         in ['thread', url] then dump_thread(url)
+        in ['channel', target] then dump_channel(target)
         else unknown_action
         end
       end
@@ -61,7 +62,7 @@ module Slk
       # carry `subscribed`/`last_read`?) and subscriptions.thread.get. Each call
       # is captured separately so one failing does not hide the other.
       def dump_thread(url)
-        resolved = resolve_thread(url)
+        resolved = resolve_target(url)
         ts = resolved.thread_ts || resolved.msg_ts
         raise UsageError, 'URL must point to a specific message' unless ts
 
@@ -69,9 +70,18 @@ module Slk
         0
       end
 
-      def resolve_thread(url)
+      # Raw conversations.info: shows the flags labels key off (is_mpim,
+      # properties.has_custom_mpdm_name for named group DMs, is_ext_shared).
+      def dump_channel(target)
+        resolved = resolve_target(target)
+        info = runner.conversations_api(resolved.workspace.name).info(channel: resolved.channel_id)
+        output.puts(JSON.pretty_generate(info))
+        0
+      end
+
+      def resolve_target(target)
         Services::TargetResolver.new(runner: runner, cache_store: cache_store)
-                                .resolve(url, default_workspace: runner.workspace(@options[:workspace]))
+                                .resolve(target, default_workspace: runner.workspace(@options[:workspace]))
       end
 
       def thread_calls(workspace_name, channel, thread_ts)
@@ -118,7 +128,7 @@ module Slk
 
       def unknown_action
         error("Unknown debug action: #{positional_args.first.inspect}")
-        error('Valid actions: profile [user], team, schema, thread <url>')
+        error('Valid actions: profile [user], team, schema, thread <url>, channel <id|url>')
         1
       end
 
@@ -135,6 +145,7 @@ module Slk
             team             Dump team.info
             schema           Dump team.profile.get
             thread <url>     Dump thread parent + subscriptions.thread.get
+            channel <id|url> Dump conversations.info (also #name)
 
           USER
             (none) | me      Self

@@ -106,6 +106,9 @@ module Slk
       end
 
       def display_channel
+        named = channel_type == 'mpim' && Support::GroupDmName.label(channel_name)
+        return named if named
+
         if dm?
           "@#{channel_name}"
         else

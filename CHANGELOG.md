@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Named group DMs ("named chats") show under their name, such as `#ifams review`, in `slk search`, `slk sent` (header and JSON `channel_label`), and `slk huddles`. Before, search showed `<@ifams review>`, sent listed the members, and huddles showed `group DM`. Slack reports these as `is_mpim` with `properties.has_custom_mpdm_name`. Search results carry no `properties`, so a group DM whose name is not an `mpdm-*` slug also counts as named. Named group DMs are kept out of the channel name cache, because a chat can be renamed or share a name with a real channel.
+- `slk debug channel <id|url>` (hidden command) prints the raw `conversations.info` response.
+
 ## [0.14.0] - 2026-10-09
 
 ### Added

@@ -116,6 +116,42 @@ class DebugCommandTest < Minitest::Test
     assert_equal({ channel: 'C123', thread_ts: '1000000000.000000' }, get_call[:params])
   end
 
+  def test_dump_channel_from_url_shows_raw_info
+    @mock_client.stub('conversations.info', {
+                        'ok' => true,
+                        'channel' => { 'id' => 'C0C8TMPUV3P', 'name' => 'ifams review', 'is_mpim' => true,
+                                       'properties' => { 'has_custom_mpdm_name' => true } }
+                      })
+
+    assert_equal 0, execute_with_args(['channel', 'https://test.slack.com/archives/C0C8TMPUV3P/p1791921028600859'])
+
+    parsed = JSON.parse(io_string)
+    assert_equal 'ifams review', parsed.dig('channel', 'name')
+    assert parsed.dig('channel', 'properties', 'has_custom_mpdm_name')
+    info_call = @mock_client.calls.find { |c| c[:method] == 'conversations.info' }
+    assert_equal({ channel: 'C0C8TMPUV3P' }, info_call[:params])
+  end
+
+  def test_dump_channel_from_id
+    @mock_client.stub('conversations.info', { 'ok' => true, 'channel' => { 'id' => 'C123', 'name' => 'eert' } })
+
+    assert_equal 0, execute_with_args(%w[channel C123])
+
+    assert_equal 'eert', JSON.parse(io_string).dig('channel', 'name')
+  end
+
+  def test_dump_channel_api_error
+    @mock_client.stub('conversations.info', Slk::ApiError.new('channel_not_found'))
+
+    assert_equal 1, execute_with_args(%w[channel CNOPE])
+    assert_includes err_string, 'channel_not_found'
+  end
+
+  def test_dump_channel_requires_a_target
+    assert_equal 1, execute_with_args(['channel'])
+    assert_includes err_string, 'channel <id|url>'
+  end
+
   def test_dump_thread_captures_a_failing_call
     @mock_client.stub('conversations.replies', { 'ok' => true, 'messages' => [{ 'ts' => '1.0' }] })
     @mock_client.stub('subscriptions.thread.get', Slk::ApiError.new('unknown_method'))

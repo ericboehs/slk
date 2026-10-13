@@ -162,6 +162,25 @@ class SentCommandTest < Minitest::Test
     assert_equal '@Ada Lovelace, Grace Hopper', count['channel_label']
   end
 
+  def test_named_group_dm_shows_its_name_not_participants
+    sent = match('2.0', 'hello', 'C0C8TMPUV3P', 'ifams review').merge(
+      'username' => 'eric.boehs',
+      'channel' => { 'id' => 'C0C8TMPUV3P', 'name' => 'ifams review', 'is_mpim' => true }
+    )
+    stub_matches('acme' => [sent])
+    @client.stub('conversations.history', { 'messages' => [raw('2.0', 'U1', 'hello')] })
+    assert_equal 0, command(['-w', 'acme']).execute
+    assert_match(/^\[acme\] #ifams review$/, @io.string)
+    refute(@client.calls.any? { |call| call[:method] == 'conversations.info' })
+
+    @io.truncate(0)
+    @io.rewind
+    assert_equal 0, command(['-w', 'acme', '--mine', '--json']).execute
+    count = JSON.parse(@io.string)['counts'].first
+    assert_equal 'ifams review', count['channel_name']
+    assert_equal '#ifams review', count['channel_label']
+  end
+
   def test_group_dm_falls_back_to_readable_handles_without_members_scope
     name = 'mpdm-ada.lovelace--eric.boehs--grace.hopper-1'
     sent = match('2.0', 'hello', 'G2', name).merge(

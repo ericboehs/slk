@@ -5,6 +5,7 @@ module Slk
     # Resolves sent-conversation destinations while retaining raw channel IDs
     # and names in JSON. Group DMs need member lookup: their Slack name is an
     # opaque mpdm-* slug, not a user ID that MentionReplacer can resolve.
+    # Named group DMs ("named chats") skip that and show as #name.
     class SentChannelLabel
       USER_ID_PATTERN = /\A[UW][A-Z0-9]+\z/
 
@@ -28,6 +29,9 @@ module Slk
       private
 
       def group_label(workspace, channel_id, name, self_user_id, self_username)
+        named = Support::GroupDmName.label(name)
+        return named if named
+
         names = group_member_names(workspace, channel_id, self_user_id)
         return "@#{names.join(', ')}" if names.any?
 
