@@ -110,16 +110,23 @@ module Slk
         result
       end
 
+      # Group DM mpdm-* slugs are never returned (older versions cached them),
+      # so callers fall through to a real label.
       def get_channel_name(workspace_name, channel_id)
         load_channel_cache(workspace_name)
         cache = @channel_cache[workspace_name] || {}
-        result = cache.key(channel_id)
+        result = cache.find { |name, id| id == channel_id && !group_dm_slug?(name) }&.first
         log_cache_access('channel_name', workspace_name, channel_id, result)
         result
       end
 
+      # Refuses group DM mpdm-* slugs: they are Slack's internal names, not
+      # what people type or see. Writing drops any slugs cached before this.
       def set_channel(workspace_name, channel_name, channel_id)
-        @channel_cache[workspace_name] ||= {}
+        return if group_dm_slug?(channel_name)
+
+        load_channel_cache(workspace_name)
+        @channel_cache[workspace_name].reject! { |name, _id| group_dm_slug?(name) }
         @channel_cache[workspace_name][channel_name] = channel_id
         save_channel_cache(workspace_name)
       end
@@ -183,6 +190,10 @@ module Slk
       end
 
       private
+
+      def group_dm_slug?(name)
+        name.to_s.match?(Support::GroupDmName::SLUG)
+      end
 
       def load_user_cache(workspace_name)
         return if @user_cache.key?(workspace_name)

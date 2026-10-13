@@ -109,8 +109,14 @@ module Slk
         Services::ActivityEnricher.new(
           cache_store: cache_store,
           conversations_api: runner.conversations_api(workspace.name),
+          group_dm_label: group_dm_label,
           on_debug: ->(msg) { debug(msg) }
         )
+      end
+
+      # One per run, so each group DM is looked up once however often it appears.
+      def group_dm_label
+        @group_dm_label ||= Services::GroupDmLabel.new(runner: runner, on_debug: ->(msg) { debug(msg) })
       end
 
       def formatter(workspace)

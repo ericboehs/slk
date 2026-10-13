@@ -161,6 +161,54 @@ class CacheStoreTest < Minitest::Test
     end
   end
 
+  def test_set_channel_keeps_entries_already_on_disk
+    with_temp_config do
+      Slk::Services::CacheStore.new.set_channel('workspace1', 'general', 'C123')
+
+      # A fresh store that writes before it reads must not clobber the file
+      Slk::Services::CacheStore.new.set_channel('workspace1', 'random', 'C456')
+
+      assert_equal 'C123', Slk::Services::CacheStore.new.get_channel_id('workspace1', 'general')
+    end
+  end
+
+  # Group DM mpdm-* slugs
+  def test_set_channel_refuses_group_dm_slugs
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_channel('workspace1', 'mpdm-ada--eric-1', 'C7')
+
+      assert_nil store.get_channel_id('workspace1', 'mpdm-ada--eric-1')
+      assert_equal 0, store.channel_cache_size('workspace1')
+    end
+  end
+
+  def test_named_group_dm_names_can_be_cached
+    with_temp_config do
+      store = Slk::Services::CacheStore.new
+      store.set_channel('workspace1', 'ifams review', 'C0C8TMPUV3P')
+
+      assert_equal 'ifams review', store.get_channel_name('workspace1', 'C0C8TMPUV3P')
+    end
+  end
+
+  def test_slugs_cached_by_older_versions_are_ignored_then_dropped
+    with_temp_config do
+      paths = Slk::Support::XdgPaths.new
+      paths.ensure_cache_dir
+      file = paths.cache_file('channels-workspace1.json')
+      File.write(file, JSON.generate('mpdm-ada--eric-1' => 'C7', 'general' => 'C1'))
+      store = Slk::Services::CacheStore.new
+
+      assert_nil store.get_channel_name('workspace1', 'C7')
+      assert_equal 'general', store.get_channel_name('workspace1', 'C1')
+
+      store.set_channel('workspace1', 'random', 'C2')
+
+      assert_equal({ 'general' => 'C1', 'random' => 'C2' }, JSON.parse(File.read(file)))
+    end
+  end
+
   # Subteam cache tests
   def test_get_subteam_returns_nil_for_unknown_subteam
     with_temp_config do

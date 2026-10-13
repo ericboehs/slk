@@ -259,6 +259,18 @@ class MentionReplacerTest < Minitest::Test
     assert_equal 'engineering', @cache.get_channel_name('test', 'C888')
   end
 
+  def test_named_group_dm_mention_shows_name_without_caching_it
+    mock_api = MockApiClient.new
+    mock_api.stub('conversations.info', {
+                    'ok' => true,
+                    'channel' => { 'id' => 'C0C8TMPUV3P', 'name' => 'ifams review', 'is_mpim' => true }
+                  })
+    replacer = Slk::Formatters::MentionReplacer.new(cache_store: @cache, api_client: mock_api)
+
+    assert_equal '#ifams review', replacer.replace('<#C0C8TMPUV3P>', @workspace)
+    assert_nil @cache.get_channel_id('test', 'ifams review')
+  end
+
   def test_channel_api_error_falls_back_gracefully
     api_client = Object.new
     api_client.define_singleton_method(:get) do |_workspace, _method, _params = {}|

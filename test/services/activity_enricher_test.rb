@@ -45,8 +45,59 @@ class ActivityEnricherTest < Minitest::Test
     assert_equal 'DM', build.resolve_channel(@workspace, 'D123')
   end
 
-  def test_resolve_channel_group_prefix
+  def test_resolve_channel_group_prefix_when_slack_wont_say
     assert_equal 'Group DM', build.resolve_channel(@workspace, 'G123')
+  end
+
+  def test_resolve_channel_returns_id_when_name_missing
+    @conversations.info_response = { 'ok' => true, 'channel' => {} }
+    assert_equal 'C1', build.resolve_channel(@workspace, 'C1')
+    assert_empty @cache.channels
+  end
+
+  def test_legacy_g_private_channel_shows_its_name
+    @conversations.info_response = { 'ok' => true, 'channel' => { 'name' => 'old-private' } }
+    assert_equal '#old-private', build.resolve_channel(@workspace, 'G123')
+  end
+
+  # Group DMs
+  def test_unnamed_group_dm_uses_group_dm_label_and_is_not_cached
+    @conversations.info_response = { 'ok' => true, 'channel' => mpim('mpdm-ada--eric--grace-1') }
+    labels = FakeGroupDmLabel.new('@Ada Lovelace, Grace Hopper')
+
+    assert_equal '@Ada Lovelace, Grace Hopper', build(group_dm_label: labels).resolve_channel(@workspace, 'C7')
+    assert_empty @cache.channels
+  end
+
+  def test_group_dm_label_already_known_skips_the_lookup
+    labels = FakeGroupDmLabel.new('#ifams review', known: true)
+    @conversations.raise_on_info = Slk::ApiError.new('should not be called', code: :error)
+
+    assert_equal '#ifams review', build(group_dm_label: labels).resolve_channel(@workspace, 'C7')
+  end
+
+  def test_named_group_dm_without_label_service_shows_its_name
+    @conversations.info_response = { 'ok' => true, 'channel' => mpim('ifams review') }
+
+    assert_equal '#ifams review', build.resolve_channel(@workspace, 'C0C8TMPUV3P')
+    assert_equal 'ifams review', build.resolve_channel(@workspace, 'C0C8TMPUV3P', with_hash: false)
+    assert_empty @cache.channels
+  end
+
+  def test_unnamed_group_dm_without_label_service_reads_group_dm
+    @conversations.info_response = { 'ok' => true, 'channel' => mpim('mpdm-ada--eric-1') }
+
+    assert_equal 'Group DM', build.resolve_channel(@workspace, 'C7')
+  end
+
+  def test_unnamed_group_dm_json_name_keeps_the_at_sign
+    @conversations.info_response = { 'ok' => true, 'channel' => mpim('mpdm-ada--eric-1') }
+    item = { 'item' => { 'type' => 'thread_v2',
+                         'bundle_info' => { 'payload' => { 'thread_entry' => { 'channel_id' => 'C7' } } } } }
+
+    result = build(group_dm_label: FakeGroupDmLabel.new('@Ada')).enrich_all([item], @workspace).first
+
+    assert_equal '@Ada', result.dig('item', 'bundle_info', 'payload', 'thread_entry', 'channel_name')
   end
 
   def test_resolve_channel_uses_cache_when_present
@@ -206,10 +257,23 @@ class ActivityEnricherTest < Minitest::Test
 
   private
 
-  def build(on_debug: nil)
+  def build(on_debug: nil, group_dm_label: nil)
     Slk::Services::ActivityEnricher.new(
-      cache_store: @cache, conversations_api: @conversations, on_debug: on_debug
+      cache_store: @cache, conversations_api: @conversations, group_dm_label: group_dm_label, on_debug: on_debug
     )
+  end
+
+  def mpim(name) = { 'is_mpim' => true, 'name' => name }
+
+  # Stand-in for Services::GroupDmLabel
+  class FakeGroupDmLabel
+    def initialize(label, known: false)
+      @label = label
+      @known = known
+    end
+
+    def known(_workspace, _channel_id) = (@label if @known)
+    def label_from(_workspace, _channel_id, _channel) = @label
   end
 
   class FakeCacheStore
