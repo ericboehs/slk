@@ -23,7 +23,8 @@ class DndStateTest < Minitest::Test
     assert_predicate dnd, :active?
     assert_equal :snooze, dnd.source
     assert_equal lifts.to_i, dnd.until_time.to_i
-    assert_match(/\A\[dnd until \d+:\d\d[ap]m\]\z/, dnd.to_s)
+    # Run late in the day, 90 minutes on is tomorrow and gains a weekday.
+    assert_match(/\A\[dnd until (?:[A-Z][a-z]{2} )?\d+:\d\d[ap]m\]\z/, dnd.to_s)
   end
 
   # Slack can report a snooze without an end time; claiming an hour that was

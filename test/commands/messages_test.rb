@@ -202,6 +202,52 @@ class MessagesCommandTest < Minitest::Test
     assert_equal 'Hello', output.first['text']
   end
 
+  # JSON channel_name
+  def test_json_channel_name_for_named_group_dm
+    stub_history_and_info('is_mpim' => true, 'name' => 'ifams review',
+                          'properties' => { 'has_custom_mpdm_name' => true })
+    command = build_command(['#ifams review', '--json'])
+    stub_target_resolver(command)
+
+    assert_equal 0, command.execute
+    assert_equal 'ifams review', JSON.parse(@io.string).first['channel_name']
+  end
+
+  def test_json_channel_name_for_unnamed_group_dm_lists_members
+    stub_history_and_info('is_mpim' => true, 'name' => 'mpdm-ada--eric-1', 'members' => %w[U9 U2])
+    @mock_client.stub('auth.test', { 'ok' => true, 'user_id' => 'U9' })
+    command = build_command(['https://test.slack.com/archives/C123', '--json'])
+    command.runner.cache_store.set_user('test', 'U2', 'Ada Lovelace')
+    stub_target_resolver(command)
+
+    assert_equal 0, command.execute
+    assert_equal '@Ada Lovelace', JSON.parse(@io.string).first['channel_name']
+  end
+
+  def test_json_channel_name_is_looked_up_once
+    @mock_client.stub('conversations.history', history('a', 'b'))
+    @mock_client.stub('conversations.info', { 'ok' => true, 'channel' => { 'name' => 'general' } })
+    command = build_command(['#general', '--json'])
+    stub_target_resolver(command)
+
+    command.execute
+
+    assert_equal(%w[general general], JSON.parse(@io.string).map { |m| m['channel_name'] })
+    assert_equal(1, @mock_client.calls.count { |c| c[:method] == 'conversations.info' })
+  end
+
+  def test_json_channel_name_skips_lookup_for_dms_and_no_names
+    [[%w[@bob --json], 'D123'], [['#general', '--json', '--no-names'], 'C123']].each do |args, channel_id|
+      @mock_client.stub('conversations.history', history('a'))
+      command = build_command(args)
+      stub_target_resolver(command, channel_id: channel_id)
+
+      command.execute
+    end
+
+    refute(@mock_client.calls.any? { |c| c[:method] == 'conversations.info' })
+  end
+
   def test_json_threads_option_includes_nested_replies
     # Parent message with reply_count indicates it's a thread parent
     @mock_client.stub('conversations.history', {
@@ -546,12 +592,22 @@ class MessagesCommandTest < Minitest::Test
 
   private
 
-  def stub_target_resolver(command, thread_ts: nil, msg_ts: nil)
+  def history(*texts)
+    messages = texts.each_with_index.map { |text, i| { 'ts' => "1.#{i}", 'user' => 'U1', 'text' => text } }
+    { 'ok' => true, 'messages' => messages }
+  end
+
+  def stub_history_and_info(channel)
+    @mock_client.stub('conversations.history', history('hi'))
+    @mock_client.stub('conversations.info', { 'ok' => true, 'channel' => { 'id' => 'C123' }.merge(channel) })
+  end
+
+  def stub_target_resolver(command, thread_ts: nil, msg_ts: nil, channel_id: 'C123')
     command.define_singleton_method(:target_resolver) do
       resolver = Object.new
       ws = Slk::Models::Workspace.new(name: 'test', token: 'xoxb-test')
       result = Slk::Services::TargetResolver::Result.new(
-        workspace: ws, channel_id: 'C123', thread_ts: thread_ts, msg_ts: msg_ts
+        workspace: ws, channel_id: channel_id, thread_ts: thread_ts, msg_ts: msg_ts
       )
       resolver.define_singleton_method(:resolve) { |_target, **_opts| result }
       resolver
@@ -592,7 +648,8 @@ class MessagesCommandTest < Minitest::Test
       config: config,
       token_store: token_store,
       api_client: @mock_client,
-      preset_store: preset_store
+      preset_store: preset_store,
+      cache_store: Slk::Services::CacheStore.new(paths: Slk::TestHelpers::TempPaths.new)
     )
   end
 

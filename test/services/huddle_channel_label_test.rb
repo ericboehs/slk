@@ -42,6 +42,14 @@ class HuddleChannelLabelTest < Minitest::Test
     assert_nil @cache.get_channel_name(@workspace.name, 'G1')
   end
 
+  def test_named_group_dm_shows_its_name_without_caching_it
+    @channels['C0C8TMPUV3P'] = { 'id' => 'C0C8TMPUV3P', 'is_mpim' => true, 'name' => 'ifams review',
+                                 'properties' => { 'has_custom_mpdm_name' => true } }
+
+    assert_equal '#ifams review', labeler.label(@workspace, 'C0C8TMPUV3P')
+    assert_nil @cache.get_channel_id(@workspace.name, 'ifams review')
+  end
+
   def test_blank_name
     @channels['C2'] = { 'id' => 'C2', 'name' => '' }
 

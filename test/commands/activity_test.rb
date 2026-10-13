@@ -70,6 +70,32 @@ class ActivityCommandTest < Minitest::Test
     assert_equal 0, execute_with_args([])
   end
 
+  def test_group_dm_shows_members_not_slug
+    stub_feed([reaction_item])
+    @mock_client.stub('conversations.info', {
+                        'ok' => true, 'channel' => { 'id' => 'C1', 'is_mpim' => true,
+                                                     'name' => 'mpdm-ada--eric-1', 'members' => %w[U9 U2] }
+                      })
+    @mock_client.stub('auth.test', { 'ok' => true, 'user_id' => 'U9' })
+    Slk::Services::CacheStore.new(paths: temp_paths).set_user('test', 'U2', 'Ada Lovelace', persist: true)
+
+    out, = capture_io { assert_equal 0, execute_with_args([]) } # the formatter writes to stdout
+    assert_includes out, 'in @Ada Lovelace'
+    refute_includes out, 'mpdm-'
+    refute File.exist?(temp_paths.cache_file('channels-test.json'))
+  end
+
+  def test_named_group_dm_shows_its_name
+    stub_feed([reaction_item])
+    @mock_client.stub('conversations.info', {
+                        'ok' => true, 'channel' => { 'id' => 'C1', 'is_mpim' => true, 'name' => 'ifams review',
+                                                     'properties' => { 'has_custom_mpdm_name' => true } }
+                      })
+
+    out, = capture_io { assert_equal 0, execute_with_args([]) }
+    assert_includes out, 'in #ifams review'
+  end
+
   def test_json_output
     stub_feed([reaction_item])
     assert_equal 0, execute_with_args(['--json'])

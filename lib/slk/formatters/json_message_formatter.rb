@@ -87,7 +87,7 @@ module Slk
         workspace_name = workspace&.name
         return unless workspace_name
 
-        channel_name = @cache.get_channel_name(workspace_name, options[:channel_id])
+        channel_name = options[:channel_name] || @cache.get_channel_name(workspace_name, options[:channel_id])
         result[:channel_name] = channel_name if channel_name
       end
     end

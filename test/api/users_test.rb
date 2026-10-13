@@ -221,6 +221,15 @@ class UsersApiTest < Minitest::Test
     @mock_client.stub('users.conversations', { 'ok' => true, 'channels' => [] })
     @api.conversations
     refute @mock_client.calls.last[:params].key?(:cursor)
+    refute @mock_client.calls.last[:params].key?(:exclude_archived)
+  end
+
+  def test_conversations_with_types_and_exclude_archived
+    @mock_client.stub('users.conversations', { 'ok' => true, 'channels' => [] })
+    @api.conversations(types: 'mpim', exclude_archived: true)
+    params = @mock_client.calls.last[:params]
+    assert_equal 'mpim', params[:types]
+    assert params[:exclude_archived]
   end
 
   def test_muted_channels_returns_empty_when_no_data

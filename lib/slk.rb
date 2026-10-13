@@ -125,6 +125,8 @@ module Slk
     autoload :HuddleState, 'slk/services/huddle_state'
     autoload :WorkspaceFanout, 'slk/services/workspace_fanout'
     autoload :HuddleChannelLabel, 'slk/services/huddle_channel_label'
+    autoload :GroupDmLabel, 'slk/services/group_dm_label'
+    autoload :ChannelLookup, 'slk/services/channel_lookup'
     autoload :ThreadSubscription, 'slk/services/thread_subscription'
   end
 
@@ -209,6 +211,7 @@ module Slk
     autoload :HelpFormatter, 'slk/support/help_formatter'
     autoload :ErrorLogger, 'slk/support/error_logger'
     autoload :UserResolver, 'slk/support/user_resolver'
+    autoload :GroupDmName, 'slk/support/group_dm_name'
     autoload :TextWrapper, 'slk/support/text_wrapper'
     autoload :InteractivePrompt, 'slk/support/interactive_prompt'
     autoload :DateParser, 'slk/support/date_parser'

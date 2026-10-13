@@ -186,6 +186,18 @@ class ThreadCommandTest < Minitest::Test
     assert_includes @io.string, 'Subscribed to thread 1234.0001 in C123'
   end
 
+  def test_subscribe_names_a_group_dm_by_its_name
+    stub_parent_lookup
+    @mock_client.stub('conversations.info', {
+                        'ok' => true, 'channel' => { 'id' => 'C123', 'is_mpim' => true, 'name' => 'ifams review' }
+                      })
+    command = build_command(['subscribe', 'https://test.slack.com/archives/C123/p1234000001000000'])
+    stub_target_resolver(command, msg_ts: '1234.0001')
+
+    assert_equal 0, command.execute
+    assert_includes @io.string, 'Subscribed to thread 1234.0001 in #ifams review'
+  end
+
   def test_subscribe_uses_thread_ts_from_reply_url
     stub_parent_lookup
 
@@ -356,7 +368,8 @@ class ThreadCommandTest < Minitest::Test
       config: config,
       token_store: token_store,
       api_client: @mock_client,
-      preset_store: preset_store
+      preset_store: preset_store,
+      cache_store: Slk::Services::CacheStore.new(paths: Slk::TestHelpers::TempPaths.new)
     )
   end
 end

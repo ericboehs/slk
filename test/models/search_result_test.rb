@@ -60,6 +60,21 @@ class SearchResultTest < Minitest::Test
     assert_equal '@john', result.display_channel
   end
 
+  def test_display_channel_for_named_group_dm
+    match = build_match_data(channel: { 'id' => 'C0C8TMPUV3P', 'name' => 'ifams review', 'is_mpim' => true })
+
+    result = Slk::Models::SearchResult.from_api(match)
+
+    assert_equal 'mpim', result.channel_type
+    assert_equal '#ifams review', result.display_channel
+  end
+
+  def test_display_channel_for_unnamed_group_dm_keeps_slug_form
+    match = build_match_data(channel: { 'id' => 'G1', 'name' => 'mpdm-a--b-1', 'is_mpim' => true })
+
+    assert_equal '@mpdm-a--b-1', Slk::Models::SearchResult.from_api(match).display_channel
+  end
+
   def test_extracts_thread_ts_from_permalink
     match = build_match_data(
       permalink: 'https://workspace.slack.com/archives/C12345/p1234567890123456?thread_ts=1234500000.000000'

@@ -133,6 +133,7 @@ module Slk
 
         {
           unread_ims: filter_unread_ims(counts['ims'] || []),
+          unread_group_dms: filter_unread_channels(counts['mpims'] || [], muted_ids),
           unread_channels: filter_unread_channels(counts['channels'] || [], muted_ids)
         }
       end
@@ -154,8 +155,14 @@ module Slk
       def unread_json(workspace, data)
         {
           channels: data[:unread_channels].map { |c| format_channel_json(workspace, c) },
-          dms: data[:unread_ims].map { |i| format_dm_json(workspace, i) }
+          dms: data[:unread_ims].map { |i| format_dm_json(workspace, i) },
+          group_dms: data[:unread_group_dms].map { |g| format_group_dm_json(workspace, g) }
         }
+      end
+
+      def format_group_dm_json(workspace, group_dm)
+        { id: group_dm['id'], mentions: group_dm['mention_count'],
+          label: group_dm_label.label(workspace, group_dm['id']) }
       end
 
       def format_channel_json(workspace, channel)
@@ -180,23 +187,37 @@ module Slk
         formatter = runner.message_formatter
 
         display_unread_dms(workspace, data[:unread_ims], conversations_api, formatter)
-        display_unread_channels(workspace, data[:unread_channels], conversations_api, formatter)
+        display_unread_group_dms(workspace, data[:unread_group_dms], conversations_api, formatter)
+        display_unread_channels(workspace, data, conversations_api, formatter)
         show_threads(workspace, formatter)
       end
 
       def display_unread_dms(workspace, unread_ims, conversations_api, formatter)
         unread_ims.each do |im|
-          mention_count = im['mention_count'] || 0
           user_name = resolve_dm_user_name(workspace, im['id'], conversations_api)
-          puts
-          puts output.bold("@#{user_name}") + (mention_count.positive? ? " (#{mention_count} mentions)" : '')
-          puts
+          print_conversation_header("@#{user_name}", im['mention_count'] || 0)
           show_channel_messages(workspace, im['id'], @options[:limit], conversations_api, formatter)
         end
       end
 
-      def display_unread_channels(workspace, unreads, conversations_api, formatter)
-        return puts('No unread messages') if unreads.empty?
+      def display_unread_group_dms(workspace, group_dms, conversations_api, formatter)
+        group_dms.each do |group_dm|
+          print_conversation_header(group_dm_label.label(workspace, group_dm['id']), group_dm['mention_count'] || 0)
+          show_channel_messages(workspace, group_dm['id'], @options[:limit], conversations_api, formatter)
+        end
+      end
+
+      def print_conversation_header(label, mention_count)
+        puts
+        puts output.bold(label) + (mention_count.positive? ? " (#{mention_count} mentions)" : '')
+        puts
+      end
+
+      # "No unread messages" only when nothing at all is unread, not merely
+      # when the DMs and group DMs above are the only unreads.
+      def display_unread_channels(workspace, data, conversations_api, formatter)
+        unreads = data[:unread_channels]
+        return puts('No unread messages') if [unreads, data[:unread_ims], data[:unread_group_dms]].all?(&:empty?)
 
         unreads.each { |ch| display_channel(workspace, ch, conversations_api, formatter) }
       end
@@ -283,12 +304,13 @@ module Slk
         channel_id = resolve_channel_id(workspace, channel_name)
         return unless unread_marker(workspace).mark_single_channel(channel_id)
 
-        success("Marked ##{channel_name} as read on #{workspace.name}")
+        success("Marked ##{channel_name.delete_prefix('#')} as read on #{workspace.name}")
       end
 
       def clear_all_channels(workspace)
         counts = unread_marker(workspace).mark_all(options: { muted: @options[:muted] })
-        success("Cleared #{counts[:channels]} channels and #{counts[:threads]} threads on #{workspace.name}")
+        success("Cleared #{counts[:dms]} DMs, #{counts[:group_dms]} group DMs, #{counts[:channels]} channels " \
+                "and #{counts[:threads]} threads on #{workspace.name}")
       end
 
       def unread_marker(workspace)
@@ -305,15 +327,8 @@ module Slk
         return channel_name if channel_name.match?(/^[CDG][A-Z0-9]+$/)
 
         name = channel_name.delete_prefix('#')
-        cache_store.get_channel_id(workspace.name, name) || resolve_channel(workspace, name)
-      end
-
-      def resolve_channel(workspace, name)
-        api = runner.conversations_api(workspace.name)
-        response = api.list
-        channels = response['channels'] || []
-        channel = channels.find { |c| c['name'] == name }
-        channel&.dig('id') || raise(ConfigError, "Channel not found: ##{name}")
+        Services::ChannelLookup.new(runner: runner, cache_store: cache_store).find_id(workspace, name) ||
+          raise(ConfigError, "Channel not found: ##{name}")
       end
     end
     # rubocop:enable Metrics/ClassLength

@@ -2,11 +2,14 @@
 
 module Slk
   module Services
-    # Enriches activity feed items with resolved user/channel names
+    # Enriches activity feed items with resolved user/channel names.
+    # Group DMs show as "#name" when named, else "@other, members" (given a
+    # GroupDmLabel), never as their mpdm-* slug, and are never cached by name.
     class ActivityEnricher
-      def initialize(cache_store:, conversations_api:, on_debug: nil)
+      def initialize(cache_store:, conversations_api:, group_dm_label: nil, on_debug: nil)
         @cache = cache_store
         @conversations_api = conversations_api
+        @group_dm_label = group_dm_label
         @on_debug = on_debug
       end
 
@@ -40,15 +43,16 @@ module Slk
         @cache.get_user(workspace.name, user_id) || user_id
       end
 
-      # Resolve channel ID to name (with API fallback)
+      # Resolve channel ID to a label (with API fallback). Legacy G ids are
+      # group DMs or old private channels; they read "Group DM" if Slack
+      # won't say which.
       def resolve_channel(workspace, channel_id, with_hash: true)
         return 'DM' if channel_id.start_with?('D')
-        return 'Group DM' if channel_id.start_with?('G')
 
-        name = fetch_channel_name(workspace, channel_id)
-        return channel_id unless name
+        label = channel_label(workspace, channel_id)
+        return channel_id.start_with?('G') ? 'Group DM' : channel_id unless label
 
-        with_hash ? "##{name}" : name
+        with_hash ? label : label.delete_prefix('#')
       end
 
       private
@@ -101,19 +105,35 @@ module Slk
         data['channel_name'] = resolve_channel(workspace, channel_id, with_hash: false) if channel_id
       end
 
-      def fetch_channel_name(workspace, channel_id)
+      def channel_label(workspace, channel_id)
+        known = @group_dm_label&.known(workspace, channel_id)
+        return known if known
+
         cached = @cache.get_channel_name(workspace.name, channel_id)
-        return cached if cached
+        return "##{cached}" if cached
 
+        fetch_channel_label(workspace, channel_id)
+      end
+
+      def fetch_channel_label(workspace, channel_id)
         response = @conversations_api.info(channel: channel_id)
-        return nil unless response['ok'] && response['channel']
+        channel = response['channel'] if response['ok']
+        return nil unless channel
+        return group_dm_label(workspace, channel_id, channel) if channel['is_mpim']
+        return nil unless channel['name']
 
-        name = response['channel']['name']
-        @cache.set_channel(workspace.name, name, channel_id)
-        name
+        @cache.set_channel(workspace.name, channel['name'], channel_id)
+        "##{channel['name']}"
       rescue ApiError => e
         @on_debug&.call("Could not resolve channel #{channel_id}: #{e.message}")
         nil
+      end
+
+      def group_dm_label(workspace, channel_id, channel)
+        return @group_dm_label.label_from(workspace, channel_id, channel) if @group_dm_label
+
+        named = Support::GroupDmName.custom(channel)
+        named ? "##{named}" : 'Group DM'
       end
 
       def debug_missing(item_type, missing_data)

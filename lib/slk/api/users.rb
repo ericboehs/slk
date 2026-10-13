@@ -143,9 +143,11 @@ module Slk
 
       public
 
-      def conversations(cursor: nil, limit: 1000)
-        params = { limit: limit, types: 'public_channel,private_channel,mpim,im' }
+      def conversations(cursor: nil, limit: 1000, types: 'public_channel,private_channel,mpim,im',
+                        exclude_archived: false)
+        params = { limit: limit, types: types }
         params[:cursor] = cursor if cursor
+        params[:exclude_archived] = true if exclude_archived
         @api.post_form(@workspace, 'users.conversations', params)
       end
     end

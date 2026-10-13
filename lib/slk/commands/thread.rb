@@ -130,8 +130,7 @@ module Slk
       end
 
       def channel_label(workspace, channel_id)
-        name = cache_store.get_channel_name(workspace.name, channel_id)
-        name ? "##{name}" : channel_id
+        conversation_label(workspace, channel_id) || channel_id
       end
 
       def subscription_error(action, err)

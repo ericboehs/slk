@@ -223,6 +223,38 @@ class UserResolverTest < Minitest::Test
     assert_match(/Channel info lookup failed for C1/, host.debug_messages.first)
   end
 
+  # Group DMs (thread headers in unread and catchup)
+  def test_unnamed_group_dm_label_lists_other_members_and_is_not_cached
+    host, cache = group_dm_host('name' => 'mpdm-ada--eric--grace-1', 'members' => %w[USELF U2 U3])
+    cache.set_user('ws1', 'U2', 'Ada Lovelace')
+    cache.set_user('ws1', 'U3', 'Grace Hopper')
+
+    assert_equal '@Ada Lovelace, Grace Hopper', host.resolve_conversation_label(@workspace, 'C7')
+    assert_nil cache.get_channel_name('ws1', 'C7')
+  end
+
+  def test_cached_mpdm_slug_is_ignored_for_the_group_label
+    host, cache = group_dm_host('name' => 'mpdm-ada--eric-1', 'members' => %w[USELF U2])
+    cache.set_channel('ws1', 'mpdm-ada--eric-1', 'C7')
+    cache.set_user('ws1', 'U2', 'Ada Lovelace')
+
+    assert_equal '@Ada Lovelace', host.resolve_conversation_label(@workspace, 'C7')
+  end
+
+  def test_named_group_dm_label_is_its_name
+    host, = group_dm_host('name' => 'ifams review', 'properties' => { 'has_custom_mpdm_name' => true })
+
+    assert_equal '#ifams review', host.resolve_conversation_label(@workspace, 'C7')
+  end
+
+  def test_group_dm_is_looked_up_once_per_host
+    host, = group_dm_host('name' => 'ifams review')
+
+    2.times { host.resolve_conversation_label(@workspace, 'C7') }
+
+    assert_equal(1, @client.calls.count { |c| c[:method] == 'conversations.info' })
+  end
+
   # extract_user_from_message
   def test_extract_user_from_message_uses_user_profile_display_name
     msg = { 'user_profile' => { 'display_name' => 'Display' } }
@@ -337,5 +369,17 @@ class UserResolverTest < Minitest::Test
   def build_host(conversations: nil, users: nil)
     runner = FakeRunner.new(conversations_api: conversations, users_api: users)
     Host.new(runner, @cache)
+  end
+
+  # Group DM labels need a whole runner (users, auth.test, meta cache).
+  def group_dm_host(channel)
+    @client = MockApiClient.new
+    @client.stub('auth.test', { 'ok' => true, 'user_id' => 'USELF' })
+    @client.stub('conversations.info', { 'ok' => true, 'channel' => { 'is_mpim' => true }.merge(channel) })
+    cache = Slk::Services::CacheStore.new(paths: Slk::TestHelpers::TempPaths.new)
+    runner = Slk::Runner.new(output: test_output, api_client: @client, cache_store: cache)
+    workspace = @workspace
+    runner.define_singleton_method(:workspace) { |_name = nil| workspace }
+    [Host.new(runner, cache), cache]
   end
 end

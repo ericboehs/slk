@@ -109,12 +109,18 @@ module Slk
         response = Api::Conversations.new(@api, workspace).info(channel: channel_id)
         return nil unless response['ok'] && response['channel']
 
-        name = response['channel']['name']
-        @cache.set_channel(workspace.name, name, channel_id) if name
-        name
+        remember_channel_name(workspace, channel_id, response['channel'])
       rescue ApiError => e
         @on_debug&.call("Channel lookup failed for #{channel_id}: #{e.message}")
         nil
+      end
+
+      # Group DMs stay out of the name cache: a named one can be renamed or
+      # share a real channel's name, and an mpdm-* slug isn't a name.
+      def remember_channel_name(workspace, channel_id, channel)
+        name = channel['name']
+        @cache.set_channel(workspace.name, name, channel_id) if name && !channel['is_mpim']
+        name
       end
 
       def lookup_subteam_handle(workspace, subteam_id)

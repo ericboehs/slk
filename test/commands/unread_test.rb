@@ -96,6 +96,53 @@ class UnreadCommandTest < Minitest::Test
     assert parsed.key?('dms')
   end
 
+  def test_show_with_named_group_dm
+    stub_unread_group_dm('name' => 'ifams review', 'properties' => { 'has_custom_mpdm_name' => true })
+    assert_equal 0, execute_with_args([])
+    assert_includes io_string, '#ifams review (2 mentions)'
+    assert_includes io_string, 'hi'
+    refute_includes io_string, 'No unread messages'
+  end
+
+  def test_show_with_unnamed_group_dm_lists_the_other_members
+    stub_unread_group_dm('name' => 'mpdm-ada--eric--grace-1')
+    runner.cache_store.set_user('test', 'U2', 'Ada Lovelace')
+    runner.cache_store.set_user('test', 'U3', 'Grace Hopper')
+    assert_equal 0, execute_with_args([])
+    assert_includes io_string, '@Ada Lovelace, Grace Hopper'
+    refute_includes io_string, 'mpdm-'
+  end
+
+  def test_muted_group_dm_is_hidden_unless_muted_flag
+    stub_unread_group_dm('name' => 'ifams review')
+    @mock_client.stub('users.prefs.get', { 'prefs' => { 'muted_channels' => 'C0C8TMPUV3P' } })
+    assert_equal 0, execute_with_args([])
+    refute_includes io_string, 'ifams review'
+    assert_equal 0, execute_with_args(['--muted'])
+    assert_includes io_string, '#ifams review'
+  end
+
+  def test_json_lists_group_dms_with_label
+    stub_unread_group_dm('name' => 'ifams review')
+    assert_equal 0, execute_with_args(['--json'])
+    group_dms = JSON.parse(io_string)['group_dms']
+    assert_equal [{ 'id' => 'C0C8TMPUV3P', 'mentions' => 2, 'label' => '#ifams review' }], group_dms
+  end
+
+  def test_dm_only_does_not_claim_no_unread_messages
+    stub_unread_dm
+    assert_equal 0, execute_with_args([])
+    refute_includes io_string, 'No unread messages'
+  end
+
+  def test_clear_all_marks_group_dms
+    stub_unread_group_dm('name' => 'ifams review')
+    assert_equal 0, execute_with_args(['clear'])
+    assert_includes io_string, 'Cleared 0 DMs, 1 group DMs, 0 channels and 0 threads on test'
+    mark = @mock_client.calls.find { |c| c[:method] == 'conversations.mark' }
+    assert_equal 'C0C8TMPUV3P', mark[:params][:channel]
+  end
+
   def test_json_output_with_dm
     stub_unread_dm
     assert_equal 0, execute_with_args(['--json'])
@@ -116,7 +163,7 @@ class UnreadCommandTest < Minitest::Test
     stub_unread_channel
     assert_equal 0, execute_with_args(['--json'])
     parsed = JSON.parse(io_string)
-    assert_equal %w[channels dms], parsed.keys.sort
+    assert_equal %w[channels dms group_dms], parsed.keys.sort
     refute_includes io_string, 'test'
   end
 
@@ -125,15 +172,15 @@ class UnreadCommandTest < Minitest::Test
     assert_equal 0, execute_with_args(['--json'])
     parsed = JSON.parse(io_string)
     assert_equal %w[other test], parsed.keys.sort
-    assert_equal %w[channels dms], parsed['test'].keys.sort
-    assert_equal %w[channels dms], parsed['other'].keys.sort
+    assert_equal %w[channels dms group_dms], parsed['test'].keys.sort
+    assert_equal %w[channels dms group_dms], parsed['other'].keys.sort
   end
 
   def test_json_with_workspace_flag_prints_only_that_workspace
     use_two_workspaces
     assert_equal 0, execute_with_args(['--json', '-w', 'other'])
     parsed = JSON.parse(io_string)
-    assert_equal %w[channels dms], parsed.keys.sort
+    assert_equal %w[channels dms group_dms], parsed.keys.sort
   end
 
   def test_text_headers_only_with_multiple_workspaces
@@ -193,6 +240,17 @@ class UnreadCommandTest < Minitest::Test
     @mock_client.stub('conversations.history',
                       { 'ok' => true, 'messages' => [{ 'ts' => '1.0' }] })
     assert_equal 0, execute_with_args(%w[clear #random])
+  end
+
+  def test_clear_named_group_dm_by_name
+    @mock_client.stub('users.conversations', {
+                        'ok' => true,
+                        'channels' => [{ 'id' => 'C0C8TMPUV3P', 'name' => 'ifams review', 'is_mpim' => true }]
+                      })
+    assert_equal 0, execute_with_args(['clear', '#ifams review'])
+    assert_includes io_string, 'Marked #ifams review as read on test'
+    mark = @mock_client.calls.find { |c| c[:method] == 'conversations.mark' }
+    assert_equal 'C0C8TMPUV3P', mark[:params][:channel]
   end
 
   def test_clear_channel_not_found
@@ -277,6 +335,25 @@ class UnreadCommandTest < Minitest::Test
     assert_includes io_string, 'Threads'
   end
 
+  def test_thread_header_in_group_dm_shows_members_not_slug
+    @mock_client.stub('subscriptions.thread.getView', {
+                        'ok' => true, 'total_unread_replies' => 1,
+                        'threads' => [{ 'unread_replies' => [{ 'ts' => '1.1', 'text' => 't', 'user' => 'U2' }],
+                                        'root_msg' => { 'channel' => 'C7', 'thread_ts' => '1.0',
+                                                        'user' => 'U1', 'text' => 'parent' } }]
+                      })
+    @mock_client.stub('conversations.info', {
+                        'ok' => true, 'channel' => { 'id' => 'C7', 'is_mpim' => true, 'name' => 'mpdm-a--b-1',
+                                                     'members' => %w[U1 U2] }
+                      })
+    @mock_client.stub('auth.test', { 'ok' => true, 'user_id' => 'U1' })
+    runner.cache_store.set_channel('test', 'mpdm-a--b-1', 'C7')
+    runner.cache_store.set_user('test', 'U2', 'Ada Lovelace')
+    assert_equal 0, execute_with_args([])
+    assert_includes io_string, '@Ada Lovelace - thread by'
+    refute_includes io_string, 'mpdm-'
+  end
+
   private
 
   def stub_unread_channel
@@ -285,6 +362,20 @@ class UnreadCommandTest < Minitest::Test
                         'channels' => [{ 'id' => 'C1', 'has_unreads' => true, 'mention_count' => 0,
                                          'latest' => '1.0' }]
                       })
+  end
+
+  def stub_unread_group_dm(channel)
+    @mock_client.stub('client.counts', {
+                        'ok' => true, 'channels' => [], 'ims' => [],
+                        'mpims' => [{ 'id' => 'C0C8TMPUV3P', 'has_unreads' => true, 'mention_count' => 2,
+                                      'latest' => '1.0' }]
+                      })
+    @mock_client.stub('conversations.info', {
+                        'ok' => true,
+                        'channel' => { 'id' => 'C0C8TMPUV3P', 'is_mpim' => true,
+                                       'members' => %w[U1 U2 U3] }.merge(channel)
+                      })
+    @mock_client.stub('auth.test', { 'ok' => true, 'user_id' => 'U1' })
   end
 
   def stub_unread_dm

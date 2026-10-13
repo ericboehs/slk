@@ -38,6 +38,20 @@ class SearchFormatterTest < Minitest::Test
     assert_includes output, '@resolved_U12345'
   end
 
+  def test_display_result_for_named_group_dm_shows_its_name
+    result = build_search_result(channel_type: 'mpim', channel_id: 'C0C8TMPUV3P', channel_name: 'ifams review')
+
+    @formatter.display_result(result, @workspace)
+
+    assert_includes @io.string, '#ifams review john.doe:'
+    refute_includes @io.string, '<@ifams review>'
+    refute_includes @io.string, 'resolved_'
+  end
+
+  def test_unnamed_group_dm_is_not_labelled_as_a_channel
+    refute @formatter.channel_label_for('mpim', 'mpdm-a--b-1', @workspace).start_with?('#')
+  end
+
   def test_display_result_with_files
     result = build_search_result(files: [{ name: 'screenshot.png', type: 'image' }])
 

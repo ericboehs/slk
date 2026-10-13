@@ -37,7 +37,11 @@ module Slk
         channel_label_for(result.channel_type, result.channel_name, workspace)
       end
 
+      # Named group DMs show as #name; their name is not a user ID to resolve.
       def channel_label_for(type, name, workspace)
+        named = type == 'mpim' && Support::GroupDmName.label(name)
+        return named if named
+
         if %w[im mpim].include?(type)
           @mentions.replace("<@#{name}>", workspace)
         else

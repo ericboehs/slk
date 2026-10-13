@@ -10,6 +10,7 @@ module Slk
     class Messages < Base
       include Support::InlineImages
       include Support::AttachmentFetching
+      include Support::UserResolver
 
       # rubocop:disable Metrics/MethodLength
       def execute
@@ -149,7 +150,7 @@ module Slk
       end
 
       def output_json_messages(messages, workspace, channel_id)
-        format_options = json_format_options(channel_id)
+        format_options = json_format_options(workspace, channel_id)
 
         json_messages = messages.map do |message|
           format_message_as_json(message, workspace, channel_id, format_options)
@@ -158,8 +159,24 @@ module Slk
         output_json(json_messages)
       end
 
-      def json_format_options(channel_id)
-        { no_names: @options[:no_names], reaction_timestamps: @options[:reaction_timestamps], channel_id: channel_id }
+      def json_format_options(workspace, channel_id)
+        { no_names: @options[:no_names], reaction_timestamps: @options[:reaction_timestamps], channel_id: channel_id,
+          channel_name: json_channel_name(workspace, channel_id) }
+      end
+
+      # One lookup per run: a group DM gets its name or "@other, members"
+      # (not its mpdm-* slug). DMs and --no-names keep the cache-only name.
+      def json_channel_name(workspace, channel_id)
+        return nil if @options[:no_names] || channel_id.start_with?('D')
+
+        conversation_label(workspace, channel_id)&.delete_prefix('#')
+      end
+
+      # "#name", "@other, members" for a group DM, or "@user" for a DM;
+      # nil when Slack won't say.
+      def conversation_label(workspace, channel_id)
+        label = resolve_conversation_label(workspace, channel_id)
+        label unless label == "##{channel_id}"
       end
 
       def format_message_as_json(message, workspace, channel_id, format_options)
