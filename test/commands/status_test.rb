@@ -918,7 +918,8 @@ class StatusCommandTest < Minitest::Test
 
     run_status([])
 
-    assert_match(/\[dnd until \d+:\d\d[ap]m\]/, @io.string)
+    # Run late in the day, 90 minutes on is tomorrow and gains a weekday.
+    assert_match(/\[dnd until (?:[A-Z][a-z]{2} )?\d+:\d\d[ap]m\]/, @io.string)
   end
 
   # Unreachable with nothing set is still worth saying — it is the difference
