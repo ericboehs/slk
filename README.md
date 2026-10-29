@@ -386,21 +386,13 @@ rake test
    git push origin master
    gh run watch --exit-status
    ```
-6. Build, tag, and push the tag:
+6. Release in one step. `fnox exec` supplies `GEM_HOST_API_KEY` from `fnox.toml` (a stale key in `~/.gem/credentials` gets "Access Denied"):
    ```bash
-   bundle exec rake build
-   git tag -a vX.Y.Z -m "Version X.Y.Z"
-   git push origin vX.Y.Z
+   fnox exec -- bundle exec rake release
    ```
-7. Publish to RubyGems. `fnox exec` supplies `GEM_HOST_API_KEY` from `fnox.toml` (a stale key in `~/.gem/credentials` gets "Access Denied"); MFA is required, and `GEM_HOST_OTP_CODE` skips the prompt:
-   ```bash
-   fnox exec -- sh -c 'GEM_HOST_OTP_CODE="$(op item get Rubygems --otp)" gem push pkg/slk-X.Y.Z.gem'
-   ```
-8. Create the GitHub Release with the changelog entry as notes:
-   ```bash
-   awk '/^## \[X.Y.Z\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md | sed '/./,$!d' > /tmp/notes.md
-   gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes.md
-   ```
+   It checks first and stops before changing anything if: you are not on an up-to-date `master`, `CHANGELOG.md` has no `## [X.Y.Z]` entries or still has `## [Unreleased]` entries, an older tagged version never reached RubyGems, or `gh` is not signed in. Then it builds, tags `vX.Y.Z`, pushes the tag, pushes the gem, and creates the GitHub Release from the changelog section.
+
+   MFA is required. The OTP comes from `GEM_HOST_OTP_CODE` if set, otherwise from the 1Password item `Rubygems` (override with `RUBYGEMS_OTP_OP_ITEM`), read right before the push. Steps already done are skipped, so if a step fails, fix it and run the same command again. `bundle exec rake release:preflight` runs only the checks.
 
 ## License
 
