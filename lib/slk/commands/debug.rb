@@ -25,11 +25,12 @@ module Slk
         in ['profile'] then dump_profile(nil)
         in ['team'] then dump_team
         in ['schema'] then dump_schema
-        in ['thread', url] then dump_thread(url)
-        in ['channel', target] then dump_channel(target)
+        in [action, target] if TARGET_ACTIONS.key?(action) then send(TARGET_ACTIONS[action], target)
         else unknown_action
         end
       end
+
+      TARGET_ACTIONS = { 'thread' => :dump_thread, 'channel' => :dump_channel, 'huddle' => :dump_huddle }.freeze
 
       private
 
@@ -77,6 +78,26 @@ module Slk
         info = runner.conversations_api(resolved.workspace.name).info(channel: resolved.channel_id)
         output.puts(JSON.pretty_generate(info))
         0
+      end
+
+      # Raw huddles.get for a call id (R...), or for the call a user is in
+      # now. Profiles carry only the call id; this is where the channel and
+      # the full participant list (Slack Connect guests too) come from.
+      def dump_huddle(target)
+        workspace = runner.workspace(@options[:workspace])
+        call_id = huddle_call_id(workspace, target)
+        output.puts(JSON.pretty_generate(Api::Huddles.new(api_client, workspace).info(call_id)))
+        0
+      end
+
+      def huddle_call_id(workspace, target)
+        return target if target.match?(/\AR[A-Z0-9]+\z/)
+
+        user_id = resolve_user_id(workspace, target)
+        call_id = runner.users_api(workspace.name).info(user_id).dig('user', 'profile', 'huddle_state_call_id')
+        raise ApiError, "#{target} is not in a huddle" if call_id.to_s.empty?
+
+        call_id
       end
 
       def resolve_target(target)
@@ -128,7 +149,7 @@ module Slk
 
       def unknown_action
         error("Unknown debug action: #{positional_args.first.inspect}")
-        error('Valid actions: profile [user], team, schema, thread <url>, channel <id|url>')
+        error('Valid actions: profile [user], team, schema, thread <url>, channel <id|url>, huddle <call|user>')
         1
       end
 
@@ -146,6 +167,7 @@ module Slk
             schema           Dump team.profile.get
             thread <url>     Dump thread parent + subscriptions.thread.get
             channel <id|url> Dump conversations.info (also #name)
+            huddle <call|user> Dump huddles.get for a call id (R...) or a user's current call
 
           USER
             (none) | me      Self

@@ -123,6 +123,9 @@ module Slk
     autoload :HuddleScanner, 'slk/services/huddle_scanner'
     autoload :HuddleFetch, 'slk/services/huddle_fetch'
     autoload :HuddleState, 'slk/services/huddle_state'
+    autoload :HuddleRoom, 'slk/services/huddle_room'
+    autoload :HuddleRoomEnricher, 'slk/services/huddle_room_enricher'
+    autoload :PooledFanout, 'slk/services/pooled_fanout'
     autoload :WorkspaceFanout, 'slk/services/workspace_fanout'
     autoload :HuddleChannelLabel, 'slk/services/huddle_channel_label'
     autoload :GroupDmLabel, 'slk/services/group_dm_label'
@@ -199,6 +202,7 @@ module Slk
     autoload :Saved, 'slk/api/saved'
     autoload :CustomStatus, 'slk/api/custom_status'
     autoload :Team, 'slk/api/team'
+    autoload :Huddles, 'slk/api/huddles'
   end
 
   # Utility classes for paths, parsing, and helpers

@@ -45,7 +45,7 @@ module Slk
         child.on_response = @on_response
         child.on_request_body = @on_request_body
         child.on_response_body = @on_response_body
-        child.share_counter(self)
+        child.share_counter(@counter || self)
         child
       end
 

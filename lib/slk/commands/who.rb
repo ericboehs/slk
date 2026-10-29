@@ -89,12 +89,13 @@ module Slk
       # Channel ids are useless on a card. A failed lookup still leaves the
       # state, which is the part Slack always sends.
       def attach_huddle_channel(workspace, profile)
-        return profile if profile.huddle_channel_id.to_s.empty?
+        channel_id = Services::HuddleRoom.new(api_client: api_client, workspace: workspace).channel_for(profile)
+        return profile if channel_id.to_s.empty?
 
-        label = huddle_channels.label(workspace, profile.huddle_channel_id)
+        label = huddle_channels.label(workspace, channel_id)
         return profile unless label
 
-        Models::Profile.new(**profile.to_h, huddle_channel: label)
+        Models::Profile.new(**profile.to_h, huddle_channel_id: channel_id, huddle_channel: label)
       end
 
       def huddle_channels

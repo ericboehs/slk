@@ -80,11 +80,12 @@ class WhoCommandTest < Minitest::Test
     Slk::Commands::Who.new(args, runner: runner).execute
   end
 
-  def stub_huddle(state:, channel_id: nil)
+  def stub_huddle(state:, channel_id: nil, call_id: nil)
     info = self_info.merge(
       'profile' => {
         'huddle_state' => state,
-        'huddle_state_channel_id' => channel_id
+        'huddle_state_channel_id' => channel_id,
+        'huddle_state_call_id' => call_id
       }
     )
     @mock_client.stub('users.info', { 'ok' => true, 'user' => info })
@@ -109,6 +110,22 @@ class WhoCommandTest < Minitest::Test
     @mock_client.stub('conversations.info', { 'ok' => true, 'channel' => { 'name' => 'eert' } })
     execute_with_args([])
     assert_includes io_string, 'In a huddle · #eert'
+  end
+
+  def test_finds_huddle_channel_from_call_id_when_profile_omits_it
+    stub_huddle(state: 'in_a_huddle', call_id: 'R1')
+    @mock_client.stub('huddles.get', { 'ok' => true, 'huddle' => { 'channels' => ['C1'], 'participants' => [] } })
+    @mock_client.stub('conversations.info', { 'ok' => true, 'channel' => { 'name' => 'eert' } })
+    execute_with_args([])
+    assert_includes io_string, 'In a huddle · #eert'
+  end
+
+  def test_unauthorized_room_lookup_keeps_the_state
+    stub_huddle(state: 'in_a_huddle', call_id: 'R1')
+    @mock_client.stub('huddles.get', Slk::ApiError.new('not_authorized'))
+    execute_with_args([])
+    assert_includes io_string, 'In a huddle'
+    refute_includes io_string, '·'
   end
 
   def test_huddle_state_survives_a_failed_channel_lookup

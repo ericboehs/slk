@@ -25,7 +25,8 @@ module Slk
         help.note('Slack has no huddle list. This reads huddle_state from users.list')
         help.note('and groups people who share a call id. The roster is fetched live.')
         help.note('Primary workspace only. --all scans every workspace at the same time.')
-        help.note('A Slack Connect guest not in the roster is omitted.')
+        help.note('Channels and Slack Connect guests come from huddles.get, so only')
+        help.note('huddles in conversations you can see get them.')
         add_options_section(help)
         add_examples_section(help)
         help.render

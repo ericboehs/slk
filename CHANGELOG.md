@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `slk debug huddle <call id|user>` (hidden command) prints the raw `huddles.get` response. A user is resolved to the call in their profile's `huddle_state_call_id`.
+
+### Fixed
+
+- `slk huddles` and `slk who` show the huddle's channel again. Slack stopped sending `huddle_state_channel_id` on profiles, so every huddle read "channel unknown". The call id is now looked up with `huddles.get`, which also adds Slack Connect guests missing from `users.list`. Huddles in conversations you can't see still show "channel unknown". Room and guest-name lookups run on four connections per workspace, about 3× faster than one at a time.
+
 ## [0.15.0] - 2026-10-13
 
 ### Added
