@@ -20,9 +20,19 @@ module Slk
         queue.close
         results = Array.new(items.size)
         threads = Array.new([workers, items.size].min) { start(queue, results, client, &block) }
-        threads.each(&:join)
+        wait_for_all(threads)
         threads.each(&:value)
         results
+      end
+
+      # Thread#join re-raises a worker's exception at once, which would
+      # return before the other workers close their connections.
+      def wait_for_all(threads)
+        threads.each do |thread|
+          thread.join
+        rescue StandardError
+          nil
+        end
       end
 
       def pooled?(items, workers, client)

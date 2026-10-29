@@ -52,8 +52,9 @@ class PooledFanoutTest < Minitest::Test
     client = FakeClient.new
     error = assert_raises(RuntimeError) do
       Slk::Services::PooledFanout.call([1, 2, 3], workers: 2, client: client) do |item, _|
-        raise 'boom' if item == 2
+        raise 'boom' if item == 1
 
+        sleep 0.05
         item
       end
     end
