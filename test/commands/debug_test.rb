@@ -54,6 +54,25 @@ class DebugCommandTest < Minitest::Test
     assert_includes io_string, 'slk debug'
   end
 
+  def test_dump_huddle_by_call_id
+    @mock_client.stub('huddles.get', { 'ok' => true, 'huddle' => { 'id' => 'R1', 'channels' => ['C1'] } })
+    assert_equal 0, execute_with_args(%w[huddle R1])
+    assert_equal ['C1'], JSON.parse(io_string).dig('huddle', 'channels')
+  end
+
+  def test_dump_huddle_for_a_user_uses_their_call_id
+    user = { 'id' => 'U1', 'profile' => { 'huddle_state_call_id' => 'R9' } }
+    @mock_client.stub('users.info', { 'ok' => true, 'user' => user })
+    @mock_client.stub('huddles.get', { 'ok' => true, 'huddle' => { 'id' => 'R9' } })
+    assert_equal 0, execute_with_args(%w[huddle U1])
+    assert_equal 'R9', JSON.parse(io_string).dig('huddle', 'id')
+  end
+
+  def test_dump_huddle_for_a_user_not_in_one
+    assert_equal 1, execute_with_args(%w[huddle U1])
+    assert_includes err_string, 'not in a huddle'
+  end
+
   def test_dump_team
     assert_equal 0, execute_with_args(['team'])
     parsed = JSON.parse(io_string)

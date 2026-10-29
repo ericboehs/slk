@@ -26,12 +26,22 @@ module Slk
         member.dig('profile', 'huddle_state') == IN_HUDDLE
       end
 
+      def self.sort(huddles)
+        huddles.sort_by do |huddle|
+          [-huddle.participants.size, huddle.participants.first.name.downcase, huddle.call_id.to_s]
+        end
+      end
+
+      def self.sort_participants(people)
+        people.sort_by { |person| [person.name.downcase, person.id] }
+      end
+
       def initialize(members)
         @members = members
       end
 
       def group
-        huddles.sort_by { |huddle| sort_key(huddle) }
+        self.class.sort(huddles)
       end
 
       private
@@ -67,7 +77,7 @@ module Slk
       end
 
       def sorted_participants(people)
-        people.map { |member| participant(member) }.sort_by { |person| [person.name.downcase, person.id] }
+        self.class.sort_participants(people.map { |member| participant(member) })
       end
 
       def participant(member)
@@ -91,10 +101,6 @@ module Slk
       def present(value)
         text = value.to_s
         text.empty? ? nil : text
-      end
-
-      def sort_key(huddle)
-        [-huddle.participants.size, huddle.participants.first.name.downcase, huddle.call_id.to_s]
       end
     end
   end

@@ -13,6 +13,7 @@ module Slk
         @output = output
         @counts = {}
         @mutex = Mutex.new
+        @cache_mutex = Mutex.new
       end
 
       def call(workspaces)
@@ -30,7 +31,8 @@ module Slk
       def fetch(workspace)
         client = scan_client
         users = Api::Users.new(client, workspace, on_debug: debug_logger)
-        HuddleScanner.group(collect(workspace, users))
+        huddles = HuddleScanner.group(collect(workspace, users))
+        enricher(workspace, client).call(huddles)
       ensure
         close_client(client)
       end
@@ -47,6 +49,13 @@ module Slk
       def report(workspace, huddles)
         labeled = huddles.map { |huddle| huddle.with(channel: labeler.label(workspace, huddle.channel_id)) }
         Models::WorkspaceHuddles.new(workspace: workspace.name, huddles: labeled)
+      end
+
+      def enricher(workspace, client)
+        HuddleRoomEnricher.new(
+          workspace: workspace, client: client, cache_store: @runner.cache_store,
+          cache_mutex: @cache_mutex, on_debug: debug_logger
+        )
       end
 
       def scan_client
